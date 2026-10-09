@@ -6,7 +6,7 @@ import time
 import discord
 from discord.ext import commands
 
-from config import load_json, save_json, extra_help
+from config import load_json, save_json, extra_help, GUILD_IDS
 
 STATS_FILE = "eatyeet_stats.json"
 ROUND_SECONDS = 30
@@ -230,7 +230,7 @@ class FunCog(commands.Cog):
 
     # ----- commands -----
 
-    @discord.slash_command(name="eatyeet", description="Start a round of Eat It or Yeet It!")
+    @discord.slash_command(name="eatyeet", description="Start a round of Eat It or Yeet It!", guild_ids=GUILD_IDS)
     @extra_help("Starts a round of Eat It or Yeet It. The bot serves up a random food and everyone votes with the buttons. After 30 seconds the verdict is announced and stats are saved.")
     async def eatyeet(self, ctx: discord.ApplicationContext):
         """Start a round of Eat It or Yeet It."""
@@ -255,7 +255,7 @@ class FunCog(commands.Cog):
         await ctx.respond(embed=self.build_round_embed(view), view=view)
         view.message = await ctx.interaction.original_response()
 
-    @discord.slash_command(name="eatyeet_leaderboard", description="Show the Eat It or Yeet It leaderboard.")
+    @discord.slash_command(name="eatyeet_leaderboard", description="Show the Eat It or Yeet It leaderboard.", guild_ids=GUILD_IDS)
     @extra_help("Shows the top 10 players ranked by how often they voted with the winning side.")
     async def eatyeet_leaderboard(self, ctx: discord.ApplicationContext):
         """Show the Eat It or Yeet It leaderboard."""
