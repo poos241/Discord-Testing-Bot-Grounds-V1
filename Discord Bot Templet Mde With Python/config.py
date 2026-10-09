@@ -4,7 +4,6 @@ import discord
 import os
 import json
 import random
-import discord
 from discord.ext import commands
 from discord.commands import Option
 
@@ -148,32 +147,32 @@ def save_json(filename, data):
     
 
 def admin_required():
-    async def predicate(self):
-        if self.author.guild_permissions.administrator:
+    async def predicate(ctx):
+        if ctx.author.guild_permissions.administrator:
             return True
         else:
-            await self.respond("⚠️ You need to be an administrator to use this command.", ephemeral=True)
+            await ctx.respond("⚠️ You need to be an administrator to use this command.", ephemeral=True)
             return False
     return commands.check(predicate)
 
 
 def Manage_messages_required():
-    async def predicate(self):
-        if self.author.guild_permissions.manage_messages:
+    async def predicate(ctx):
+        if ctx.author.guild_permissions.manage_messages:
             return True
         else:
-            await self.respond("⚠️ You need to have the 'Manage Messages' permission to use this command.", ephemeral=True)
+            await ctx.respond("⚠️ You need to have the 'Manage Messages' permission to use this command.", ephemeral=True)
             return False
     return commands.check(predicate)
 
 
 
 def Manage_channels_required():
-    async def predicate(self):
-        if self.author.guild_permissions.manage_channels:
+    async def predicate(ctx):
+        if ctx.author.guild_permissions.manage_channels:
             return True
         else:
-            await self.respond("⚠️ You need to have the 'Manage Channels' permission to use this command.", ephemeral=True)
+            await ctx.respond("⚠️ You need to have the 'Manage Channels' permission to use this command.", ephemeral=True)
             return False
     return commands.check(predicate)
 
@@ -235,5 +234,6 @@ def extra_help(text: str):
         setattr(func, "__extra_help__", text)
         return func
     return wrapper
+
 
 
