@@ -62,7 +62,7 @@ pip install -r requirements.txt
 2. Open the **Bot** tab, click **Reset Token**, and copy the token.
    **Keep this secret — never share it or commit it to GitHub.**
 3. In the **Bot** tab, under *Privileged Gateway Intents*, turn on
-   **Server Members Intent** and **Message Content Intent**.
+   **Server Members Intent**.
 4. Open the **OAuth2 → URL Generator** tab, tick the scopes
    `bot` and `applications.commands`, then pick bot permissions
    (for a test bot, `Administrator` is easiest).
@@ -167,9 +167,9 @@ def setup(bot):
 - **Slash commands don't show up** — wait a few minutes after the first
   start; also confirm you invited the bot with the `applications.commands`
   scope.
-- **Bot can't see members / crashes on startup** — the privileged intents
-  (Server Members, Message Content) must be enabled in the Developer Portal
-  *and* the bot re-invited/restarted after.
+- **Bot can't see members / crashes on startup** — the **Server Members
+  Intent** must be enabled in the Developer Portal (Bot tab, Privileged
+  Gateway Intents), then restart the bot.
 - **`/shutdown_bot` says you're not authorized** — your user ID isn't in
   `OWNER_IDS` in `config.py`.
 - **`pip install` fails on `databases`** — make sure you're on Python 3.10+
