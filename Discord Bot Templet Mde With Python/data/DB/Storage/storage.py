@@ -116,30 +116,3 @@ async def save_ticket_records(gid: str, records: dict):
     
     
     
-    
-    # inside storage.py
-import json, os, aiosqlite
-
-async def get_auto_thread_config(guild_id):
-    async with aiosqlite.connect("botdata.db") as db:
-        async with db.execute("SELECT config FROM threads_config WHERE guild_id = ?", (str(guild_id),)) as cursor:
-            row = await cursor.fetchone()
-            return json.loads(row[0]) if row else {}
-
-async def save_auto_thread_config(guild_id, config):
-    config_json = json.dumps(config)
-    async with aiosqlite.connect("botdata.db") as db:
-        await db.execute("REPLACE INTO threads_config (guild_id, config) VALUES (?, ?)", (str(guild_id), config_json))
-        await db.commit()
-
-async def get_active_threads(guild_id):
-    async with aiosqlite.connect("botdata.db") as db:
-        async with db.execute("SELECT active FROM threads_active WHERE guild_id = ?", (str(guild_id),)) as cursor:
-            row = await cursor.fetchone()
-            return json.loads(row[0]) if row else {}
-
-async def save_active_threads(guild_id, active_data):
-    active_json = json.dumps(active_data)
-    async with aiosqlite.connect("botdata.db") as db:
-        await db.execute("REPLACE INTO threads_active (guild_id, active) VALUES (?, ?)", (str(guild_id), active_json))
-        await db.commit()
