@@ -1,0 +1,23 @@
+# Python bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Secrets — never commit your real token
+.env
+
+# Runtime data (created when the bot runs)
+data/*.json
+data/*.db
+botdata.db
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
