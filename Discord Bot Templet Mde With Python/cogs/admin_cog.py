@@ -15,6 +15,8 @@ class AdminCog(commands.Cog):
         self.bot = client
         self.cooldownRenamebot = {}  # Initialize cooldowns here
         self.COOLDOWN_SECONDS_Remame_bot = 500
+        self.cooldownUserInfo = {}  # userinfo cooldowns: guild_id -> {user_id: timestamp}
+        self.cooldownRenameuser = {}  # rename_user cooldowns: guild_id -> {user_id: timestamp}
 
         
         
@@ -88,20 +90,21 @@ class AdminCog(commands.Cog):
         member: discord.Option(discord.Member, "pick a user to see info about them in the discord", default=None) # type: ignore
         ):
         """View information about a user in the server."""
-        cooldownUserInfo = {}
         COOLDOWN_SECONDS_User_Info = 60
         await interaction.response.defer()
         user_id = interaction.author.id
         guild_id = interaction.guild.id
         now = time.time()
-        join_timestamp = int(member.joined_at.timestamp())
-        formatted_date = f"<t:{join_timestamp}:F>"
+
+        if member is None:
+            member = interaction.author
+
         # Ensure guild key exists
-        if guild_id not in cooldownUserInfo:
-            cooldownUserInfo[guild_id] = {}
+        if guild_id not in self.cooldownUserInfo:
+            self.cooldownUserInfo[guild_id] = {}
 
         # Reference the user_cooldowns for this guild
-        user_cooldowns = cooldownUserInfo[guild_id]
+        user_cooldowns = self.cooldownUserInfo[guild_id]
 
         # Check cooldown
         if user_id in user_cooldowns:
@@ -114,27 +117,22 @@ class AdminCog(commands.Cog):
         # Set new cooldown
         user_cooldowns[user_id] = now
 
-
-
-
-        if member is None:
-            member = interaction.author
-        elif member is not None:
-            member = member
-            info_embed= discord.Embed(title=f"{member.name} ({member.display_name})`s User Information", description="All information about this user.", color=member.color)
-            roles = ", ".join(r.name for r in member.roles if r.name != "@everyone") or "None"
-            info_embed.set_thumbnail(url=member.avatar)
-            info_embed.add_field(name="Name:", value=member.name, inline=False)
-            info_embed.add_field(name="Nick Name:", value=member.display_name, inline= False)
-            info_embed.add_field(name="Discriminator:", value=member.discriminator, inline=False)
-            info_embed.add_field(name="ID:", value=member.id, inline=False)
-            info_embed.add_field(name="Top Role:", value=member.top_role, inline=False)
-            info_embed.add_field(name="All Roles:", value=roles, inline=False)
-            info_embed.add_field(name="status:", value=member.status, inline=False)
-            info_embed.add_field(name="bot User?", value=member.bot, inline=False)
-            info_embed.add_field(name="creation Date:", value=f"<t:{int(member.created_at.timestamp())}:F>", inline=False)
-            info_embed.add_field(name="join Date:", value=formatted_date, inline=False)
-        await interaction.send(embed=info_embed)
+        join_timestamp = int(member.joined_at.timestamp())
+        formatted_date = f"<t:{join_timestamp}:F>"
+        info_embed = discord.Embed(title=f"{member.name} ({member.display_name})`s User Information", description="All information about this user.", color=member.color)
+        roles = ", ".join(r.name for r in member.roles if r.name != "@everyone") or "None"
+        info_embed.set_thumbnail(url=member.avatar)
+        info_embed.add_field(name="Name:", value=member.name, inline=False)
+        info_embed.add_field(name="Nick Name:", value=member.display_name, inline=False)
+        info_embed.add_field(name="Discriminator:", value=member.discriminator, inline=False)
+        info_embed.add_field(name="ID:", value=member.id, inline=False)
+        info_embed.add_field(name="Top Role:", value=member.top_role, inline=False)
+        info_embed.add_field(name="All Roles:", value=roles, inline=False)
+        info_embed.add_field(name="status:", value=member.status, inline=False)
+        info_embed.add_field(name="bot User?", value=member.bot, inline=False)
+        info_embed.add_field(name="creation Date:", value=f"<t:{int(member.created_at.timestamp())}:F>", inline=False)
+        info_embed.add_field(name="join Date:", value=formatted_date, inline=False)
+        await interaction.followup.send(embed=info_embed)
 
 
     @discord.slash_command(name='remove_user_role', description="use this to remove a users role")
@@ -249,19 +247,18 @@ class AdminCog(commands.Cog):
         new_nick: discord.Option(str, "set the name of the user ") # type: ignore
         ):
         """Rename a user in the server."""
-        cooldownRenameuser = {}
-        COOLDOWN_SECONDS_Rename_User = 5 
+        COOLDOWN_SECONDS_Rename_User = 5
         await interaction.response.defer()
         user_id = interaction.author.id
         guild_id = interaction.guild.id
         now = time.time()
 
         # Ensure guild key exists
-        if guild_id not in cooldownRenameuser:
-            cooldownRenameuser[guild_id] = {}
+        if guild_id not in self.cooldownRenameuser:
+            self.cooldownRenameuser[guild_id] = {}
 
         # Reference the user_cooldowns for this guild
-        user_cooldowns = cooldownRenameuser[guild_id]
+        user_cooldowns = self.cooldownRenameuser[guild_id]
 
         # Check cooldown
         if user_id in user_cooldowns:
@@ -327,3 +324,4 @@ class AdminCog(commands.Cog):
 
 def setup(client):
     client.add_cog(AdminCog(client))
+
