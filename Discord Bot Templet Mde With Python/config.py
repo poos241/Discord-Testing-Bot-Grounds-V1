@@ -39,7 +39,7 @@ COMMAND_TAGS = {
     "moderation": ["kick", "ban", "warn"],
     "levels": ["level", "leaderboard", "set_xp_rate", "set_cooldown", "set_level_channel", "add_xp", "resetxp", "cleardata", "getxpsettings", "backupdb"],
     "tickets": ["ticket_open", "ticket_close", "ticket_config", "ticket_manage_roles", "send_ticket_panel", "set_verification_role", "ticket_verification"],
-    "fun": ["flip_coin", "conch", "roll", "rps", "leaderboard_rps", "clear_leaderboard_rps"],
+    "fun": ["eatyeet", "eatyeet_leaderboard", "flip_coin", "conch", "roll", "rps", "leaderboard_rps", "clear_leaderboard_rps"],
     "utility": ["userinfo", "clear_user", "rename_user", "autocategorize", "diagnose_docs", "show_categories"],
     "auto_thread": ["auto_thread", "set_auto_thread_channel", "remove_auto_thread_channel", "auto_thread_status"],
     "welcome": ["set_welcome_channel", "welcome_message", "welcome_embed_image", "welcome_embed_title", "welcome_embed_description"],
