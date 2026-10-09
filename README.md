@@ -133,6 +133,13 @@ Discord Bot Templet Mde With Python/
 | `/shutdown_bot`   | Shuts the bot down                                  | Bot owners only|
 | `/restart_bot`    | Restarts the bot                                    | Bot owners only|
 
+## Built-in commands (fun cog)
+
+| Command               | What it does                                                        | Who can use it |
+|-----------------------|---------------------------------------------------------------------|----------------|
+| `/eatyeet`            | Starts a round of Eat It or Yeet It — everyone votes with buttons    | Everyone       |
+| `/eatyeet_leaderboard`| Shows the top voters ranked by majority votes                       | Everyone       |
+
 ## Adding a new cog
 
 Cogs are how you add features. Each cog is one Python file in the `cogs/`
