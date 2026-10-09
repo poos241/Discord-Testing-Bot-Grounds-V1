@@ -25,6 +25,7 @@ client = commands.Bot(command_prefix="!", intents=intents)
 # Load cogs
 COGS = [
     "cogs.admin_cog",
+    "cogs.fun_cog",
 ]
 
 for cog in COGS:
