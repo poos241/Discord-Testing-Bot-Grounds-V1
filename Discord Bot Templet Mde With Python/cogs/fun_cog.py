@@ -145,8 +145,11 @@ class FunCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.active = self._load_active()  # channel_id (int) -> round dict
-        self.vote_view = EatYeetView(self)
-        bot.add_view(self.vote_view)  # persistent buttons: re-registered every startup
+        # NOTE: the vote view is created in _ensure_view(), NOT here.
+        # discord.ui.View needs a running event loop to exist, and cogs are
+        # loaded (via load_extension) before the bot's loop starts — creating
+        # it here crashes with "RuntimeError: no running event loop".
+        self.vote_view = None
         self._messages = {}  # channel_id -> discord.Message (in-memory cache)
         self._last_edit = {}  # channel_id -> timestamp (live-count throttle)
         self.start_cooldowns = {}  # user_id -> timestamp of last round started
@@ -154,6 +157,18 @@ class FunCog(commands.Cog):
 
     def cog_unload(self):
         self._expiry_loop.cancel()
+
+    def _ensure_view(self):
+        """Create and register the persistent vote view.
+
+        Must be called from inside the running event loop (on_ready or a
+        command) — never at import/cog-load time.
+        """
+        if self.vote_view is None:
+            self.vote_view = EatYeetView(self)
+            # Re-register the persistent buttons every startup so rounds
+            # survive bot restarts and crashes.
+            self.bot.add_view(self.vote_view)
 
     # ----- persistence -----
 
@@ -426,6 +441,7 @@ class FunCog(commands.Cog):
         if self._ready:
             return
         self._ready = True
+        self._ensure_view()  # safe here: the event loop is running
         if not self._expiry_loop.is_running():
             self._expiry_loop.start()
         await self._finish_expired_rounds()
@@ -453,6 +469,7 @@ class FunCog(commands.Cog):
             await ctx.respond(f"Slow down! You can start another round in {wait} seconds.", ephemeral=True)
             return
         self.start_cooldowns[ctx.author.id] = now
+        self._ensure_view()  # belt-and-braces: view exists if on_ready was missed
 
         food, rarity, suggested_by = self._pick_food(ctx.guild.id)
         rnd = {
