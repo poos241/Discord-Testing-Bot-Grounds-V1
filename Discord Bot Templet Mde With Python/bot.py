@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 import discord
 from discord.ext import commands
 
-from config import statuses
+from config import statuses, GUILD_IDS
 
 import datetime as DT
 
@@ -52,8 +52,24 @@ async def change_status():
 
 @client.event
 async def on_ready():
+    # 🔍 Sanity check: syncing guild-specific commands fails with
+    # 403 Missing Access if the bot isn't actually in every guild
+    # listed in GUILD_IDS. Warn about it instead of cryptic tracebacks.
+    missing = [gid for gid in GUILD_IDS if client.get_guild(gid) is None]
+    if missing:
+        print(f"⚠️ WARNING: the bot is not a member of these guilds from GUILD_IDS: {missing}")
+        print("   Guild slash commands will fail to sync (403 Missing Access).")
+        print("   Invite the bot to those servers, or remove the IDs from GUILD_IDS in config.py.")
+
     # ✅ Sync slash commands
-    await client.sync_commands(force=True)
+    try:
+        await client.sync_commands(force=True)
+    except discord.Forbidden:
+        print("❌ Command sync failed: 403 Missing Access.")
+        print("   The bot is missing from a guild in GUILD_IDS, or a guild ID is wrong.")
+        print("   Fix GUILD_IDS in config.py (or invite the bot), then restart.")
+        return
+
     currentDT = DT.datetime.now()
 
     print(f"✅ Logged in as {client.user} (id: {client.user.id}) Commands synced! Time: {currentDT.strftime('%Y-%m-%d %H:%M:%S')}")
