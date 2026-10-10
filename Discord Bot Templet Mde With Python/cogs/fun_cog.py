@@ -27,7 +27,7 @@ MAX_HISTORY = 10  # rounds of history kept per guild
 # TheMealDB: free public meal API, no key needed. Used for "fresh" foods.
 MEALDB_URL = "https://www.themealdb.com/api/json/v1/1/random.php"
 API_TIMEOUT = 5  # seconds before giving up and falling back to the local list
-API_CHANCE = 0.90  # in auto mode, chance a round pulls a live API meal
+API_CHANCE = 0.90  # in auto mode, chance a round pulls a live API meal (Emily's tweak)
 
 RARITY_EMOJI = {"common": "🟢", "weird": "🟡", "cursed": "🟣", "community": "💡", "fresh": "🌐"}
 RARITY_POINTS = {"common": 1, "weird": 2, "cursed": 3, "community": 2, "fresh": 2}
@@ -36,7 +36,10 @@ VERDICT_EMOJI = {"eat": "😋", "yeet": "🗑️", "tie": "✨", "none": "😐"}
 SOURCES = [
     discord.OptionChoice(name="Auto (mix of API + local)", value="auto"),
     discord.OptionChoice(name="Local list only (no internet)", value="local"),
+    discord.OptionChoice(name="API only (no local list)", value="api"),
 ]
+
+HAMMER_TIME_SECS = 15  # final countdown threshold for the timer display
 
 
 async def fetch_api_food(seen):
@@ -202,12 +205,14 @@ class FunCog(commands.Cog):
         self.vote_view = None
         self._messages = {}  # channel_id -> discord.Message (in-memory cache)
         self._last_edit = {}  # channel_id -> timestamp (live-count throttle)
+        self._timer_edit_at = {}  # channel_id -> timestamp (countdown throttle)
         self.start_cooldowns = {}  # user_id -> timestamp of last round started
         self._seen_meals = set()  # TheMealDB ids served this session (avoid repeats)
         self._ready = False
 
     def cog_unload(self):
         self._expiry_loop.cancel()
+        self._countdown_loop.cancel()
 
     def _ensure_view(self):
         """Create and register the persistent vote view.
@@ -279,17 +284,63 @@ class FunCog(commands.Cog):
             rarity = "common"
         return random.choice(FOODS[rarity]), rarity, None, None
 
-    async def _pick_food_async(self, guild_id, use_api=True):
-        """Pick a food, optionally trying the live API first.
+    async def _pick_food_async(self, guild_id, source="auto"):
+        """Pick a food according to the source mode.
 
-        Returns (food, rarity, suggested_by, image_url). API failures fall
-        back to the local list, so this never raises because of the network.
+        Returns (food, rarity, suggested_by, image_url) — or (None, None,
+        None, None) when source="api" and the API is unreachable, so the
+        caller can abort the round instead of falling back to local.
         """
-        if use_api and random.random() < API_CHANCE:
+        if source == "local":
+            return self._pick_food(guild_id)
+        if source == "api":
+            name, thumb, _meal_id = await fetch_api_food(self._seen_meals)
+            if name:
+                return name, "fresh", None, thumb
+            return None, None, None, None
+        # auto: usually a live API meal, sometimes local
+        if random.random() < API_CHANCE:
             name, thumb, _meal_id = await fetch_api_food(self._seen_meals)
             if name:
                 return name, "fresh", None, thumb
         return self._pick_food(guild_id)
+
+    @staticmethod
+    def _bar(frac, width=10):
+        """Progress bar like ▓▓▓▓▓▓░░░░ for a 0..1 fraction."""
+        frac = max(0.0, min(1.0, frac))
+        filled = int(round(frac * width))
+        return "▓" * filled + "░" * (width - filled)
+
+    def _timer_line(self, rnd, now=None):
+        """Live countdown line for the round embed.
+
+        e.g. "⏳ 4m 32s left ▓▓▓▓▓▓░░░░ 62%". Under HAMMER_TIME_SECS it
+        becomes "🔨 HAMMER TIME! 9s left ...". Rounds saved before
+        started_at existed just show the time left without a bar.
+        """
+        now = time.time() if now is None else now
+        remaining = rnd["ends_at"] - now
+        if remaining <= 0:
+            return "🔨 **TIME'S UP!**"
+        total = None
+        if rnd.get("started_at"):
+            total = rnd["ends_at"] - rnd["started_at"]
+        bar = ""
+        if total and total > 0:
+            bar = f" {self._bar(remaining / total)} {int(100 * remaining / total)}%"
+        if remaining < HAMMER_TIME_SECS:
+            secs = int(remaining) + (1 if remaining % 1 > 0 else 0)
+            return f"🔨 **HAMMER TIME!** {secs}s left{bar}"
+        if remaining >= 3600:
+            h, rem = divmod(int(remaining), 3600)
+            human = f"{h}h {rem // 60}m"
+        elif remaining >= 60:
+            m, s = divmod(int(remaining), 60)
+            human = f"{m}m {s:02d}s"
+        else:
+            human = f"{int(remaining)}s"
+        return f"⏳ **{human}** left{bar}"
 
     def build_round_embed(self, rnd) -> discord.Embed:
         eats, yeets = self._counts(rnd)
@@ -297,6 +348,7 @@ class FunCog(commands.Cog):
         desc = f"**{rnd['food']}**\n{RARITY_EMOJI[rnd['rarity']]} Rarity: **{rnd['rarity'].title()}**"
         if rnd["suggested_by"]:
             desc += f"\n💡 Suggested by **{rnd['suggested_by']}**"
+        desc += f"\n{self._timer_line(rnd)}"
         embed = discord.Embed(
             title="🍽️ EAT IT or YEET IT 🗑️",
             description=desc,
@@ -475,6 +527,7 @@ class FunCog(commands.Cog):
         self._save_active()
         self._messages.pop(channel_id, None)
         self._last_edit.pop(channel_id, None)
+        self._timer_edit_at.pop(channel_id, None)
 
         verdict, shoutouts = self._tally_and_save(rnd)
         embed = self.build_results_embed(rnd, verdict, shoutouts)
@@ -501,6 +554,35 @@ class FunCog(commands.Cog):
     async def _before_expiry_loop(self):
         await self.bot.wait_until_ready()
 
+    @tasks.loop(seconds=5)
+    async def _countdown_loop(self):
+        """Live-update the timer line on active round messages.
+
+        Throttled: every 30s normally, every 5s during the final 30s so the
+        HAMMER TIME finale ticks down visibly. Uses the message cache only —
+        no API fetching here.
+        """
+        now = time.time()
+        for cid, rnd in list(self.active.items()):
+            remaining = rnd["ends_at"] - now
+            if remaining <= 0:
+                continue  # the expiry loop will finish it
+            interval = 5 if remaining < 30 else 30
+            if now - self._timer_edit_at.get(cid, 0) < interval:
+                continue
+            self._timer_edit_at[cid] = now
+            message = self._messages.get(cid)
+            if message is None:
+                continue
+            try:
+                await message.edit(embed=self.build_round_embed(rnd), view=self.vote_view)
+            except discord.HTTPException:
+                pass
+
+    @_countdown_loop.before_loop
+    async def _before_countdown_loop(self):
+        await self.bot.wait_until_ready()
+
     @commands.Cog.listener()
     async def on_ready(self):
         # (Re)start the expiry checker once, and immediately finish anything
@@ -511,12 +593,14 @@ class FunCog(commands.Cog):
         self._ensure_view()  # safe here: the event loop is running
         if not self._expiry_loop.is_running():
             self._expiry_loop.start()
+        if not self._countdown_loop.is_running():
+            self._countdown_loop.start()
         await self._finish_expired_rounds()
 
     # ----- commands -----
 
     @discord.slash_command(name="eatyeet", description="Start a round of Eat It or Yeet It!", guild_ids=GUILD_IDS)
-    @extra_help("Starts a round of Eat It or Yeet It. Pick how long voting stays open (30s up to 24h) and where the food comes from: auto mixes live API meals with the local list, local-only skips the internet entirely. Rounds survive bot restarts.")
+    @extra_help("Starts a round of Eat It or Yeet It. Pick how long voting stays open (30s up to 24h) and where the food comes from: auto mixes live API meals with the local list, local-only skips the internet entirely, API-only uses live meals with no local fallback. Rounds survive bot restarts.")
     async def eatyeet(
         self,
         ctx: discord.ApplicationContext,
@@ -540,7 +624,13 @@ class FunCog(commands.Cog):
         self._ensure_view()  # belt-and-braces: view exists if on_ready was missed
 
         food, rarity, suggested_by, image_url = await self._pick_food_async(
-            ctx.guild.id, use_api=(source == "auto"))
+            ctx.guild.id, source=source)
+        if food is None:
+            # source="api" and the API is unreachable: no local fallback, per
+            # the user's explicit choice. Cooldown stays to avoid API hammering.
+            await ctx.respond("⚠️ Couldn't reach the food API, so no round was started. "
+                              "Try again in a bit, or use Auto/Local instead.", ephemeral=True)
+            return
         rnd = {
             "guild_id": ctx.guild.id,
             "channel_id": ctx.channel.id,
@@ -551,6 +641,7 @@ class FunCog(commands.Cog):
             "image_url": image_url,
             "source": source,
             "starter_id": ctx.author.id,
+            "started_at": now,
             "ends_at": now + duration,
             "votes": {},
             "voter_names": {},
