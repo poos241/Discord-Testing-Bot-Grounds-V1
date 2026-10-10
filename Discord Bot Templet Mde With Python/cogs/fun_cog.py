@@ -27,7 +27,7 @@ MAX_HISTORY = 10  # rounds of history kept per guild
 # TheMealDB: free public meal API, no key needed. Used for "fresh" foods.
 MEALDB_URL = "https://www.themealdb.com/api/json/v1/1/random.php"
 API_TIMEOUT = 5  # seconds before giving up and falling back to the local list
-API_CHANCE = 0.45  # in auto mode, chance a round pulls a live API meal
+API_CHANCE = 0.90  # in auto mode, chance a round pulls a live API meal
 
 RARITY_EMOJI = {"common": "🟢", "weird": "🟡", "cursed": "🟣", "community": "💡", "fresh": "🌐"}
 RARITY_POINTS = {"common": 1, "weird": 2, "cursed": 3, "community": 2, "fresh": 2}
