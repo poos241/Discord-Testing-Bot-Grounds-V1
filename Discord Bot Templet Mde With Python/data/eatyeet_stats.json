@@ -1,6 +1,6 @@
 {
     "557680433245061130": {
-        "rounds": 11,
+        "rounds": 12,
         "users": {
             "287282266261159937": {
                 "majority": 5,
@@ -73,6 +73,13 @@
                 "eats": 1,
                 "yeets": 0,
                 "ended_at": 1791639327.1641953
+            },
+            {
+                "food": "Moroccan Carrot Soup",
+                "verdict": "none",
+                "eats": 0,
+                "yeets": 0,
+                "ended_at": 1791642971.0122757
             }
         ]
     }
