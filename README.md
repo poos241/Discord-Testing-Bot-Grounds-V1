@@ -169,6 +169,10 @@ best-streak record, and results name every voter on each side.
 bar (▓▓▓▓▓▓░░░░). In the last 15 seconds it switches to
 🔨 **HAMMER TIME!** and counts down to the verdict.
 
+**Rematch** — when a round ends, the results post gets a 🔁 **Run it back**
+button. Anyone can tap it to instantly start a new round with the same
+duration and food source. It works even on old result posts after a restart.
+
 Game data is stored in `data/eatyeet_stats.json`,
 `data/eatyeet_suggestions.json`, and `data/eatyeet_active.json`
 (active rounds — this is what makes restarts safe).
