@@ -3,3 +3,4 @@ python-dotenv
 databases
 sqlalchemy
 aiosqlite
+aiohttp
