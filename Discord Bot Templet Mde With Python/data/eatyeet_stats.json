@@ -1,0 +1,44 @@
+{
+    "557680433245061130": {
+        "rounds": 6,
+        "users": {
+            "287282266261159937": {
+                "majority": 4,
+                "played": 4,
+                "points": 6,
+                "streak": 3,
+                "best_streak": 3
+            }
+        },
+        "history": [
+            {
+                "food": "cake",
+                "verdict": "none",
+                "eats": 0,
+                "yeets": 0,
+                "ended_at": 1791552600.6940439
+            },
+            {
+                "food": "An egg salad sandwich left out in the sun",
+                "verdict": "yeet",
+                "eats": 0,
+                "yeets": 1,
+                "ended_at": 1791552642.3134756
+            },
+            {
+                "food": "cake",
+                "verdict": "eat",
+                "eats": 1,
+                "yeets": 0,
+                "ended_at": 1791559875.5060334
+            },
+            {
+                "food": "Ketchup on vanilla ice cream",
+                "verdict": "none",
+                "eats": 0,
+                "yeets": 0,
+                "ended_at": 1791606547.6819453
+            }
+        ]
+    }
+}
