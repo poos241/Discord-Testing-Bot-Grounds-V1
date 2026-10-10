@@ -6,9 +6,11 @@ buttons use stable custom_ids, and the view is re-registered on startup, so
 rounds survive bot restarts and crashes. A background task finishes rounds
 whose timer expired (even ones that expired while the bot was down).
 """
+import asyncio
 import random
 import time
 
+import aiohttp
 import discord
 from discord.ext import commands, tasks
 
@@ -22,9 +24,57 @@ MAX_SUGGESTIONS_PER_GUILD = 25
 SUGGESTION_CHANCE = 0.25  # chance a round pulls a community-suggested food
 MAX_HISTORY = 10  # rounds of history kept per guild
 
-RARITY_EMOJI = {"common": "🟢", "weird": "🟡", "cursed": "🟣", "community": "💡"}
-RARITY_POINTS = {"common": 1, "weird": 2, "cursed": 3, "community": 2}
+# TheMealDB: free public meal API, no key needed. Used for "fresh" foods.
+MEALDB_URL = "https://www.themealdb.com/api/json/v1/1/random.php"
+API_TIMEOUT = 5  # seconds before giving up and falling back to the local list
+API_CHANCE = 0.45  # in auto mode, chance a round pulls a live API meal
+
+RARITY_EMOJI = {"common": "🟢", "weird": "🟡", "cursed": "🟣", "community": "💡", "fresh": "🌐"}
+RARITY_POINTS = {"common": 1, "weird": 2, "cursed": 3, "community": 2, "fresh": 2}
 VERDICT_EMOJI = {"eat": "😋", "yeet": "🗑️", "tie": "✨", "none": "😐"}
+
+SOURCES = [
+    discord.OptionChoice(name="Auto (mix of API + local)", value="auto"),
+    discord.OptionChoice(name="Local list only (no internet)", value="local"),
+]
+
+
+async def fetch_api_food(seen):
+    """Fetch one random meal from TheMealDB.
+
+    Returns (name, thumbnail_url, meal_id). Returns (None, None, None) if the
+    API is down, slow, or returns junk — the caller falls back to the local
+    list, so the game never breaks because of the network. `seen` is a set of
+    meal IDs already served this session, to avoid immediate repeats.
+    """
+    timeout = aiohttp.ClientTimeout(total=API_TIMEOUT)
+    for _ in range(2):  # up to 2 tries (second try only happens on a repeat)
+        try:
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.get(MEALDB_URL) as resp:
+                    if resp.status != 200:
+                        return None, None, None
+                    data = await resp.json()
+        except (aiohttp.ClientError, asyncio.TimeoutError):
+            return None, None, None
+        meals = (data or {}).get("meals") or []
+        if not meals:
+            return None, None, None
+        meal = meals[0]
+        name = (meal.get("strMeal") or "").strip()
+        if not name:
+            return None, None, None
+        name = name[:100]  # keep embed-friendly
+        thumb = (meal.get("strMealThumb") or "").strip() or None
+        meal_id = meal.get("idMeal")
+        if meal_id in seen:
+            continue
+        if meal_id is not None:
+            seen.add(meal_id)
+            if len(seen) > 50:  # cap memory; drops an arbitrary old entry
+                seen.pop()
+        return name, thumb, meal_id
+    return None, None, None
 
 DURATIONS = [
     discord.OptionChoice(name="Quick test (30 seconds)", value=30),
@@ -153,6 +203,7 @@ class FunCog(commands.Cog):
         self._messages = {}  # channel_id -> discord.Message (in-memory cache)
         self._last_edit = {}  # channel_id -> timestamp (live-count throttle)
         self.start_cooldowns = {}  # user_id -> timestamp of last round started
+        self._seen_meals = set()  # TheMealDB ids served this session (avoid repeats)
         self._ready = False
 
     def cog_unload(self):
@@ -214,11 +265,11 @@ class FunCog(commands.Cog):
         return eats, yeets
 
     def _pick_food(self, guild_id):
-        """Returns (food_name, rarity, suggested_by_name_or_None)."""
+        """Pick from the local lists. Returns (food, rarity, suggested_by, image_url)."""
         suggestions = self._get_suggestions(guild_id)
         if suggestions and random.random() < SUGGESTION_CHANCE:
             s = random.choice(suggestions)
-            return s["food"], "community", s.get("by_name")
+            return s["food"], "community", s.get("by_name"), None
         roll = random.random()
         if roll < 0.15:
             rarity = "cursed"
@@ -226,7 +277,19 @@ class FunCog(commands.Cog):
             rarity = "weird"
         else:
             rarity = "common"
-        return random.choice(FOODS[rarity]), rarity, None
+        return random.choice(FOODS[rarity]), rarity, None, None
+
+    async def _pick_food_async(self, guild_id, use_api=True):
+        """Pick a food, optionally trying the live API first.
+
+        Returns (food, rarity, suggested_by, image_url). API failures fall
+        back to the local list, so this never raises because of the network.
+        """
+        if use_api and random.random() < API_CHANCE:
+            name, thumb, _meal_id = await fetch_api_food(self._seen_meals)
+            if name:
+                return name, "fresh", None, thumb
+        return self._pick_food(guild_id)
 
     def build_round_embed(self, rnd) -> discord.Embed:
         eats, yeets = self._counts(rnd)
@@ -241,6 +304,8 @@ class FunCog(commands.Cog):
         )
         embed.add_field(name="🍽️ Eat it", value=f"**{eats}**", inline=True)
         embed.add_field(name="🗑️ Yeet it", value=f"**{yeets}**", inline=True)
+        if rnd.get("image_url"):
+            embed.set_image(url=rnd["image_url"])
         embed.set_footer(text=f"Vote with the buttons below! You can change your vote. "
                               f"Majority voters earn {points} pt{'s' if points != 1 else ''}. "
                               f"Voting ends <t:{int(rnd['ends_at'])}:R>")
@@ -262,6 +327,8 @@ class FunCog(commands.Cog):
             title, color = "😐 Nobody voted", 0x95A5A6
             desc = f"**{rnd['food']}**\n\n_{NO_VOTES}_"
         embed = discord.Embed(title=title, description=desc, color=color)
+        if rnd.get("image_url"):
+            embed.set_image(url=rnd["image_url"])
         # Voter roll-call (capped so big rounds don't blow up the embed).
         if rnd["votes"]:
             eat_names = [rnd["voter_names"].get(uid, "Someone")
@@ -449,11 +516,12 @@ class FunCog(commands.Cog):
     # ----- commands -----
 
     @discord.slash_command(name="eatyeet", description="Start a round of Eat It or Yeet It!", guild_ids=GUILD_IDS)
-    @extra_help("Starts a round of Eat It or Yeet It. Pick how long voting stays open (30s up to 24h). The bot serves up a random food, everyone votes with the buttons, and the verdict is announced when time runs out. Rounds survive bot restarts.")
+    @extra_help("Starts a round of Eat It or Yeet It. Pick how long voting stays open (30s up to 24h) and where the food comes from: auto mixes live API meals with the local list, local-only skips the internet entirely. Rounds survive bot restarts.")
     async def eatyeet(
         self,
         ctx: discord.ApplicationContext,
         duration: discord.Option(int, "How long should voting stay open?", choices=DURATIONS, default=30),  # type: ignore
+        source: discord.Option(str, "Where should the food come from?", choices=SOURCES, default="auto"),  # type: ignore
     ):
         """Start a round of Eat It or Yeet It."""
         if ctx.guild is None:
@@ -471,7 +539,8 @@ class FunCog(commands.Cog):
         self.start_cooldowns[ctx.author.id] = now
         self._ensure_view()  # belt-and-braces: view exists if on_ready was missed
 
-        food, rarity, suggested_by = self._pick_food(ctx.guild.id)
+        food, rarity, suggested_by, image_url = await self._pick_food_async(
+            ctx.guild.id, use_api=(source == "auto"))
         rnd = {
             "guild_id": ctx.guild.id,
             "channel_id": ctx.channel.id,
@@ -479,6 +548,8 @@ class FunCog(commands.Cog):
             "food": food,
             "rarity": rarity,
             "suggested_by": suggested_by,
+            "image_url": image_url,
+            "source": source,
             "starter_id": ctx.author.id,
             "ends_at": now + duration,
             "votes": {},
@@ -537,7 +608,7 @@ class FunCog(commands.Cog):
             description="\n".join(lines),
             color=0xF1C40F,
         )
-        embed.set_footer(text="Majority vote points: common = 1, weird/community = 2, cursed = 3")
+        embed.set_footer(text="Majority vote points: common = 1, weird/fresh/community = 2, cursed = 3")
         await ctx.respond(embed=embed)
 
     @discord.slash_command(name="eatyeet_stats", description="Check Eat It or Yeet It stats for yourself or someone else.", guild_ids=GUILD_IDS)
