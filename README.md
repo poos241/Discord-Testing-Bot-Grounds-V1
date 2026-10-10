@@ -108,8 +108,10 @@ Discord Bot Templet Mde With Python/
 ├── requirements.txt        # Python dependencies
 ├── .env                    # Your bot token (you create this — never commit it)
 ├── cogs/
-│   └── admin_cog.py        # Admin slash commands (see table below)
+│   ├── admin_cog.py        # Admin slash commands (see table below)
+│   ├── fun_cog.py          # Eat It or Yeet It party game (see section below)
 ├── data/
+│   ├── eatyeet_*.json      # Eat It or Yeet It stats, suggestions, active rounds
 │   └── DB/
 │       ├── db.py           # Database connection (SQLite)
 │       ├── models.py       # Table definitions
@@ -133,12 +135,43 @@ Discord Bot Templet Mde With Python/
 | `/shutdown_bot`   | Shuts the bot down                                  | Bot owners only|
 | `/restart_bot`    | Restarts the bot                                    | Bot owners only|
 
-## Built-in commands (fun cog)
+## Built-in commands (fun cog) — 🍽️ Eat It or Yeet It
 
-| Command               | What it does                                                        | Who can use it |
-|-----------------------|---------------------------------------------------------------------|----------------|
-| `/eatyeet`            | Starts a round of Eat It or Yeet It — everyone votes with buttons    | Everyone       |
-| `/eatyeet_leaderboard`| Shows the top voters ranked by majority votes                       | Everyone       |
+A party voting game: the bot serves up a random food, everyone votes
+**Eat it** or **Yeet it** with the buttons, and the verdict is announced
+when the timer runs out. Rounds **survive bot restarts** — if the bot goes
+down mid-round, the buttons keep working and anything that expired while it
+was away gets tallied on startup.
+
+| Command | What it does | Who can use it |
+|---|---|---|
+| `/eatyeet` | Starts a round. Pick a duration (30s test, 1/2/4/8/12/24h) and a food source (see below) | Everyone |
+| `/eatyeet_end` | Ends the current round in the channel early | Starter or admins |
+| `/eatyeet_leaderboard` | Top 10 players by points | Everyone |
+| `/eatyeet_stats` | Your (or another member's) rounds, points, majority %, streaks | Everyone |
+| `/eatyeet_suggest` | Suggest a food for the community pool (credited by name) | Everyone |
+| `/eatyeet_history` | Last 10 finished rounds and their verdicts | Everyone |
+
+**Food sources** (`/eatyeet` option):
+- **Auto (mix of API + local)** (default) — each round has a 45% chance of a
+  live meal from [TheMealDB](https://www.themealdb.com) (free, no key needed),
+  otherwise the local list. API foods show a 🌐 **fresh** rarity and the
+  round embed displays the dish's real photo.
+- **Local list only** — no internet: hand-written foods + community suggestions.
+- **API only** — live meals only, no local fallback. If the API is
+  unreachable, no round starts (you'll get a warning instead).
+
+**Scoring** — vote with the majority to earn points: common = 1,
+weird / fresh / community = 2, cursed = 3. Win streaks are tracked with a
+best-streak record, and results name every voter on each side.
+
+**Live countdown** — the round post shows a ticking timer with a progress
+bar (▓▓▓▓▓▓░░░░). In the last 15 seconds it switches to
+🔨 **HAMMER TIME!** and counts down to the verdict.
+
+Game data is stored in `data/eatyeet_stats.json`,
+`data/eatyeet_suggestions.json`, and `data/eatyeet_active.json`
+(active rounds — this is what makes restarts safe).
 
 ## Adding a new cog
 
