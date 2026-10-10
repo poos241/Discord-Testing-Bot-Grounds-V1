@@ -19,6 +19,7 @@ from config import load_json, save_json, extra_help, GUILD_IDS
 STATS_FILE = "eatyeet_stats.json"
 SUGGESTIONS_FILE = "eatyeet_suggestions.json"
 ACTIVE_FILE = "eatyeet_active.json"  # rounds currently running (survives restarts)
+REMATCH_FILE = "eatyeet_rematch.json"  # last round settings per channel (for rematch)
 START_COOLDOWN = 30  # seconds before the same user can start another round
 MAX_SUGGESTIONS_PER_GUILD = 25
 SUGGESTION_CHANCE = 0.25  # chance a round pulls a community-suggested food
@@ -192,6 +193,26 @@ class EatYeetView(discord.ui.View):
         await self.cog.register_vote(interaction, "yeet")
 
 
+class RematchView(discord.ui.View):
+    """Persistent 'Run it back' button attached to finished round posts.
+
+    Same persistence trick as the vote view: timeout=None + a stable
+    custom_id, re-registered on startup. The button carries no settings
+    itself — the handler looks up the channel's last round settings
+    (duration + source) from disk, so it works even on old result posts
+    after a restart.
+    """
+
+    def __init__(self, cog):
+        super().__init__(timeout=None)
+        self.cog = cog
+
+    @discord.ui.button(label="Run it back", emoji="🔁", style=discord.ButtonStyle.primary,
+                       custom_id="eatyeet:rematch")
+    async def rematch_button(self, button: discord.ui.Button, interaction: discord.Interaction):
+        await self.cog._on_rematch(interaction)
+
+
 class FunCog(commands.Cog):
     """Party games for the server."""
 
@@ -203,6 +224,7 @@ class FunCog(commands.Cog):
         # loaded (via load_extension) before the bot's loop starts — creating
         # it here crashes with "RuntimeError: no running event loop".
         self.vote_view = None
+        self.rematch_view = None
         self._messages = {}  # channel_id -> discord.Message (in-memory cache)
         self._last_edit = {}  # channel_id -> timestamp (live-count throttle)
         self._timer_edit_at = {}  # channel_id -> timestamp (countdown throttle)
@@ -215,7 +237,7 @@ class FunCog(commands.Cog):
         self._countdown_loop.cancel()
 
     def _ensure_view(self):
-        """Create and register the persistent vote view.
+        """Create and register the persistent vote + rematch views.
 
         Must be called from inside the running event loop (on_ready or a
         command) — never at import/cog-load time.
@@ -225,6 +247,9 @@ class FunCog(commands.Cog):
             # Re-register the persistent buttons every startup so rounds
             # survive bot restarts and crashes.
             self.bot.add_view(self.vote_view)
+        if self.rematch_view is None:
+            self.rematch_view = RematchView(self)
+            self.bot.add_view(self.rematch_view)
 
     # ----- persistence -----
 
@@ -342,6 +367,88 @@ class FunCog(commands.Cog):
             human = f"{int(remaining)}s"
         return f"⏳ **{human}** left{bar}"
 
+    # ----- round lifecycle -----
+
+    def _save_rematch_settings(self, channel_id, duration, source):
+        data = load_json(REMATCH_FILE)
+        data[str(channel_id)] = {"duration": duration, "source": source}
+        if len(data) > 200:  # bound the file; drop oldest channels first
+            for k in list(data)[: len(data) - 200]:
+                del data[k]
+        save_json(REMATCH_FILE, data)
+
+    def _rematch_settings(self, channel_id):
+        return load_json(REMATCH_FILE).get(str(channel_id), {"duration": 30, "source": "auto"})
+
+    async def _make_round(self, guild_id, channel_id, starter_id, duration, source):
+        """Create a round's state and its opening embed.
+
+        Returns ((rnd, embed, view), None) on success, or (None, error_msg)
+        when source="api" and the API is unreachable (no local fallback).
+        Also records the settings so the rematch button can replay them.
+        """
+        food, rarity, suggested_by, image_url = await self._pick_food_async(
+            guild_id, source=source)
+        if food is None:
+            return None, ("⚠️ Couldn't reach the food API, so no round was started. "
+                          "Try again in a bit, or use Auto/Local instead.")
+        now = time.time()
+        rnd = {
+            "guild_id": guild_id,
+            "channel_id": channel_id,
+            "message_id": 0,  # filled in once the message is sent
+            "food": food,
+            "rarity": rarity,
+            "suggested_by": suggested_by,
+            "image_url": image_url,
+            "source": source,
+            "starter_id": starter_id,
+            "started_at": now,
+            "ends_at": now + duration,
+            "votes": {},
+            "voter_names": {},
+        }
+        self.active[channel_id] = rnd
+        self._save_active()
+        self._save_rematch_settings(channel_id, duration, source)
+        self._ensure_view()
+        return (rnd, self.build_round_embed(rnd), self.vote_view), None
+
+    async def _on_rematch(self, interaction: discord.Interaction):
+        """'Run it back' button: start a new round with the channel's last settings."""
+        if interaction.guild is None:
+            await interaction.response.send_message(
+                "Rematches only work in servers!", ephemeral=True)
+            return
+        channel_id = interaction.channel_id
+        if channel_id in self.active:
+            await interaction.response.send_message(
+                "There's already a round going in this channel — vote on that one first!",
+                ephemeral=True)
+            return
+        now = time.time()
+        last = self.start_cooldowns.get(interaction.user.id, 0)
+        if now - last < START_COOLDOWN:
+            wait = int(START_COOLDOWN - (now - last))
+            await interaction.response.send_message(
+                f"Slow down! You can start another round in {wait} seconds.", ephemeral=True)
+            return
+        self.start_cooldowns[interaction.user.id] = now
+        settings = self._rematch_settings(channel_id)
+        result, error = await self._make_round(
+            interaction.guild.id, channel_id, interaction.user.id,
+            settings.get("duration", 30), settings.get("source", "auto"))
+        if error:
+            await interaction.response.send_message(error, ephemeral=True)
+            return
+        rnd, embed, view = result
+        await interaction.response.send_message(embed=embed, view=view)
+        message = await interaction.original_response()
+        rnd["message_id"] = message.id
+        self._messages[channel_id] = message
+        self._save_active()
+        await interaction.followup.send("🔁 Run it back! New round started.", ephemeral=True)
+
     def build_round_embed(self, rnd) -> discord.Embed:
         eats, yeets = self._counts(rnd)
         points = RARITY_POINTS[rnd["rarity"]]
@@ -381,6 +488,9 @@ class FunCog(commands.Cog):
         embed = discord.Embed(title=title, description=desc, color=color)
         if rnd.get("image_url"):
             embed.set_image(url=rnd["image_url"])
+        embed.add_field(name="🔁 Run it back?",
+                        value="Tap the button below to start another round with the same settings!",
+                        inline=False)
         # Voter roll-call (capped so big rounds don't blow up the embed).
         if rnd["votes"]:
             eat_names = [rnd["voter_names"].get(uid, "Someone")
@@ -535,8 +645,8 @@ class FunCog(commands.Cog):
         message = await self._fetch_message(rnd)
         if message is not None:
             try:
-                # view=None removes the buttons from the finished round.
-                await message.edit(embed=embed, view=None)
+                # Swap the vote buttons for the rematch button.
+                await message.edit(embed=embed, view=self.rematch_view)
             except discord.HTTPException:
                 pass
 
@@ -621,35 +731,14 @@ class FunCog(commands.Cog):
             await ctx.respond(f"Slow down! You can start another round in {wait} seconds.", ephemeral=True)
             return
         self.start_cooldowns[ctx.author.id] = now
-        self._ensure_view()  # belt-and-braces: view exists if on_ready was missed
 
-        food, rarity, suggested_by, image_url = await self._pick_food_async(
-            ctx.guild.id, source=source)
-        if food is None:
-            # source="api" and the API is unreachable: no local fallback, per
-            # the user's explicit choice. Cooldown stays to avoid API hammering.
-            await ctx.respond("⚠️ Couldn't reach the food API, so no round was started. "
-                              "Try again in a bit, or use Auto/Local instead.", ephemeral=True)
+        result, error = await self._make_round(
+            ctx.guild.id, ctx.channel.id, ctx.author.id, duration, source)
+        if error:
+            await ctx.respond(error, ephemeral=True)
             return
-        rnd = {
-            "guild_id": ctx.guild.id,
-            "channel_id": ctx.channel.id,
-            "message_id": 0,  # filled in once the message is sent
-            "food": food,
-            "rarity": rarity,
-            "suggested_by": suggested_by,
-            "image_url": image_url,
-            "source": source,
-            "starter_id": ctx.author.id,
-            "started_at": now,
-            "ends_at": now + duration,
-            "votes": {},
-            "voter_names": {},
-        }
-        self.active[ctx.channel.id] = rnd
-        self._save_active()
-
-        await ctx.respond(embed=self.build_round_embed(rnd), view=self.vote_view)
+        rnd, embed, view = result
+        await ctx.respond(embed=embed, view=view)
         message = await ctx.interaction.original_response()
         rnd["message_id"] = message.id
         self._messages[ctx.channel.id] = message
