@@ -4,7 +4,7 @@ import discord
 from discord.ext import commands
 import random
 
-from config import admin_required, extra_help
+from config import admin_required, extra_help, GUILD_IDS
 from data.DB.Storage.storage import get_levels, save_levels, get_xp, save_xp
 
 COOLDOWN_LEVEL = 30
@@ -312,7 +312,7 @@ class LevelSystem(commands.Cog):
         else:
             await interaction.respond(f"No role reward is set for level {level}.", ephemeral=True)
 
-    @commands.slash_command(name="toggle_game_xp", description="Toggle XP for Eat It or Yeet It votes")
+    @commands.slash_command(name="toggle_game_xp", description="Toggle XP for Eat It or Yeet It votes", guild_ids=GUILD_IDS)
     @extra_help("Turns on/off level XP earned by voting in Eat It or Yeet It. On by default.")
     @admin_required()
     async def toggle_game_xp(self, interaction):
