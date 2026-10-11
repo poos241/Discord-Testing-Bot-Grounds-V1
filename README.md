@@ -1,1 +1,258 @@
-IyBEaXNjb3JkIEJvdCBUZW1wbGF0ZSAoUHl0aG9uKQoKQSBzdGFydGVyIHRlbXBsYXRlIGZvciBidWlsZGluZyBhIERpc2NvcmQgYm90IGluIFB5dGhvbi4gSXQncyBidWlsdCBvbgoqKnB5Y29yZCoqLCB1c2VzIHNsYXNoIGNvbW1hbmRzLCBhbmQgb3JnYW5pemVzIGZlYXR1cmVzIGludG8gKipjb2dzKiogc28geW91CmNhbiBhZGQgbmV3IG9uZXMgd2l0aG91dCB0b3VjaGluZyB0aGUgY29yZSBmaWxlcy4KCioqV2hhdCBpdCBjb21lcyB3aXRoIG91dCBvZiB0aGUgYm94OioqCi0gU2xhc2ggY29tbWFuZHMgdGhhdCBzeW5jIGF1dG9tYXRpY2FsbHkgb24gc3RhcnR1cAotIEFkbWluIGNvZzogdXNlciBpbmZvLCBjbGVhcmluZyBhIHVzZXIncyBtZXNzYWdlcywgYWRkaW5nL3JlbW92aW5nIHJvbGVzLAogIHJlbmFtaW5nIHRoZSBib3Qgb3IgdXNlcnMsIGFuZCBvd25lci1vbmx5IHNodXRkb3duL3Jlc3RhcnQgY29tbWFuZHMKLSBBIHJvdGF0aW5nIGJvdCBzdGF0dXMgKGN5Y2xlcyB0aHJvdWdoIG1lc3NhZ2VzIGV2ZXJ5IDEw4oCTNjAgc2Vjb25kcykKLSBTUUxpdGUgZGF0YWJhc2UgbGF5ZXIgKFNRTEFsY2hlbXkgKyBgZGF0YWJhc2VzYCkgd2l0aCByZWFkeS1tYWRlIHRhYmxlcyBmb3IKICB3ZWxjb21lIG1lc3NhZ2VzLCBsZXZlbHMvWFAsIHRpY2tldHMsIHRocmVhZHMsIGFuZCB2b2ljZS1jaGFubmVsIG1hcHMKLSBKU09OIGhlbHBlciBmdW5jdGlvbnMgZm9yIHNpbXBsZSBwZXItZ3VpbGQgY29uZmlnIGZpbGVzCi0gUGVybWlzc2lvbi1jaGVjayBkZWNvcmF0b3JzIChgYWRtaW5fcmVxdWlyZWRgLCBgaXNfb3duZXJgLCBldGMuKSBpbiBgY29uZmlnLnB5YAoKPiBUaGUgYm90IGNvZGUgbGl2ZXMgaW4gdGhlIGBEaXNjb3JkIEJvdCBUZW1wbGV0IE1kZSBXaXRoIFB5dGhvbmAgZm9sZGVyIOKAlAo+IHRoYXQncyB0aGUgcHJvamVjdCByb290IHlvdSdsbCB3b3JrIGZyb20gYmVsb3cuCgotLS0KCiMjIFJlcXVpcmVtZW50cwoKLSAqKlB5dGhvbiAzLjEwIG9yIG5ld2VyKiogKFtweXRob24ub3JnL2Rvd25sb2Fkc10oaHR0cHM6Ly93d3cucHl0aG9uLm9yZy9kb3dubG9hZHMvKSkKLSAqKnBpcCoqIChjb21lcyB3aXRoIFB5dGhvbikKLSBBIERpc2NvcmQgYXBwbGljYXRpb24gd2l0aCBhIGJvdCB0b2tlbiDigJQgY3JlYXRlZCBmcmVlIGF0IHRoZQogIFtEaXNjb3JkIERldmVsb3BlciBQb3J0YWxdKGh0dHBzOi8vZGlzY29yZC5jb20vZGV2ZWxvcGVycy9hcHBsaWNhdGlvbnMpCgojIyBTZXR1cAoKIyMjIDEuIENsb25lIHRoZSByZXBvCgpgYGBiYXNoCmdpdCBjbG9uZSBodHRwczovL2dpdGh1Yi5jb20vcG9vczI0MS9EaXNjb3JkLVRlc3RpbmctQm90LUdyb3VuZHMtVjEuZ2l0CmNkICJEaXNjb3JkLVRlc3RpbmctQm90LUdyb3VuZHMtVjEvRGlzY29yZCBCb3QgVGVtcGxldCBNZGUgV2l0aCBQeXRob24iCmBgYAoKIyMjIDIuIChSZWNvbW1lbmRlZCkgQ3JlYXRlIGEgdmlydHVhbCBlbnZpcm9ubWVudAoKV2luZG93czoKYGBgYmFzaApweXRob24gLW0gdmVudiB2ZW52CnZlbnZcU2NyaXB0c1xhY3RpdmF0ZQpgYGAKCk1hYyAvIExpbnV4OgpgYGBiYXNoCnB5dGhvbjMgLW0gdmVudiB2ZW52CnNvdXJjZSB2ZW52L2Jpbi9hY3RpdmF0ZQpgYGAKCiMjIyAzLiBJbnN0YWxsIGRlcGVuZGVuY2llcwoKYGBgYmFzaApwaXAgaW5zdGFsbCAtciByZXF1aXJlbWVudHMudHh0CmBgYAoKIyMjIDQuIENyZWF0ZSB5b3VyIGJvdCBpbiB0aGUgRGlzY29yZCBEZXZlbG9wZXIgUG9ydGFsCgoxLiBHbyB0byB0aGUgW0RldmVsb3BlciBQb3J0YWxdKGh0dHBzOi8vZGlzY29yZC5jb20vZGV2ZWxvcGVycy9hcHBsaWNhdGlvbnMpCiAgIGFuZCBjbGljayAqKk5ldyBBcHBsaWNhdGlvbioqIOKAlCBnaXZlIGl0IGEgbmFtZS4KMi4gT3BlbiB0aGUgKipCb3QqKiB0YWIsIGNsaWNrICoqUmVzZXQgVG9rZW4qKiwgYW5kIGNvcHkgdGhlIHRva2VuLgogICAqKktlZXAgdGhpcyBzZWNyZXQg4oCUIG5ldmVyIHNoYXJlIGl0IG9yIGNvbW1pdCBpdCB0byBHaXRIdWIuKioKMy4gSW4gdGhlICoqQm90KiogdGFiLCB1bmRlciAqUHJpdmlsZWdlZCBHYXRld2F5IEludGVudHMqLCB0dXJuIG9uCiAgICoqU2VydmVyIE1lbWJlcnMgSW50ZW50KiouCjQuIE9wZW4gdGhlICoqT0F1dGgyIOKGkiBVUkwgR2VuZXJhdG9yKiogdGFiLCB0aWNrIHRoZSBzY29wZXMKICAgYGJvdGAgYW5kIGBhcHBsaWNhdGlvbnMuY29tbWFuZHNgLCB0aGVuIHBpY2sgYm90IHBlcm1pc3Npb25zCiAgIChmb3IgYSB0ZXN0IGJvdCwgYEFkbWluaXN0cmF0b3JgIGlzIGVhc2llc3QpLgo1LiBDb3B5IHRoZSBnZW5lcmF0ZWQgVVJMIGF0IHRoZSBib3R0b20sIG9wZW4gaXQgaW4geW91ciBicm93c2VyLCBhbmQgYWRkCiAgIHRoZSBib3QgdG8geW91ciBzZXJ2ZXIuCgojIyMgNS4gQWRkIHlvdXIgdG9rZW4KCkNyZWF0ZSBhIGZpbGUgbmFtZWQgYC5lbnZgIGluIHRoZSBwcm9qZWN0IGZvbGRlciAobmV4dCB0byBgYm90LnB5YCkKd2l0aCB0aGlzIGluc2lkZToKCmBgYApUT0tFTjI9cGFzdGUteW91ci1ib3QtdG9rZW4taGVyZQpgYGAKCiMjIyA2LiAoT3B0aW9uYWwpIEVkaXQgYGNvbmZpZy5weWAgZm9yIHlvdXIgc2VydmVyCgotIGBPV05FUl9JRFNgIOKAlCBwdXQgeW91ciBEaXNjb3JkIHVzZXIgSUQocykgaGVyZS4gUmVxdWlyZWQgZm9yCiAgYC9zaHV0ZG93bl9ib3RgIGFuZCBgL3Jlc3RhcnRfYm90YC4gKFJpZ2h0LWNsaWNrIHlvdXJzZWxmIGluIERpc2NvcmQg4oaSCiAgQ29weSBVc2VyIElEOyBlbmFibGUgRGV2ZWxvcGVyIE1vZGUgZmlyc3QgaWYgeW91IGRvbid0IHNlZSBpdC4pCi0gYEdVSUxEX0lEU2Ag4oCUIHlvdXIgdGVzdCBzZXJ2ZXIgSUQocykuCi0gYHN0YXR1c2VzYCDigJQgdGhlIGxpc3Qgb2YgbWVzc2FnZXMgdGhlIGJvdCBjeWNsZXMgdGhyb3VnaCBhcyBpdHMgc3RhdHVzLgoKIyMjIDcuIFJ1biB0aGUgYm90CgpgYGBiYXNoCnB5dGhvbiBib3QucHkKYGBgCgpZb3Ugc2hvdWxkIHNlZSBg4pyFIExvZ2dlZCBpbiBhcyBZb3VyQm90IzEyMzQgLi4uIENvbW1hbmRzIHN5bmNlZCFgIGluIHRoZQpjb25zb2xlLiBUaGUgU1FMaXRlIGRhdGFiYXNlIChgZGF0YS9ib3QuZGJgKSBpcyBjcmVhdGVkIGF1dG9tYXRpY2FsbHkgb24KZmlyc3QgcnVuLiBTbGFzaCBjb21tYW5kcyBjYW4gdGFrZSBhIGZldyBtaW51dGVzIHRvIGFwcGVhciBpbiBEaXNjb3JkIHRoZQp2ZXJ5IGZpcnN0IHRpbWUuCgotLS0KCiMjIFByb2plY3Qgc3RydWN0dXJlCgpgYGAKRGlzY29yZCBCb3QgVGVtcGxldCBNZGUgV2l0aCBQeXRob24vCuKUnOKUgOKUgCBib3QucHkgICAgICAgICAgICAgICAgICAjIEVudHJ5IHBvaW50OiBsb2FkcyB0b2tlbiwgaW50ZW50cywgYW5kIGNvZ3MK4pSc4pSA4pSAIGNvbmZpZy5weSAgICAgICAgICAgICAgICMgU2VydmVyL3VzZXIgSURzLCByZXNwb25zZXMsIHBlcm1pc3Npb24gY2hlY2tzLCBKU09OIGhlbHBlcnMK4pSc4pSA4pSAIHJlcXVpcmVtZW50cy50eHQgICAgICAgICMgUHl0aG9uIGRlcGVuZGVuY2llcwrilJzilIDilIAgLmVudiAgICAgICAgICAgICAgICAgICAgIyBZb3VyIGJvdCB0b2tlbiAoeW91IGNyZWF0ZSB0aGlzIOKAlCBuZXZlciBjb21taXQgaXQpCuKUnOKUgOKUgCBjb2dzLwrilIIgICDilJzilIDilIAgYWRtaW5fY29nLnB5ICAgICAgICAjIEFkbWluIHNsYXNoIGNvbW1hbmRzIChzZWUgdGFibGUgYmVsb3cpCuKUgiAgIOKUnOKUgOKUgCBmdW5fY29nLnB5ICAgICAgICAgICMgRWF0IEl0IG9yIFllZXQgSXQgcGFydHkgZ2FtZSAoc2VlIHNlY3Rpb24gYmVsb3cpCuKUgiAgIOKUnOKUgOKUgCBMZXZlbF9zeXN0ZW0ucHkgICAgICMgTWVzc2FnZSBYUCwgbGV2ZWxzLCBsZWFkZXJib2FyZCAoc2VlIHNlY3Rpb24gYmVsb3cpCuKUnOKUgOKUgCBkYXRhLwrilIIgICDilJzilIDilIAgZWF0eWVldF8qLmpzb24gICAgICAjIEVhdCBJdCBvciBZZWV0IEl0IHN0YXRzLCBzdWdnZXN0aW9ucywgYWN0aXZlIHJvdW5kcwrilIIgICDilJTilIDilIAgREIvCuKUgiAgICAgICDilJzilIDilIAgZGIucHkgICAgICAgICAgICMgRGF0YWJhc2UgY29ubmVjdGlvbiAoU1FMaXRlKQrilIIgICAgICAg4pSc4pSA4pSAIG1vZGVscy5weSAgICAgICAjIFRhYmxlIGRlZmluaXRpb25zCuKUgiAgICAgICDilJTilIDilIAgU3RvcmFnZS8K4pSCICAgICAgICAgICDilJTilIDilIAgc3RvcmFnZS5weSAgIyBBc3luYyBnZXQvc2F2ZSBoZWxwZXJzIGZvciBlYWNoIHRhYmxlCuKUlOKUgOKUgCB1dGlscy8KICAgIOKUlOKUgOKUgCBkYXRhX3V0aWxzLnB5ICAgICAgICMgU2ltcGxlIEpTT04gbG9hZC9zYXZlIGhlbHBlcnMKYGBgCgojIyBCdWlsdC1pbiBjb21tYW5kcyAoYWRtaW4gY29nKQoKfCBDb21tYW5kICAgICAgICAgICB8IFdoYXQgaXQgZG9lcyAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICB8IFdobyBjYW4gdXNlIGl0IHwKfC0tLS0tLS0tLS0tLS0tLS0tLS18LS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS18LS0tLS0tLS0tLS0tLS0tLXwKfCBgL3VzZXJpbmZvYCAgICAgICB8IFNob3dzIGFuIGVtYmVkIHdpdGggaW5mbyBhYm91dCBhIHVzZXIgICAgICAgICAgICAgICB8IEFkbWlucyAgICAgICAgIHwKfCBgL2NsZWFyX3VzZXJgICAgICB8IERlbGV0ZXMgYSB1c2VyJ3MgbWVzc2FnZXMgaW4gb25lIG9yIGFsbCBjaGFubmVscyAgICB8IEFkbWlucyAgICAgICAgIHwKfCBgL2FkZF91c2VyX3JvbGVgICB8IEdpdmVzIGEgcm9sZSB0byBhIHVzZXIgICAgICAgICAgICAgICAgICAgICAgICAgICAgICB8IEFkbWlucyAgICAgICAgIHwKfCBgL3JlbW92ZV91c2VyX3JvbGVgIHwgUmVtb3ZlcyBhIHJvbGUgZnJvbSBhIHVzZXIgICAgICAgICAgICAgICAgICAgICAgICB8IEFkbWlucyAgICAgICAgIHwKfCBgL3JlbmFtZV9ib3RgICAgICB8IENoYW5nZXMgdGhlIGJvdCdzIG5pY2tuYW1lIGluIHRoZSBzZXJ2ZXIgICAgICAgICAgICB8IEFkbWlucyAgICAgICAgIHwKfCBgL3JlbmFtZV91c2VyYCAgICB8IENoYW5nZXMgYSB1c2VyJ3Mgbmlja25hbWUgICAgICAgICAgICAgICAgICAgICAgICAgICB8IEFkbWlucyAgICAgICAgIHwKfCBgL3Jlc2V0X3VzZXJfbmFtZWB8IENsZWFycyBhIHVzZXIncyBuaWNrbmFtZSAgICAgICAgICAgICAgICAgICAgICAgICAgICB8IEFkbWlucyAgICAgICAgIHwKfCBgL3NodXRkb3duX2JvdGAgICB8IFNodXRzIHRoZSBib3QgZG93biAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICB8IEJvdCBvd25lcnMgb25seXwKfCBgL3Jlc3RhcnRfYm90YCAgICB8IFJlc3RhcnRzIHRoZSBib3QgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICB8IEJvdCBvd25lcnMgb25seXwKCiMjIEJ1aWx0LWluIGNvbW1hbmRzIChmdW4gY29nKSDigJQg8J+Nve+4jyBFYXQgSXQgb3IgWWVldCBJdAoKQSBwYXJ0eSB2b3RpbmcgZ2FtZTogdGhlIGJvdCBzZXJ2ZXMgdXAgYSByYW5kb20gZm9vZCwgZXZlcnlvbmUgdm90ZXMKKipFYXQgaXQqKiBvciAqKlllZXQgaXQqKiB3aXRoIHRoZSBidXR0b25zLCBhbmQgdGhlIHZlcmRpY3QgaXMgYW5ub3VuY2VkCndoZW4gdGhlIHRpbWVyIHJ1bnMgb3V0LiBSb3VuZHMgKipzdXJ2aXZlIGJvdCByZXN0YXJ0cyoqIOKAlCBpZiB0aGUgYm90IGdvZXMKZG93biBtaWQtcm91bmQsIHRoZSBidXR0b25zIGtlZXAgd29ya2luZyBhbmQgYW55dGhpbmcgdGhhdCBleHBpcmVkIHdoaWxlIGl0CndhcyBhd2F5IGdldHMgdGFsbGllZCBvbiBzdGFydHVwLgoKfCBDb21tYW5kIHwgV2hhdCBpdCBkb2VzIHwgV2hvIGNhbiB1c2UgaXQgfAp8LS0tfC0tLXwtLS18CnwgYC9lYXR5ZWV0YCB8IFN0YXJ0cyBhIHJvdW5kLiBQaWNrIGEgZHVyYXRpb24gKDMwcyB0ZXN0LCAxLzIvNC84LzEyLzI0aCkgYW5kIGEgZm9vZCBzb3VyY2UgKHNlZSBiZWxvdykgfCBFdmVyeW9uZSB8CnwgYC9lYXR5ZWV0X2VuZGAgfCBFbmRzIHRoZSBjdXJyZW50IHJvdW5kIGluIHRoZSBjaGFubmVsIGVhcmx5IHwgU3RhcnRlciBvciBhZG1pbnMgfAp8IGAvZWF0eWVldF9sZWFkZXJib2FyZGAgfCBUb3AgMTAgcGxheWVycyBieSBwb2ludHMgfCBFdmVyeW9uZSB8CnwgYC9lYXR5ZWV0X3N0YXRzYCB8IFlvdXIgKG9yIGFub3RoZXIgbWVtYmVyJ3MpIHJvdW5kcywgcG9pbnRzLCBtYWpvcml0eSAlLCBzdHJlYWtzIHwgRXZlcnlvbmUgfAp8IGAvZWF0eWVldF9zdWdnZXN0YCB8IFN1Z2dlc3QgYSBmb29kIGZvciB0aGUgY29tbXVuaXR5IHBvb2wgKGNyZWRpdGVkIGJ5IG5hbWUpIHwgRXZlcnlvbmUgfAp8IGAvZWF0eWVldF9oaXN0b3J5YCB8IExhc3QgMTAgZmluaXNoZWQgcm91bmRzIGFuZCB0aGVpciB2ZXJkaWN0cyB8IEV2ZXJ5b25lIHwKCioqRm9vZCBzb3VyY2VzKiogKGAvZWF0eWVldGAgb3B0aW9uKToKLSAqKkF1dG8gKG1peCBvZiBBUEkgKyBsb2NhbCkqKiAoZGVmYXVsdCkg4oCUIGVhY2ggcm91bmQgaGFzIGEgNDUlIGNoYW5jZSBvZiBhCiAgbGl2ZSBtZWFsIGZyb20gW1RoZU1lYWxEQl0oaHR0cHM6Ly93d3cudGhlbWVhbGRiLmNvbSkgKGZyZWUsIG5vIGtleSBuZWVkZWQpLAogIG90aGVyd2lzZSB0aGUgbG9jYWwgbGlzdC4gQVBJIGZvb2RzIHNob3cgYSDwn4yQICoqZnJlc2gqKiByYXJpdHkgYW5kIHRoZQogIHJvdW5kIGVtYmVkIGRpc3BsYXlzIHRoZSBkaXNoJ3MgcmVhbCBwaG90by4KLSAqKkxvY2FsIGxpc3Qgb25seSoqIOKAlCBubyBpbnRlcm5ldDogaGFuZC13cml0dGVuIGZvb2RzICsgY29tbXVuaXR5IHN1Z2dlc3Rpb25zLgotICoqQVBJIG9ubHkqKiDigJQgbGl2ZSBtZWFscyBvbmx5LCBubyBsb2NhbCBmYWxsYmFjay4gSWYgdGhlIEFQSSBpcwogIHVucmVhY2hhYmxlLCBubyByb3VuZCBzdGFydHMgKHlvdSdsbCBnZXQgYSB3YXJuaW5nIGluc3RlYWQpLgoKKipTY29yaW5nKiog4oCUIHZvdGUgd2l0aCB0aGUgbWFqb3JpdHkgdG8gZWFybiBwb2ludHM6IGNvbW1vbiA9IDEsCndlaXJkIC8gZnJlc2ggLyBjb21tdW5pdHkgPSAyLCBjdXJzZWQgPSAzLiBXaW4gc3RyZWFrcyBhcmUgdHJhY2tlZCB3aXRoIGEKYmVzdC1zdHJlYWsgcmVjb3JkLCBhbmQgcmVzdWx0cyBuYW1lIGV2ZXJ5IHZvdGVyIG9uIGVhY2ggc2lkZS4KCioqTGl2ZSBjb3VudGRvd24qKiDigJQgdGhlIHJvdW5kIHBvc3Qgc2hvd3MgYSB0aWNraW5nIHRpbWVyIHdpdGggYSBwcm9ncmVzcwpiYXIgKOKWk+KWk+KWk+KWk+KWk+KWk+KWkeKWkeKWkeKWkSkuIEluIHRoZSBsYXN0IDE1IHNlY29uZHMgaXQgc3dpdGNoZXMgdG8K8J+UqCAqKkhBTU1FUiBUSU1FISoqIGFuZCBjb3VudHMgZG93biB0byB0aGUgdmVyZGljdC4KCioqUmVtYXRjaCoqIOKAlCB3aGVuIGEgcm91bmQgZW5kcywgdGhlIHJlc3VsdHMgcG9zdCBnZXRzIGEg8J+UgSAqKlJ1biBpdCBiYWNrKioKYnV0dG9uLiBBbnlvbmUgY2FuIHRhcCBpdCB0byBpbnN0YW50bHkgc3RhcnQgYSBuZXcgcm91bmQgd2l0aCB0aGUgc2FtZQpkdXJhdGlvbiBhbmQgZm9vZCBzb3VyY2UuIEl0IHdvcmtzIGV2ZW4gb24gb2xkIHJlc3VsdCBwb3N0cyBhZnRlciBhIHJlc3RhcnQuCgpHYW1lIGRhdGEgaXMgc3RvcmVkIGluIGBkYXRhL2VhdHllZXRfc3RhdHMuanNvbmAsCmBkYXRhL2VhdHllZXRfc3VnZ2VzdGlvbnMuanNvbmAsIGFuZCBgZGF0YS9lYXR5ZWV0X2FjdGl2ZS5qc29uYAooYWN0aXZlIHJvdW5kcyDigJQgdGhpcyBpcyB3aGF0IG1ha2VzIHJlc3RhcnRzIHNhZmUpLgoKIyMgQnVpbHQtaW4gY29tbWFuZHMgKGxldmVsIHN5c3RlbSkKCkEgbWVzc2FnZS1iYXNlZCBYUCBzeXN0ZW0uIEV2ZXJ5IG1lc3NhZ2UgZWFybnMgYSByYW5kb20gYW1vdW50IG9mIFhQIGluIHRoZQpjb25maWd1cmVkIHJhbmdlIChzdWJqZWN0IHRvIGEgcGVyLXVzZXIgY29vbGRvd24pLiBMZXZlbCAqbiogcmVxdWlyZXMKKm4qIMOXIDEwMCBYUCwgYW5kIGxlZnRvdmVyIFhQIHJvbGxzIG92ZXIgaW50byB0aGUgbmV4dCBsZXZlbC4gQWxsIFhQIGRhdGEKYW5kIHNldHRpbmdzIGFyZSBzdG9yZWQgcGVyIHNlcnZlciBpbiB0aGUgU1FMaXRlIGRhdGFiYXNlLgoKfCBDb21tYW5kIHwgV2hhdCBpdCBkb2VzIHwgV2hvIGNhbiB1c2UgaXQgfAp8LS0tfC0tLXwtLS18CnwgYC9sZXZlbGAgfCBTaG93cyB5b3VyIChvciBhbm90aGVyIG1lbWJlcidzKSBsZXZlbCBhbmQgWFAgcHJvZ3Jlc3MgYmFyIHwgRXZlcnlvbmUgfAp8IGAvbGVhZGVyYm9hcmRgIHwgVG9wIDEwIHVzZXJzIGJ5IGxldmVsIGFuZCBYUCB8IEV2ZXJ5b25lIHwKfCBgL2dldHhwc2V0dGluZ3NgIHwgU2hvd3MgdGhlIHNlcnZlcidzIFhQIHJhdGUsIGNvb2xkb3duLCBsZXZlbC11cCBjaGFubmVsLCByb2xlIHJld2FyZHMsIGdhbWUgWFAgfCBFdmVyeW9uZSB8CnwgYC9zZXRfeHBfcmF0ZWAgfCBTZXRzIHRoZSBYUCByYW5nZSBlYXJuZWQgcGVyIG1lc3NhZ2UgKGUuZy4gMeKAkzUpIHwgQWRtaW5zIHwKfCBgL3NldF9jb29sZG93bmAgfCBTZWNvbmRzIGJldHdlZW4gWFAgZ2FpbnMgcGVyIHVzZXIgKDAgPSBvZmYpIHwgQWRtaW5zIHwKfCBgL3NldF9sZXZlbF9jaGFubmVsYCB8IFNldHMgdGhlIGNoYW5uZWwgZm9yIGxldmVsLXVwIGFubm91bmNlbWVudHMgKGRlZmF1bHRzIHRvIGN1cnJlbnQgY2hhbm5lbCkgfCBBZG1pbnMgfAp8IGAvc2V0X2xldmVsX3JvbGVgIHwgQXdhcmRzIGEgcm9sZSB3aGVuIG1lbWJlcnMgcmVhY2ggYSBsZXZlbCAoY3VtdWxhdGl2ZSkgfCBBZG1pbnMgfAp8IGAvcmVtb3ZlX2xldmVsX3JvbGVgIHwgUmVtb3ZlcyBhIGxldmVsJ3Mgcm9sZSByZXdhcmQgfCBBZG1pbnMgfAp8IGAvdG9nZ2xlX2dhbWVfeHBgIHwgVG9nZ2xlcyBsZXZlbCBYUCBlYXJuZWQgYnkgdm90aW5nIGluIEVhdCBJdCBvciBZZWV0IEl0IChvbiBieSBkZWZhdWx0KSB8IEFkbWlucyB8CnwgYC90b2dnbGVfbm9feHBgIHwgVG9nZ2xlcyBtZXNzYWdlIFhQIG9uL29mZiBmb3IgYSBjaGFubmVsIChlLmcuIGJvdC1zcGFtKSB8IEFkbWlucyB8CnwgYC94cF9ldmVudGAgfCBTdGFydHMgYSBzZXJ2ZXItd2lkZSBYUCBtdWx0aXBsaWVyIGV2ZW50ICgy4oCTNXgsIHVwIHRvIDI0aCkgfCBBZG1pbnMgfAp8IGAveHBfZXZlbnRfZW5kYCB8IEVuZHMgdGhlIFhQIGV2ZW50IGVhcmx5IHwgQWRtaW5zIHwKfCBgL2RhaWx5YCB8IENsYWltcyBkYWlseSBYUCBib251cyAoc3RyZWFrcyBlYXJuIG1vcmUsIGV2ZXJ5IDIwaCkgfCBFdmVyeW9uZSB8CnwgYC9yYW5rYCB8IFNob3dzIGEgcmFuayBjYXJkIGltYWdlIHdpdGggbGV2ZWwsIFhQIGJhciwgYW5kIHNlcnZlciByYW5rIHwgRXZlcnlvbmUgfAp8IGAvYWRkX3hwYCB8IEdyYW50cyBYUCB0byBhIHVzZXIgKGxldmVsLXVwcyBhcmUgYW5ub3VuY2VkKSB8IEFkbWlucyB8CnwgYC9yZXNldHhwYCB8IFJlc2V0cyBhIHVzZXIncyBYUCBhbmQgbGV2ZWwgfCBBZG1pbnMgfAp8IGAvY2xlYXJkYXRhYCB8IFdpcGVzIGFsbCBsZXZlbCBkYXRhIGZvciB0aGUgc2VydmVyIHwgQWRtaW5zIHwKClZvdGluZyBpbiBFYXQgSXQgb3IgWWVldCBJdCBhbHNvIGVhcm5zIGxldmVsIFhQOiAxMCBYUCBwZXIgdm90ZSwgcGx1cwoxMCDDlyB0aGUgZ2FtZSdzIG1ham9yaXR5IHBvaW50cyBhcyBhIGJvbnVzIChlLmcuIDIwIFhQIGZvciB3aW5uaW5nIGEKY29tbW9uIHJvdW5kLCA0MCBYUCBmb3IgYSBjdXJzZWQgb25lKS4gQWRtaW5zIGNhbiB0dXJuIHRoaXMgb2ZmIHdpdGgKYC90b2dnbGVfZ2FtZV94cGAuCgpFeHRyYXM6IGAvZGFpbHlgIGdpdmVzIGEgY2xhaW1hYmxlIFhQIGJvbnVzIGV2ZXJ5IDIwIGhvdXJzIHdpdGggc3RyZWFrCmJvbnVzZXMsIGAveHBfZXZlbnRgIHJ1bnMgc2VydmVyLXdpZGUgbXVsdGlwbGllciBldmVudHMgKGdyZWF0IGZvciBldmVudApuaWdodHMpLCBhbmQgYC9yYW5rYCBnZW5lcmF0ZXMgYSBzaGFyZWFibGUgcmFuayBjYXJkIGltYWdlLiBDaGFubmVscyBsaWtlCmJvdC1zcGFtIGNhbiBiZSBleGNsdWRlZCBmcm9tIFhQIHdpdGggYC90b2dnbGVfbm9feHBgLgoKIyMgQWRkaW5nIGEgbmV3IGNvZwoKQ29ncyBhcmUgaG93IHlvdSBhZGQgZmVhdHVyZXMuIEVhY2ggY29nIGlzIG9uZSBQeXRob24gZmlsZSBpbiB0aGUgYGNvZ3MvYApmb2xkZXIgY29udGFpbmluZyBhIGNsYXNzIGFuZCBhIGBzZXR1cGAgZnVuY3Rpb246CgoxLiBDcmVhdGUgYGNvZ3MvbXlfY29nLnB5YDoKCmBgYHB5dGhvbgppbXBvcnQgZGlzY29yZApmcm9tIGRpc2NvcmQuZXh0IGltcG9ydCBjb21tYW5kcwoKY2xhc3MgTXlDb2coY29tbWFuZHMuQ29nKToKICAgIGRlZiBfX2luaXRfXyhzZWxmLCBib3QpOgogICAgICAgIHNlbGYuYm90ID0gYm90CgogICAgQGRpc2NvcmQuc2xhc2hfY29tbWFuZChuYW1lPSJoZWxsbyIsIGRlc2NyaXB0aW9uPSJTYXkgaGVsbG8iKQogICAgYXN5bmMgZGVmIGhlbGxvKHNlbGYsIGN0eDogZGlzY29yZC5BcHBsaWNhdGlvbkNvbnRleHQpOgogICAgICAgIGF3YWl0IGN0eC5yZXNwb25kKCJIZWxsbyEiKQoKZGVmIHNldHVwKGJvdCk6CiAgICBib3QuYWRkX2NvZyhNeUNvZyhib3QpKQpgYGAKCjIuIEFkZCBgImNvZ3MubXlfY29nImAgdG8gdGhlIGBDT0dTYCBsaXN0IGF0IHRoZSB0b3Agb2YgYGJvdC5weWAuCjMuIFJlc3RhcnQgdGhlIGJvdCDigJQgeW91ciBuZXcgc2xhc2ggY29tbWFuZCB3aWxsIHN5bmMgb24gc3RhcnR1cC4KCiMjIFRyb3VibGVzaG9vdGluZwoKLSAqKmBJbXByb3BlciB0b2tlbiBoYXMgYmVlbiBwYXNzZWRgKiog4oCUIHlvdXIgYC5lbnZgIGZpbGUgaXMgbWlzc2luZyBvcgogIGBUT0tFTjI9YCBkb2Vzbid0IG1hdGNoIHlvdXIgdG9rZW4uIE1ha2Ugc3VyZSB0aGUgZmlsZSBpcyBuYW1lZCBleGFjdGx5CiAgYC5lbnZgIGFuZCBzaXRzIG5leHQgdG8gYGJvdC5weWAuCi0gKipTbGFzaCBjb21tYW5kcyBkb24ndCBzaG93IHVwKiog4oCUIHdhaXQgYSBmZXcgbWludXRlcyBhZnRlciB0aGUgZmlyc3QKICBzdGFydDsgYWxzbyBjb25maXJtIHlvdSBpbnZpdGVkIHRoZSBib3Qgd2l0aCB0aGUgYGFwcGxpY2F0aW9ucy5jb21tYW5kc2AKICBzY29wZS4KLSAqKkJvdCBjYW4ndCBzZWUgbWVtYmVycyAvIGNyYXNoZXMgb24gc3RhcnR1cCoqIOKAlCB0aGUgKipTZXJ2ZXIgTWVtYmVycwogIEludGVudCoqIG11c3QgYmUgZW5hYmxlZCBpbiB0aGUgRGV2ZWxvcGVyIFBvcnRhbCAoQm90IHRhYiwgUHJpdmlsZWdlZAogIEdhdGV3YXkgSW50ZW50cyksIHRoZW4gcmVzdGFydCB0aGUgYm90LgotICoqYC9zaHV0ZG93bl9ib3RgIHNheXMgeW91J3JlIG5vdCBhdXRob3JpemVkKiog4oCUIHlvdXIgdXNlciBJRCBpc24ndCBpbgogIGBPV05FUl9JRFNgIGluIGBjb25maWcucHlgLgotICoqYHBpcCBpbnN0YWxsYCBmYWlscyBvbiBgZGF0YWJhc2VzYCoqIOKAlCBtYWtlIHN1cmUgeW91J3JlIG9uIFB5dGhvbiAzLjEwKwogIGFuZCBwaXAgaXMgdXAgdG8gZGF0ZSAoYHBpcCBpbnN0YWxsIC0tdXBncmFkZSBwaXBgKS4K
+# Discord Bot Template (Python)
+
+A starter template for building a Discord bot in Python. It's built on
+**pycord**, uses slash commands, and organizes features into **cogs** so you
+can add new ones without touching the core files.
+
+**What it comes with out of the box:**
+- Slash commands that sync automatically on startup
+- Admin cog: user info, clearing a user's messages, adding/removing roles,
+  renaming the bot or users, and owner-only shutdown/restart commands
+- A rotating bot status (cycles through messages every 10–60 seconds)
+- SQLite database layer (SQLAlchemy + `databases`) with ready-made tables for
+  welcome messages, levels/XP, tickets, threads, and voice-channel maps
+- JSON helper functions for simple per-guild config files
+- Permission-check decorators (`admin_required`, `is_owner`, etc.) in `config.py`
+
+> The bot code lives in the `Discord Bot Templet Mde With Python` folder —
+> that's the project root you'll work from below.
+
+---
+
+## Requirements
+
+- **Python 3.10 or newer** ([python.org/downloads](https://www.python.org/downloads/))
+- **pip** (comes with Python)
+- A Discord application with a bot token — created free at the
+  [Discord Developer Portal](https://discord.com/developers/applications)
+
+## Setup
+
+### 1. Clone the repo
+
+```bash
+git clone https://github.com/poos241/Discord-Testing-Bot-Grounds-V1.git
+cd "Discord-Testing-Bot-Grounds-V1/Discord Bot Templet Mde With Python"
+```
+
+### 2. (Recommended) Create a virtual environment
+
+Windows:
+```bash
+python -m venv venv
+venv\Scripts\activate
+```
+
+Mac / Linux:
+```bash
+python3 -m venv venv
+source venv/bin/activate
+```
+
+### 3. Install dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+### 4. Create your bot in the Discord Developer Portal
+
+1. Go to the [Developer Portal](https://discord.com/developers/applications)
+   and click **New Application** — give it a name.
+2. Open the **Bot** tab, click **Reset Token**, and copy the token.
+   **Keep this secret — never share it or commit it to GitHub.**
+3. In the **Bot** tab, under *Privileged Gateway Intents*, turn on
+   **Server Members Intent**.
+4. Open the **OAuth2 → URL Generator** tab, tick the scopes
+   `bot` and `applications.commands`, then pick bot permissions
+   (for a test bot, `Administrator` is easiest).
+5. Copy the generated URL at the bottom, open it in your browser, and add
+   the bot to your server.
+
+### 5. Add your token
+
+Create a file named `.env` in the project folder (next to `bot.py`)
+with this inside:
+
+```
+TOKEN2=paste-your-bot-token-here
+```
+
+### 6. (Optional) Edit `config.py` for your server
+
+- `OWNER_IDS` — put your Discord user ID(s) here. Required for
+  `/shutdown_bot` and `/restart_bot`. (Right-click yourself in Discord →
+  Copy User ID; enable Developer Mode first if you don't see it.)
+- `GUILD_IDS` — your test server ID(s).
+- `statuses` — the list of messages the bot cycles through as its status.
+
+### 7. Run the bot
+
+```bash
+python bot.py
+```
+
+You should see `✅ Logged in as YourBot#1234 ... Commands synced!` in the
+console. The SQLite database (`data/bot.db`) is created automatically on
+first run. Slash commands can take a few minutes to appear in Discord the
+very first time.
+
+---
+
+## Project structure
+
+```
+Discord Bot Templet Mde With Python/
+├── bot.py                  # Entry point: loads token, intents, and cogs
+├── config.py               # Server/user IDs, responses, permission checks, JSON helpers
+├── requirements.txt        # Python dependencies
+├── .env                    # Your bot token (you create this — never commit it)
+├── cogs/
+│   ├── admin_cog.py        # Admin slash commands (see table below)
+│   ├── fun_cog.py          # Eat It or Yeet It party game (see section below)
+│   ├── Level_system.py     # Message XP, levels, leaderboard (see section below)
+├── data/
+│   ├── eatyeet_*.json      # Eat It or Yeet It stats, suggestions, active rounds
+│   └── DB/
+│       ├── db.py           # Database connection (SQLite)
+│       ├── models.py       # Table definitions
+│       └── Storage/
+│           └── storage.py  # Async get/save helpers for each table
+└── utils/
+    └── data_utils.py       # Simple JSON load/save helpers
+```
+
+## Built-in commands (admin cog)
+
+| Command           | What it does                                        | Who can use it |
+|-------------------|-----------------------------------------------------|----------------|
+| `/userinfo`       | Shows an embed with info about a user               | Admins         |
+| `/clear_user`     | Deletes a user's messages in one or all channels    | Admins         |
+| `/add_user_role`  | Gives a role to a user                              | Admins         |
+| `/remove_user_role` | Removes a role from a user                        | Admins         |
+| `/rename_bot`     | Changes the bot's nickname in the server            | Admins         |
+| `/rename_user`    | Changes a user's nickname                           | Admins         |
+| `/reset_user_name`| Clears a user's nickname                            | Admins         |
+| `/shutdown_bot`   | Shuts the bot down                                  | Bot owners only|
+| `/restart_bot`    | Restarts the bot                                    | Bot owners only|
+
+## Built-in commands (fun cog) — 🍽️ Eat It or Yeet It
+
+A party voting game: the bot serves up a random food, everyone votes
+**Eat it** or **Yeet it** with the buttons, and the verdict is announced
+when the timer runs out. Rounds **survive bot restarts** — if the bot goes
+down mid-round, the buttons keep working and anything that expired while it
+was away gets tallied on startup.
+
+| Command | What it does | Who can use it |
+|---|---|---|
+| `/eatyeet` | Starts a round. Pick a duration (30s test, 1/2/4/8/12/24h) and a food source (see below) | Everyone |
+| `/eatyeet_end` | Ends the current round in the channel early | Starter or admins |
+| `/eatyeet_leaderboard` | Top 10 players by points | Everyone |
+| `/eatyeet_stats` | Your (or another member's) rounds, points, majority %, streaks | Everyone |
+| `/eatyeet_suggest` | Suggest a food for the community pool (credited by name) | Everyone |
+| `/eatyeet_history` | Last 10 finished rounds and their verdicts | Everyone |
+
+**Food sources** (`/eatyeet` option):
+- **Auto (mix of API + local)** (default) — each round has a 45% chance of a
+  live meal from [TheMealDB](https://www.themealdb.com) (free, no key needed),
+  otherwise the local list. API foods show a 🌐 **fresh** rarity and the
+  round embed displays the dish's real photo.
+- **Local list only** — no internet: hand-written foods + community suggestions.
+- **API only** — live meals only, no local fallback. If the API is
+  unreachable, no round starts (you'll get a warning instead).
+
+**Scoring** — vote with the majority to earn points: common = 1,
+weird / fresh / community = 2, cursed = 3. Win streaks are tracked with a
+best-streak record, and results name every voter on each side.
+
+**Live countdown** — the round post shows a ticking timer with a progress
+bar (▓▓▓▓▓▓░░░░). In the last 15 seconds it switches to
+🔨 **HAMMER TIME!** and counts down to the verdict.
+
+**Rematch** — when a round ends, the results post gets a 🔁 **Run it back**
+button. Anyone can tap it to instantly start a new round with the same
+duration and food source. It works even on old result posts after a restart.
+
+Game data is stored in `data/eatyeet_stats.json`,
+`data/eatyeet_suggestions.json`, and `data/eatyeet_active.json`
+(active rounds — this is what makes restarts safe).
+
+## Built-in commands (level system)
+
+A message-based XP system. Every message earns a random amount of XP in the
+configured range (subject to a per-user cooldown). Level *n* requires
+*n* × 100 XP, and leftover XP rolls over into the next level. All XP data
+and settings are stored per server in the SQLite database.
+
+| Command | What it does | Who can use it |
+|---|---|---|
+| `/level` | Shows your (or another member's) level and XP progress bar | Everyone |
+| `/leaderboard` | Top 10 users by level and XP | Everyone |
+| `/getxpsettings` | Shows the server's XP rate, cooldown, level-up channel, role rewards, game XP | Everyone |
+| `/set_xp_rate` | Sets the XP range earned per message (e.g. 1–5) | Admins |
+| `/set_cooldown` | Seconds between XP gains per user (0 = off) | Admins |
+| `/set_level_channel` | Sets the channel for level-up announcements (defaults to current channel) | Admins |
+| `/set_level_role` | Awards a role when members reach a level (cumulative) | Admins |
+| `/remove_level_role` | Removes a level's role reward | Admins |
+| `/toggle_game_xp` | Toggles level XP earned by voting in Eat It or Yeet It (on by default) | Admins |
+| `/toggle_no_xp` | Toggles message XP on/off for a channel (e.g. bot-spam) | Admins |
+| `/xp_event` | Starts a server-wide XP multiplier event (2–5x, up to 24h) | Admins |
+| `/xp_event_end` | Ends the XP event early | Admins |
+| `/daily` | Claims daily XP bonus (streaks earn more, every 20h) | Everyone |
+| `/rank` | Shows a rank card image with level, XP bar, and server rank | Everyone |
+| `/add_xp` | Grants XP to a user (level-ups are announced) | Admins |
+| `/resetxp` | Resets a user's XP and level | Admins |
+| `/cleardata` | Wipes all level data for the server | Admins |
+
+Voting in Eat It or Yeet It also earns level XP: 10 XP per vote, plus
+10 × the game's majority points as a bonus (e.g. 20 XP for winning a
+common round, 40 XP for a cursed one). Admins can turn this off with
+`/toggle_game_xp`.
+
+Extras: `/daily` gives a claimable XP bonus every 20 hours with streak
+bonuses, `/xp_event` runs server-wide multiplier events (great for event
+nights), and `/rank` generates a shareable rank card image. Channels like
+bot-spam can be excluded from XP with `/toggle_no_xp`.
+
+## Adding a new cog
+
+Cogs are how you add features. Each cog is one Python file in the `cogs/`
+folder containing a class and a `setup` function:
+
+1. Create `cogs/my_cog.py`:
+
+```python
+import discord
+from discord.ext import commands
+
+class MyCog(commands.Cog):
+    def __init__(self, bot):
+        self.bot = bot
+
+    @discord.slash_command(name="hello", description="Say hello")
+    async def hello(self, ctx: discord.ApplicationContext):
+        await ctx.respond("Hello!")
+
+def setup(bot):
+    bot.add_cog(MyCog(bot))
+```
+
+2. Add `"cogs.my_cog"` to the `COGS` list at the top of `bot.py`.
+3. Restart the bot — your new slash command will sync on startup.
+
+## Troubleshooting
+
+- **`Improper token has been passed`** — your `.env` file is missing or
+  `TOKEN2=` doesn't match your token. Make sure the file is named exactly
+  `.env` and sits next to `bot.py`.
+- **Slash commands don't show up** — wait a few minutes after the first
+  start; also confirm you invited the bot with the `applications.commands`
+  scope.
+- **Bot can't see members / crashes on startup** — the **Server Members
+  Intent** must be enabled in the Developer Portal (Bot tab, Privileged
+  Gateway Intents), then restart the bot.
+- **`/shutdown_bot` says you're not authorized** — your user ID isn't in
+  `OWNER_IDS` in `config.py`.
+- **`pip install` fails on `databases`** — make sure you're on Python 3.10+
+  and pip is up to date (`pip install --upgrade pip`).
