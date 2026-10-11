@@ -110,6 +110,7 @@ Discord Bot Templet Mde With Python/
 ├── cogs/
 │   ├── admin_cog.py        # Admin slash commands (see table below)
 │   ├── fun_cog.py          # Eat It or Yeet It party game (see section below)
+│   ├── Level_system.py     # Message XP, levels, leaderboard (see section below)
 ├── data/
 │   ├── eatyeet_*.json      # Eat It or Yeet It stats, suggestions, active rounds
 │   └── DB/
@@ -176,6 +177,25 @@ duration and food source. It works even on old result posts after a restart.
 Game data is stored in `data/eatyeet_stats.json`,
 `data/eatyeet_suggestions.json`, and `data/eatyeet_active.json`
 (active rounds — this is what makes restarts safe).
+
+## Built-in commands (level system)
+
+A message-based XP system. Every message earns a random amount of XP in the
+configured range (subject to a per-user cooldown). Level *n* requires
+*n* × 100 XP, and leftover XP rolls over into the next level. All XP data
+and settings are stored per server in the SQLite database.
+
+| Command | What it does | Who can use it |
+|---|---|---|
+| `/level` | Shows your (or another member's) level and XP progress bar | Everyone |
+| `/leaderboard` | Top 10 users by level and XP | Everyone |
+| `/getxpsettings` | Shows the server's XP rate, cooldown, and level-up channel | Everyone |
+| `/set_xp_rate` | Sets the XP range earned per message (e.g. 1–5) | Admins |
+| `/set_cooldown` | Seconds between XP gains per user (0 = off) | Admins |
+| `/set_level_channel` | Sets the channel for level-up announcements | Admins |
+| `/add_xp` | Grants XP to a user (can trigger level-ups) | Admins |
+| `/resetxp` | Resets a user's XP and level | Admins |
+| `/cleardata` | Wipes all level data for the server | Admins |
 
 ## Adding a new cog
 
