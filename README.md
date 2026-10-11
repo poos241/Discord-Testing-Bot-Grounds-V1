@@ -189,13 +189,21 @@ and settings are stored per server in the SQLite database.
 |---|---|---|
 | `/level` | Shows your (or another member's) level and XP progress bar | Everyone |
 | `/leaderboard` | Top 10 users by level and XP | Everyone |
-| `/getxpsettings` | Shows the server's XP rate, cooldown, and level-up channel | Everyone |
+| `/getxpsettings` | Shows the server's XP rate, cooldown, level-up channel, role rewards, game XP | Everyone |
 | `/set_xp_rate` | Sets the XP range earned per message (e.g. 1–5) | Admins |
 | `/set_cooldown` | Seconds between XP gains per user (0 = off) | Admins |
-| `/set_level_channel` | Sets the channel for level-up announcements | Admins |
-| `/add_xp` | Grants XP to a user (can trigger level-ups) | Admins |
+| `/set_level_channel` | Sets the channel for level-up announcements (defaults to current channel) | Admins |
+| `/set_level_role` | Awards a role when members reach a level (cumulative) | Admins |
+| `/remove_level_role` | Removes a level's role reward | Admins |
+| `/toggle_game_xp` | Toggles level XP earned by voting in Eat It or Yeet It (on by default) | Admins |
+| `/add_xp` | Grants XP to a user (level-ups are announced) | Admins |
 | `/resetxp` | Resets a user's XP and level | Admins |
 | `/cleardata` | Wipes all level data for the server | Admins |
+
+Voting in Eat It or Yeet It also earns level XP: 10 XP per vote, plus
+10 × the game's majority points as a bonus (e.g. 20 XP for winning a
+common round, 40 XP for a cursed one). Admins can turn this off with
+`/toggle_game_xp`.
 
 ## Adding a new cog
 
