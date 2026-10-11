@@ -1,1 +1,7 @@
-cHktY29yZD49Mi40CnB5dGhvbi1kb3RlbnYKZGF0YWJhc2VzCnNxbGFsY2hlbXkKYWlvc3FsaXRlCmFpb2h0dHAKcGlsbG93Cg==
+py-cord>=2.4
+python-dotenv
+databases
+sqlalchemy
+aiosqlite
+aiohttp
+pillow
