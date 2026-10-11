@@ -26,6 +26,7 @@ client = commands.Bot(command_prefix="!", intents=intents)
 COGS = [
     "cogs.admin_cog",
     "cogs.fun_cog",
+    "cogs.Level_system",
 ]
 
 for cog in COGS:

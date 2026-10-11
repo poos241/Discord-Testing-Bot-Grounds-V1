@@ -1,37 +1,16 @@
 {
     "557680433245061130": {
-        "rounds": 12,
+        "rounds": 15,
         "users": {
             "287282266261159937": {
-                "majority": 5,
-                "played": 5,
-                "points": 8,
-                "streak": 4,
-                "best_streak": 4
+                "majority": 8,
+                "played": 8,
+                "points": 14,
+                "streak": 7,
+                "best_streak": 7
             }
         },
         "history": [
-            {
-                "food": "cake",
-                "verdict": "none",
-                "eats": 0,
-                "yeets": 0,
-                "ended_at": 1791552600.6940439
-            },
-            {
-                "food": "An egg salad sandwich left out in the sun",
-                "verdict": "yeet",
-                "eats": 0,
-                "yeets": 1,
-                "ended_at": 1791552642.3134756
-            },
-            {
-                "food": "cake",
-                "verdict": "eat",
-                "eats": 1,
-                "yeets": 0,
-                "ended_at": 1791559875.5060334
-            },
             {
                 "food": "Ketchup on vanilla ice cream",
                 "verdict": "none",
@@ -80,6 +59,27 @@
                 "eats": 0,
                 "yeets": 0,
                 "ended_at": 1791642971.0122757
+            },
+            {
+                "food": "Cambodian Waffles (Num Poum)",
+                "verdict": "eat",
+                "eats": 1,
+                "yeets": 0,
+                "ended_at": 1791675012.5097842
+            },
+            {
+                "food": "Extra crispy chicken wings",
+                "verdict": "eat",
+                "eats": 1,
+                "yeets": 0,
+                "ended_at": 1791675072.536318
+            },
+            {
+                "food": "Ratatouille",
+                "verdict": "yeet",
+                "eats": 0,
+                "yeets": 1,
+                "ended_at": 1791675132.5535574
             }
         ]
     }
