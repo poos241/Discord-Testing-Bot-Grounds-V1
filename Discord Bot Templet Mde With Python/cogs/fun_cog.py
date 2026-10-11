@@ -29,6 +29,7 @@ MAX_HISTORY = 10  # rounds of history kept per guild
 MEALDB_URL = "https://www.themealdb.com/api/json/v1/1/random.php"
 API_TIMEOUT = 5  # seconds before giving up and falling back to the local list
 API_CHANCE = 0.90  # in auto mode, chance a round pulls a live API meal (Emily's tweak)
+GAME_XP_BASE = 10  # base level XP per game vote (× (1 + points earned))
 
 RARITY_EMOJI = {"common": "🟢", "weird": "🟡", "cursed": "🟣", "community": "💡", "fresh": "🌐"}
 RARITY_POINTS = {"common": 1, "weird": 2, "cursed": 3, "community": 2, "fresh": 2}
@@ -470,7 +471,7 @@ class FunCog(commands.Cog):
                               f"Voting ends <t:{int(rnd['ends_at'])}:R>")
         return embed
 
-    def build_results_embed(self, rnd, verdict, shoutouts) -> discord.Embed:
+    def build_results_embed(self, rnd, verdict, shoutouts, game_xp_on=False) -> discord.Embed:
         eats, yeets = self._counts(rnd)
         score = f"🍽️ **{eats}** — 🗑️ **{yeets}**"
         if verdict == "eat":
@@ -491,6 +492,10 @@ class FunCog(commands.Cog):
         embed.add_field(name="🔁 Run it back?",
                         value="Tap the button below to start another round with the same settings!",
                         inline=False)
+        if game_xp_on:
+            embed.add_field(name="🎮 Level XP",
+                            value="Voters earned level XP for playing!",
+                            inline=False)
         # Voter roll-call (capped so big rounds don't blow up the embed).
         if rnd["votes"]:
             eat_names = [rnd["voter_names"].get(uid, "Someone")
@@ -640,7 +645,8 @@ class FunCog(commands.Cog):
         self._timer_edit_at.pop(channel_id, None)
 
         verdict, shoutouts = self._tally_and_save(rnd)
-        embed = self.build_results_embed(rnd, verdict, shoutouts)
+        game_xp_on = await self._award_game_xp(rnd, verdict)
+        embed = self.build_results_embed(rnd, verdict, shoutouts, game_xp_on=game_xp_on)
 
         message = await self._fetch_message(rnd)
         if message is not None:
@@ -649,6 +655,37 @@ class FunCog(commands.Cog):
                 await message.edit(embed=embed, view=self.rematch_view)
             except discord.HTTPException:
                 pass
+
+    async def _award_game_xp(self, rnd, verdict):
+        """Award level XP to voters if the server has game XP enabled.
+
+        Returns True when XP was awarded (so the results embed can say so).
+        The level system is an optional dependency — if it's not installed
+        or the toggle is off, this silently does nothing.
+        """
+        if not rnd["votes"]:
+            return False
+        try:
+            from cogs.Level_system import award_xp as award_level_xp, game_xp_enabled
+        except ImportError:
+            return False
+        if not await game_xp_enabled(rnd["guild_id"]):
+            return False
+        guild = self.bot.get_guild(rnd["guild_id"])
+        if guild is None:
+            return False
+        channel = self.bot.get_channel(rnd["channel_id"])
+        majority = ({uid for uid, v in rnd["votes"].items() if v == verdict}
+                    if verdict in ("eat", "yeet") else set())
+        for uid in rnd["votes"]:
+            points = RARITY_POINTS[rnd["rarity"]] if uid in majority else 0
+            xp = GAME_XP_BASE * (1 + points)
+            name = rnd["voter_names"].get(uid, "Someone")
+            try:
+                await award_level_xp(guild, int(uid), name, xp, fallback_channel=channel)
+            except (discord.HTTPException, ValueError):
+                continue
+        return True
 
     async def _finish_expired_rounds(self):
         now = time.time()
