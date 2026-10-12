@@ -55,6 +55,14 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
+Or run the one-shot setup script instead — it checks your Python version,
+installs everything, verifies the imports, creates your `.env`, and
+syntax-checks the cogs:
+
+```bash
+python setup.py
+```
+
 ### 4. Create your bot in the Discord Developer Portal
 
 1. Go to the [Developer Portal](https://discord.com/developers/applications)
@@ -223,6 +231,10 @@ that text with `/set_levelup_message` using `{user}`, `{name}`, and
 `{level}` placeholders (it falls back to the default message if unset).
 
 ## Adding a new cog
+
+> Working on the code itself? Read **DEVELOPER.md** (in the project folder)
+> — it explains the architecture, the data layer, and the patterns each
+> system uses, with examples.
 
 Cogs are how you add features. Each cog is one Python file in the `cogs/`
 folder containing a class and a `setup` function:
