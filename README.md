@@ -232,9 +232,9 @@ that text with `/set_levelup_message` using `{user}`, `{name}`, and
 
 ## Adding a new cog
 
-> Working on the code itself? Read **DEVELOPER.md** (in the project folder)
-> — it explains the architecture, the data layer, and the patterns each
-> system uses, with examples.
+> Working on the code itself? Read the **[Bot Developer Handbook](https://poos241.github.io/Discord-Testing-Bot-Grounds-V1/)**
+> — architecture, patterns, and examples with sidebar navigation and search
+> (source pages in `website/docs/`).
 
 Cogs are how you add features. Each cog is one Python file in the `cogs/`
 folder containing a class and a `setup` function:
