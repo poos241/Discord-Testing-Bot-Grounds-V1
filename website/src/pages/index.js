@@ -6,18 +6,23 @@ import Heading from '@theme/Heading';
 const sections = [
   {
     title: 'Fundamentals',
-    desc: 'Project map, boot sequence, cogs, permissions, and config helpers.',
+    desc: 'Project map, boot sequence, cogs, views & buttons, permissions, and config helpers.',
     to: '/docs/project-map',
   },
   {
     title: 'Data layer',
-    desc: 'SQLite storage helpers and JSON files — which to use and when.',
+    desc: 'SQLite storage helpers and JSON files — which to use and when, plus adding tables.',
     to: '/docs/data-layer',
   },
   {
     title: 'Systems',
-    desc: 'How the level system and Eat It or Yeet It work internally.',
+    desc: 'How the level system and Eat It or Yeet It work internally, plus adding food sources.',
     to: '/docs/level-system',
+  },
+  {
+    title: 'Deep dives',
+    desc: 'Views & buttons, award_xp(), adding tables and food sources — explained with code.',
+    to: '/docs/views-buttons',
   },
   {
     title: 'Guides',
