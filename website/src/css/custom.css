@@ -1,0 +1,13 @@
+/**
+ * Any CSS included here will be global. The default Docusaurus styles
+ * are kept; this just adds a few handbook-style touches.
+ */
+
+.hero--primary {
+  --ifm-hero-background-color: #2b2d31;
+  --ifm-hero-text-color: #ffffff;
+}
+
+.card {
+  height: 100%;
+}
