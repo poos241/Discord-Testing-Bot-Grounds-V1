@@ -457,6 +457,9 @@ class FunCog(commands.Cog):
         if rnd["suggested_by"]:
             desc += f"\n💡 Suggested by **{rnd['suggested_by']}**"
         desc += f"\n{self._timer_line(rnd)}"
+        # NOTE: <t:...> timestamps render in descriptions/fields, but NOT in
+        # footers — keep this line out of set_footer or it shows up raw.
+        desc += f"\nVoting ends <t:{int(rnd['ends_at'])}:R>"
         embed = discord.Embed(
             title="🍽️ EAT IT or YEET IT 🗑️",
             description=desc,
@@ -467,8 +470,7 @@ class FunCog(commands.Cog):
         if rnd.get("image_url"):
             embed.set_image(url=rnd["image_url"])
         embed.set_footer(text=f"Vote with the buttons below! You can change your vote. "
-                              f"Majority voters earn {points} pt{'s' if points != 1 else ''}. "
-                              f"Voting ends <t:{int(rnd['ends_at'])}:R>")
+                              f"Majority voters earn {points} pt{'s' if points != 1 else ''}.")
         return embed
 
     def build_results_embed(self, rnd, verdict, shoutouts, game_xp_on=False) -> discord.Embed:
