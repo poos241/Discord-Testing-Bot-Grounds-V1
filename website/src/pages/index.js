@@ -4,6 +4,7 @@ import Layout from '@theme/Layout';
 import Heading from '@theme/Heading';
 
 const sections = [
+  // Cards link into the docs; keep descriptions in sync with new pages.
   {
     title: 'Fundamentals',
     desc: 'Project map, boot sequence, cogs, views & buttons, permissions, and config helpers.',
