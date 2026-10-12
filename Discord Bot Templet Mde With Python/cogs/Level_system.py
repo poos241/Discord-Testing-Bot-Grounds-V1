@@ -14,7 +14,7 @@ try:
 except ImportError:
     _PIL_OK = False
 
-from config import admin_required, extra_help
+from config import admin_required, extra_help, GUILD_IDS
 from data.DB.Storage.storage import get_levels, save_levels, get_xp, save_xp
 
 COOLDOWN_LEVEL = 30
@@ -220,7 +220,7 @@ class LevelSystem(commands.Cog):
         await award_xp(message.guild, message.author.id, message.author.display_name,
                        xp_gain, fallback_channel=message.channel)
 
-    @commands.slash_command(name="set_xp_rate", description="Set XP gain range per message")
+    @commands.slash_command(name="set_xp_rate", description="Set XP gain range per message", guild_ids=GUILD_IDS)
     @extra_help("Set the minimum and maximum XP that can be gained per message.")
     @admin_required()
     async def set_xp_rate(self, interaction, minimum: int, maximum: int):
@@ -235,7 +235,7 @@ class LevelSystem(commands.Cog):
         await save_levels(gid, db)
         await interaction.respond(f"✅ XP gain range set to {minimum}–{maximum} XP/msg")
 
-    @commands.slash_command(name="set_cooldown", description="Set XP gain cooldown (sec)")
+    @commands.slash_command(name="set_cooldown", description="Set XP gain cooldown (sec)", guild_ids=GUILD_IDS)
     @extra_help("Set the cooldown in seconds between XP gains per user. Set to 0 for no cooldown.")
     @admin_required()
     async def set_cooldown(self, interaction, seconds: int):
@@ -245,7 +245,7 @@ class LevelSystem(commands.Cog):
         await save_levels(gid, db)
         await interaction.respond(f"✅ Cooldown set to {seconds}s")
 
-    @commands.slash_command(name="set_level_channel", description="Set level-up message channel")
+    @commands.slash_command(name="set_level_channel", description="Set level-up message channel", guild_ids=GUILD_IDS)
     @extra_help("Set the channel where level-up messages will be posted.")
     @admin_required()
     async def set_level_channel(self, interaction, channel: discord.TextChannel):
@@ -255,7 +255,7 @@ class LevelSystem(commands.Cog):
         await save_levels(gid, db)
         await interaction.respond(f"✅ Level-up messages will post in {channel.mention}")
 
-    @commands.slash_command(name="level", description="Check your or another user's level")
+    @commands.slash_command(name="level", description="Check your or another user's level", guild_ids=GUILD_IDS)
     @extra_help("Check your level or another user's level and XP progress.")
     async def level(self, interaction, member: discord.Member = None):
         await interaction.response.defer()
@@ -286,7 +286,7 @@ class LevelSystem(commands.Cog):
 
         await interaction.followup.send(embed=embed)
 
-    @commands.slash_command(name="leaderboard", description="Show XP leaderboard")
+    @commands.slash_command(name="leaderboard", description="Show XP leaderboard", guild_ids=GUILD_IDS)
     @extra_help("View the top 10 users by level and XP in this server.")
     async def leaderboard(self, interaction):
         await interaction.response.defer()
@@ -310,7 +310,7 @@ class LevelSystem(commands.Cog):
 
         await interaction.followup.send(embed=embed)
 
-    @commands.slash_command(name="add_xp", description="Add XP to a user")
+    @commands.slash_command(name="add_xp", description="Add XP to a user", guild_ids=GUILD_IDS)
     @extra_help("Add XP to a user. Admins only. Level-ups are announced like normal.")
     @admin_required()
     async def add_xp(self, interaction, member: discord.Member, amount: int):
@@ -336,7 +336,7 @@ class LevelSystem(commands.Cog):
                 f"(\U0001f9ee {xp_remaining} XP to next level)"
             )
 
-    @commands.slash_command(name="resetxp", description="Reset XP and level for a user")
+    @commands.slash_command(name="resetxp", description="Reset XP and level for a user", guild_ids=GUILD_IDS)
     @extra_help("Reset a user's XP and level to 0 and 1 respectively. Admins only.")
     @admin_required()
     async def resetxp(self, interaction, member: discord.Member):
@@ -350,14 +350,14 @@ class LevelSystem(commands.Cog):
         else:
             await interaction.respond("User not found.")
 
-    @commands.slash_command(name="cleardata", description="Clear all level data for this server")
+    @commands.slash_command(name="cleardata", description="Clear all level data for this server", guild_ids=GUILD_IDS)
     @extra_help("Clear all level data for this server. Admins only.")
     @admin_required()
     async def cleardata(self, interaction):
         await save_levels(str(interaction.guild.id), {})
         await interaction.respond("⚠️ All data cleared for this server.")
 
-    @commands.slash_command(name="getxpsettings", description="View current XP settings")
+    @commands.slash_command(name="getxpsettings", description="View current XP settings", guild_ids=GUILD_IDS)
     @extra_help("View XP gain, cooldown, level-up channel, role rewards, no-XP channels, XP events, and the game XP toggle.")
     async def getxpsettings(self, interaction):
         gid = str(interaction.guild.id)
@@ -395,7 +395,7 @@ class LevelSystem(commands.Cog):
 
         await interaction.respond(embed=embed)
 
-    @commands.slash_command(name="set_level_role", description="Set a role reward for reaching a level")
+    @commands.slash_command(name="set_level_role", description="Set a role reward for reaching a level", guild_ids=GUILD_IDS)
     @extra_help("Members automatically receive the role when they reach the level. Rewards are cumulative.")
     @admin_required()
     async def set_level_role(self, interaction, level: int, role: discord.Role):
@@ -408,7 +408,7 @@ class LevelSystem(commands.Cog):
         await save_levels(gid, db)
         await interaction.respond(f"✅ {role.mention} will be awarded at level **{level}**.")
 
-    @commands.slash_command(name="remove_level_role", description="Remove a level role reward")
+    @commands.slash_command(name="remove_level_role", description="Remove a level role reward", guild_ids=GUILD_IDS)
     @extra_help("Stops awarding a role at the given level (members who already have it keep it).")
     @admin_required()
     async def remove_level_role(self, interaction, level: int):
@@ -422,7 +422,7 @@ class LevelSystem(commands.Cog):
         else:
             await interaction.respond(f"No role reward is set for level {level}.", ephemeral=True)
 
-    @commands.slash_command(name="toggle_game_xp", description="Toggle XP for Eat It or Yeet It votes")
+    @commands.slash_command(name="toggle_game_xp", description="Toggle XP for Eat It or Yeet It votes", guild_ids=GUILD_IDS)
     @extra_help("Turns on/off level XP earned by voting in Eat It or Yeet It. On by default.")
     @admin_required()
     async def toggle_game_xp(self, interaction):
@@ -436,7 +436,7 @@ class LevelSystem(commands.Cog):
         detail = "voting now earns level XP" if new_val else "voting no longer earns level XP"
         await interaction.respond(f"🎮 Game XP is now **{state}** — {detail}.")
 
-    @commands.slash_command(name="toggle_no_xp", description="Toggle XP gains in a channel")
+    @commands.slash_command(name="toggle_no_xp", description="Toggle XP gains in a channel", guild_ids=GUILD_IDS)
     @extra_help("Turns message XP on/off for a channel. Useful for bot-spam channels.")
     @admin_required()
     async def toggle_no_xp(self, interaction, channel: discord.TextChannel):
@@ -470,7 +470,7 @@ class LevelSystem(commands.Cog):
         await interaction.respond(
             f"🎉 **{multiplier}x XP event** started for {minutes} minute{'s' if minutes != 1 else ''}!")
 
-    @commands.slash_command(name="xp_event_end", description="End the bonus XP event early")
+    @commands.slash_command(name="xp_event_end", description="End the bonus XP event early", guild_ids=GUILD_IDS)
     @extra_help("Ends a running XP event immediately.")
     @admin_required()
     async def xp_event_end(self, interaction):
@@ -511,7 +511,7 @@ class LevelSystem(commands.Cog):
             msg += f"\n🎉 And that leveled you up to **{db[uid]['level']}**!"
         await interaction.respond(msg)
 
-    @commands.slash_command(name="rank", description="Show your rank card")
+    @commands.slash_command(name="rank", description="Show your rank card", guild_ids=GUILD_IDS)
     @extra_help("Generates a rank card image with your level, XP progress, and server rank.")
     async def rank(self, interaction, member: discord.Member = None):
         await interaction.response.defer()
