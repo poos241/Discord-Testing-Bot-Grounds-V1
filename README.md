@@ -189,7 +189,7 @@ and settings are stored per server in the SQLite database.
 |---|---|---|
 | `/level` | Shows your (or another member's) level and XP progress bar | Everyone |
 | `/leaderboard` | Top 10 users by level and XP | Everyone |
-| `/getxpsettings` | Shows the server's XP rate, cooldown, level-up channel, role rewards, game XP | Everyone |
+| `/getxpsettings` | Shows the server's XP rate, cooldown, level-up channel/message, role rewards, game XP | Everyone |
 | `/set_xp_rate` | Sets the XP range earned per message (e.g. 1–5) | Admins |
 | `/set_cooldown` | Seconds between XP gains per user (0 = off) | Admins |
 | `/set_level_channel` | Sets the channel for level-up announcements (defaults to current channel) | Admins |
@@ -201,6 +201,8 @@ and settings are stored per server in the SQLite database.
 | `/xp_event_end` | Ends the XP event early | Admins |
 | `/daily` | Claims daily XP bonus (streaks earn more, every 20h) | Everyone |
 | `/rank` | Shows a rank card image with level, XP bar, and server rank | Everyone |
+| `/cardcolor` | Sets your rank/level-up card accent color (hex, preset, or reset) | Everyone |
+| `/set_levelup_message` | Sets a custom level-up announcement ({user}, {name}, {level}); blank resets | Admins |
 | `/add_xp` | Grants XP to a user (level-ups are announced) | Admins |
 | `/resetxp` | Resets a user's XP and level | Admins |
 | `/cleardata` | Wipes all level data for the server | Admins |
@@ -214,6 +216,11 @@ Extras: `/daily` gives a claimable XP bonus every 20 hours with streak
 bonuses, `/xp_event` runs server-wide multiplier events (great for event
 nights), and `/rank` generates a shareable rank card image. Channels like
 bot-spam can be excluded from XP with `/toggle_no_xp`.
+
+Level-ups post a confetti celebration card (with your `/cardcolor` accent
+if you set one) alongside the announcement text — admins can customize
+that text with `/set_levelup_message` using `{user}`, `{name}`, and
+`{level}` placeholders (it falls back to the default message if unset).
 
 ## Adding a new cog
 
