@@ -9,6 +9,11 @@ embed with vote buttons → a countdown task ticks the message (progress
 bar, 🔨 **HAMMER TIME!** under 15 seconds) → expiry tallies votes, posts
 results, awards game XP, and attaches the 🔁 rematch button.
 
+> **Gotcha:** Discord renders `<t:...>` timestamps in embed
+> *descriptions and fields* — but **not in footers**. A timestamp in a
+> footer shows up as raw text like `<t:1791818966:R>`. The round's
+> "Voting ends" line lives in the description for this reason.
+
 ## Restart safety
 
 - Views use `timeout=None` and stable `custom_id`s, and are re-registered
@@ -22,7 +27,7 @@ results, awards game XP, and attaches the 🔁 rematch button.
 
 ## Food sources
 
-- **Auto** (default): 45% chance of a live meal from TheMealDB (free, no
+- **Auto** (default): 90% chance of a live meal from TheMealDB (free, no
   key) with the dish photo and a 🌐 *fresh* rarity; otherwise the local
   list. Session-level dedup of meal IDs.
 - **Local only**: hand-written foods + community suggestions. No internet.
