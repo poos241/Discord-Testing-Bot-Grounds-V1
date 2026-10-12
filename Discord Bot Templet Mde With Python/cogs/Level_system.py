@@ -1,6 +1,7 @@
 # cogs/level_system.py
 import asyncio
 import io
+import re
 import time
 import discord
 from discord.ext import commands
@@ -52,8 +53,9 @@ async def apply_level_rewards(guild, user_id, level, settings):
             continue
 
 
-async def announce_level_up(guild, user_id, level, settings, fallback_channel=None):
-    """Post a level-up message to the configured channel, or the fallback."""
+async def announce_level_up(guild, user_id, display_name, level, settings,
+                          fallback_channel=None, accent=(88, 101, 242)):
+    """Post a level-up message (custom template or default) with a celebration card."""
     channel = None
     channel_id = settings.get("levelup_channel_id")
     if channel_id:
@@ -65,10 +67,60 @@ async def announce_level_up(guild, user_id, level, settings, fallback_channel=No
         channel = fallback_channel
     if channel is None:
         return
+    text = render_levelup_message(settings, user_id, display_name, level)
+    if _PIL_OK:
+        try:
+            member = guild.get_member(int(user_id))
+            url = str(member.display_avatar.url) if member else None
+            avatar_bytes = await _fetch_avatar_bytes(url) if url else None
+            card = await asyncio.to_thread(
+                build_levelup_card, avatar_bytes, display_name, level, accent)
+            await channel.send(content=text, file=discord.File(card, filename="levelup.png"))
+            return
+        except Exception:
+            pass
     try:
-        await channel.send(f"🎉 <@{user_id}> leveled up to **{level}**!")
+        await channel.send(text)
     except discord.HTTPException:
         pass
+
+
+def render_levelup_message(settings, user_id, display_name, level):
+    """Custom level-up template if set, otherwise the default message (fallback)."""
+    template = settings.get("levelup_message")
+    if not template:
+        return f"🎉 <@{user_id}> leveled up to **{level}**!"
+    return (template.replace("{user}", f"<@{user_id}>")
+                   .replace("{name}", display_name)
+                   .replace("{level}", str(level)))
+
+
+async def _fetch_avatar_bytes(url):
+    """Download an avatar image, returning None on any failure."""
+    try:
+        timeout = aiohttp.ClientTimeout(total=8)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.get(str(url)) as resp:
+                if resp.status == 200:
+                    return await resp.read()
+    except (aiohttp.ClientError, asyncio.TimeoutError):
+        pass
+    return None
+
+
+def _hex_to_rgb(h):
+    try:
+        h = h.lstrip("#")
+        return tuple(int(h[i:i + 2], 16) for i in (0, 2, 4))
+    except (ValueError, AttributeError, IndexError):
+        return (88, 101, 242)
+
+
+CARD_PRESETS = {
+    "blurple": "5865F2", "green": "57F287", "yellow": "FEE75C",
+    "orange": "E67E22", "red": "ED4245", "pink": "EB459E",
+    "purple": "9B59B6", "teal": "1ABC9C", "white": "FFFFFF",
+}
 
 
 async def award_xp(guild, user_id, display_name, amount, fallback_channel=None,
@@ -96,7 +148,9 @@ async def award_xp(guild, user_id, display_name, amount, fallback_channel=None,
     await save_levels(gid, db)
     if gained:
         await apply_level_rewards(guild, user_id, user_data["level"], settings)
-        await announce_level_up(guild, user_id, user_data["level"], settings, fallback_channel)
+        accent = _hex_to_rgb(user_data.get("card_color", "#5865F2"))
+        await announce_level_up(guild, user_id, display_name, user_data["level"],
+                                settings, fallback_channel, accent)
     return gained
 
 
@@ -121,7 +175,8 @@ def _fit_text(draw, text, font, max_width):
     return (text + "…") if text else "…"
 
 
-def build_rank_card(avatar_bytes, username, level, xp, xp_needed, rank):
+def build_rank_card(avatar_bytes, username, level, xp, xp_needed, rank,
+                    accent=(88, 101, 242)):
     """Render a 900x280 rank card PNG. Returns a BytesIO ready to send."""
     W, H = 900, 280
     img = Image.new("RGBA", (W, H), (0, 0, 0, 0))
@@ -140,7 +195,7 @@ def build_rank_card(avatar_bytes, username, level, xp, xp_needed, rank):
         except Exception:
             av = None
     if av is None:
-        av = Image.new("RGBA", (AV, AV), (88, 101, 242, 255))
+        av = Image.new("RGBA", (AV, AV), accent + (255,))
     circle = Image.new("L", (AV, AV), 0)
     ImageDraw.Draw(circle).ellipse([0, 0, AV, AV], fill=255)
     img.paste(av, (ax, ay), circle)
@@ -154,7 +209,7 @@ def build_rank_card(avatar_bytes, username, level, xp, xp_needed, rank):
     rank_txt = f"RANK #{rank}" if rank else "UNRANKED"
     d.text((W - 40 - d.textlength(rank_txt, font=font_med), 60), rank_txt,
            font=font_med, fill=(181, 186, 193, 255))
-    d.text((280, 108), f"LEVEL {level}", font=font_med, fill=(88, 101, 242, 255))
+    d.text((280, 108), f"LEVEL {level}", font=font_med, fill=accent + (255,))
 
     # progress bar
     bx, by, bw, bh = 280, 170, 580, 34
@@ -162,12 +217,63 @@ def build_rank_card(avatar_bytes, username, level, xp, xp_needed, rank):
     frac = min(max(xp / xp_needed, 0), 1) if xp_needed else 0
     fw = int(bw * frac)
     if fw > 0:
-        fill = Image.new("RGBA", (fw, bh), (88, 101, 242, 255))
+        fill = Image.new("RGBA", (fw, bh), accent + (255,))
         fmask = Image.new("L", (fw, bh), 0)
         ImageDraw.Draw(fmask).rounded_rectangle([0, 0, fw, bh], radius=17, fill=255)
         img.paste(fill, (bx, by), fmask)
     d.text((bx, by + bh + 8), f"{xp:,} / {xp_needed:,} XP", font=font_small,
            fill=(181, 186, 193, 255))
+
+    out = io.BytesIO()
+    img.save(out, format="PNG")
+    out.seek(0)
+    return out
+
+
+def build_levelup_card(avatar_bytes, username, level, accent=(88, 101, 242)):
+    """Render a 900x320 LEVEL UP celebration card PNG."""
+    W, H = 900, 320
+    img = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    bg_mask = Image.new("L", (W, H), 0)
+    ImageDraw.Draw(bg_mask).rounded_rectangle([0, 0, W, H], radius=24, fill=255)
+    img.paste(Image.new("RGBA", (W, H), (35, 36, 40, 255)), (0, 0), bg_mask)
+    d = ImageDraw.Draw(img)
+
+    # confetti
+    rnd = random.Random(f"{username}-{level}")
+    confetti = [(88, 101, 242), (87, 242, 135), (254, 231, 92),
+                (237, 66, 69), (235, 69, 158), (230, 126, 34)]
+    for _ in range(70):
+        x, y = rnd.randint(0, W), rnd.randint(0, H)
+        c = rnd.choice(confetti) + (255,)
+        r = rnd.randint(3, 7)
+        if rnd.random() < 0.5:
+            d.ellipse([x - r, y - r, x + r, y + r], fill=c)
+        else:
+            d.rectangle([x - r, y - r, x + r, y + r], fill=c)
+
+    # avatar (circle)
+    AV, ax, ay = 180, 50, 70
+    av = None
+    if avatar_bytes:
+        try:
+            av = Image.open(io.BytesIO(avatar_bytes)).convert("RGBA")
+            av = av.resize((AV, AV), Image.LANCZOS)
+        except Exception:
+            av = None
+    if av is None:
+        av = Image.new("RGBA", (AV, AV), accent + (255,))
+    circle = Image.new("L", (AV, AV), 0)
+    ImageDraw.Draw(circle).ellipse([0, 0, AV, AV], fill=255)
+    img.paste(av, (ax, ay), circle)
+
+    font_big = _load_font(64, bold=True)
+    font_med = _load_font(40, bold=True)
+    d.text((270, 55), "LEVEL UP!", font=font_big, fill=accent + (255,))
+    d.text((270, 140), _fit_text(d, username, font_med, 560), font=font_med,
+           fill=(255, 255, 255, 255))
+    d.text((270, 195), f"LEVEL {level}", font=_load_font(54, bold=True),
+           fill=(255, 255, 255, 255))
 
     out = io.BytesIO()
     img.save(out, format="PNG")
@@ -275,14 +381,42 @@ class LevelSystem(commands.Cog):
 
         xp = user.get("xp", 0)
         level = user.get("level", 1)
+        xp_needed = level * 100
         progress = self.calculate_level_progress(xp, level)
-        progress_bar = self.create_progress_bar(progress)
+        progress_bar = self.create_progress_bar(progress, length=12)
 
-        embed = discord.Embed(title="📊 Level Status", color=discord.Color.blue())
+        users = {k: v for k, v in db.items()
+                 if k != "settings" and isinstance(v, dict) and "level" in v}
+        ordered = sorted(users.items(),
+                         key=lambda kv: (kv[1]["level"], kv[1].get("xp", 0)),
+                         reverse=True)
+        rank = next((i for i, (k, _) in enumerate(ordered, 1) if k == uid), 0)
+
+        role_color = getattr(target, "color", None)
+        color = (role_color if role_color and role_color != discord.Color.default()
+                 else discord.Color.blurple())
+
+        embed = discord.Embed(color=color)
         embed.set_author(name=target.display_name, icon_url=target.display_avatar.url)
-        embed.add_field(name="Level", value=level, inline=True)
-        embed.add_field(name="XP Progress", value=f"{progress_bar} ({xp}/{level * 100} XP)", inline=False)
         embed.set_thumbnail(url=target.display_avatar.url)
+        rank_txt = f"Rank **#{rank}** of {len(ordered)}" if rank else "Unranked"
+        embed.description = (
+            f"# Level {level}\n"
+            f"{rank_txt}\n\n"
+            f"{progress_bar} {progress:.0f}%\n"
+            f"**{xp:,}** / {xp_needed:,} XP  •  {xp_needed - xp:,} XP to level {level + 1}"
+        )
+        settings = db.get("settings", {})
+        upcoming = sorted((int(lvl), rid)
+                          for lvl, rid in settings.get("level_roles", {}).items()
+                          if int(lvl) > level)
+        if upcoming:
+            embed.add_field(name="🎁 Next reward",
+                            value=f"<@&{upcoming[0][1]}> at level {upcoming[0][0]}",
+                            inline=False)
+        streak = user.get("daily_streak", 0)
+        if streak >= 2:
+            embed.set_footer(text=f"🔥 {streak}-day daily streak — use /daily to keep it going")
 
         await interaction.followup.send(embed=embed)
 
@@ -290,24 +424,34 @@ class LevelSystem(commands.Cog):
     @extra_help("View the top 10 users by level and XP in this server.")
     async def leaderboard(self, interaction):
         await interaction.response.defer()
-        gid, uid = str(interaction.guild.id), str(interaction.user.id)
+        gid = str(interaction.guild.id)
+        me = str(interaction.user.id)
 
         now = time.time()
-        last = self.cooldowns_lb.setdefault(gid, {}).get(uid, 0)
+        last = self.cooldowns_lb.setdefault(gid, {}).get(me, 0)
         if now - last < COOLDOWN_LEADERBOARD:
             return await interaction.followup.send(f"⏳ Try again in {round(COOLDOWN_LEADERBOARD - (now - last), 1)}s!")
-        self.cooldowns_lb[gid][uid] = now
+        self.cooldowns_lb[gid][me] = now
 
         db = await get_levels(gid)
         user_data = {k: v for k, v in db.items() if k != "settings"}
-        top = sorted(user_data.items(), key=lambda i: (i[1]["level"], i[1]["xp"]), reverse=True)[:10]
+        top = sorted(user_data.items(),
+                     key=lambda i: (i[1].get("level", 1), i[1].get("xp", 0)),
+                     reverse=True)[:10]
 
-        embed = discord.Embed(title="🏆 XP Leaderboard", color=discord.Color.gold())
+        medals = ["🥇", "🥈", "🥉"]
+        lines = []
         for i, (uid, d) in enumerate(top, 1):
             member = interaction.guild.get_member(int(uid))
             name = member.display_name if member else d.get("username", f"User ID {uid}")
-            embed.add_field(name=f"#{i} {name}", value=f"Lv {d['level']} — {d['xp']} XP", inline=False)
+            pos = medals[i - 1] if i <= 3 else f"`{i}.`"
+            you = " ⬅ you" if uid == me else ""
+            lines.append(f"{pos} **{name}** — Level {d.get('level', 1)} · {d.get('xp', 0):,} XP{you}")
 
+        embed = discord.Embed(title="🏆 XP Leaderboard", color=discord.Color.gold(),
+                              description="\n".join(lines) or "No one has earned XP yet!")
+        if user_data:
+            embed.set_footer(text=f"{len(user_data)} members ranked")
         await interaction.followup.send(embed=embed)
 
     @commands.slash_command(name="add_xp", description="Add XP to a user", guild_ids=GUILD_IDS)
@@ -392,6 +536,10 @@ class LevelSystem(commands.Cog):
                             value=f"{mult}x until <t:{int(until)}:R>", inline=False)
         else:
             embed.add_field(name="🎉 XP Event", value="None active", inline=False)
+        msg = settings.get("levelup_message")
+        embed.add_field(name="📣 Level-up Message",
+                        value=(msg[:100] + "…" if len(msg) > 100 else msg) if msg else "Default",
+                        inline=False)
 
         await interaction.respond(embed=embed)
 
@@ -511,7 +659,55 @@ class LevelSystem(commands.Cog):
             msg += f"\n🎉 And that leveled you up to **{db[uid]['level']}**!"
         await interaction.respond(msg)
 
+    @commands.slash_command(name="cardcolor", description="Set your rank card accent color")
+    @extra_help("Personalize your /rank card and level-up card with a hex color (e.g. #EB459E), a preset name, or 'reset'.")
+    async def cardcolor(self, interaction, color: str):
+        gid, uid = str(interaction.guild.id), str(interaction.user.id)
+        db = await get_levels(gid)
+        user = db.setdefault(uid, {"xp": 0, "level": 1,
+                                   "username": interaction.user.display_name})
+        c = color.strip().lower()
+        if c in ("reset", "default"):
+            user.pop("card_color", None)
+            await save_levels(gid, db)
+            return await interaction.respond("🎨 Card color reset to default.")
+        if c in CARD_PRESETS:
+            hexcode = CARD_PRESETS[c]
+        else:
+            m = re.match(r"^#?([0-9a-f]{6})$", c)
+            if not m:
+                presets = ", ".join(sorted(CARD_PRESETS))
+                return await interaction.respond(
+                    f"Give me a hex color like `#EB459E`, a preset ({presets}), or `reset`.",
+                    ephemeral=True)
+            hexcode = m.group(1).upper()
+        user["card_color"] = "#" + hexcode
+        await save_levels(gid, db)
+        await interaction.respond(f"🎨 Card color set to `#{hexcode}`! Check it with /rank.")
+
+    @commands.slash_command(name="set_levelup_message", description="Set a custom level-up message")
+    @extra_help("Set the level-up announcement text. Use {user} for a ping, {name} for the display name, {level} for the new level. Run with no text to reset to the default.")
+    @admin_required()
+    async def set_levelup_message(self, interaction, message: str = None):
+        gid = str(interaction.guild.id)
+        db = await get_levels(gid)
+        settings = db.setdefault("settings", {})
+        if not message:
+            settings.pop("levelup_message", None)
+            await save_levels(gid, db)
+            return await interaction.respond("✅ Level-up message reset to default.")
+        if len(message) > 300:
+            return await interaction.respond("Keep it under 300 characters.", ephemeral=True)
+        settings["levelup_message"] = message
+        await save_levels(gid, db)
+        preview = render_levelup_message(settings, interaction.user.id,
+                                         interaction.user.display_name, 5)
+        await interaction.respond(f"✅ Level-up message set! Preview:\n{preview}")
+
     @commands.slash_command(name="rank", description="Show your rank card", guild_ids=GUILD_IDS)
+    @extra_help("Generates a rank card image with your level, XP progress, and server rank.")
+    async def rank(self, interaction, member: discord.Member = None):
+        await interaction.response.defer()
     @extra_help("Generates a rank card image with your level, XP progress, and server rank.")
     async def rank(self, interaction, member: discord.Member = None):
         await interaction.response.defer()
@@ -538,17 +734,11 @@ class LevelSystem(commands.Cog):
             embed.add_field(name="XP", value=f"{xp}/{xp_needed}", inline=True)
             return await interaction.followup.send(embed=embed)
 
-        avatar_bytes = None
-        try:
-            timeout = aiohttp.ClientTimeout(total=8)
-            async with aiohttp.ClientSession(timeout=timeout) as session:
-                async with session.get(str(target.display_avatar.url)) as resp:
-                    if resp.status == 200:
-                        avatar_bytes = await resp.read()
-        except (aiohttp.ClientError, asyncio.TimeoutError):
-            avatar_bytes = None
+        avatar_bytes = await _fetch_avatar_bytes(target.display_avatar.url)
+        accent = _hex_to_rgb(user.get("card_color", "#5865F2"))
         card = await asyncio.to_thread(
-            build_rank_card, avatar_bytes, target.display_name, level, xp, xp_needed, rank)
+            build_rank_card, avatar_bytes, target.display_name, level, xp, xp_needed,
+            rank, accent)
         await interaction.followup.send(file=discord.File(card, filename="rank.png"))
 
 def setup(client):
