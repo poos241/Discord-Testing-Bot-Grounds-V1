@@ -175,7 +175,7 @@ weird / fresh / community = 2, cursed = 3. Win streaks are tracked with a
 best-streak record, and results name every voter on each side.
 
 **Live countdown** — the round post shows a ticking timer with a progress
-bar (▓▓▓▓▓▓░░░░). In the last 15 seconds it switches to
+bar (▓▓▓▓▓▓░░░░) plus when voting ends. In the last 15 seconds it switches to
 🔨 **HAMMER TIME!** and counts down to the verdict.
 
 **Rematch** — when a round ends, the results post gets a 🔁 **Run it back**
