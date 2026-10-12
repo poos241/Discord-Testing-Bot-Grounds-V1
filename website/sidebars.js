@@ -5,17 +5,17 @@ const sidebars = {
     {
       type: 'category',
       label: 'Fundamentals',
-      items: ['project-map', 'boot-sequence', 'cogs', 'permissions', 'config-helpers'],
+      items: ['project-map', 'boot-sequence', 'cogs', 'views-buttons', 'permissions', 'config-helpers'],
     },
     {
       type: 'category',
       label: 'Data',
-      items: ['data-layer'],
+      items: ['data-layer', 'adding-a-table'],
     },
     {
       type: 'category',
       label: 'Systems',
-      items: ['level-system', 'eat-it-or-yeet-it'],
+      items: ['level-system', 'eat-it-or-yeet-it', 'adding-a-food-source'],
     },
     {
       type: 'category',
