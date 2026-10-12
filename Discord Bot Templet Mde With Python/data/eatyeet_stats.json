@@ -1,23 +1,16 @@
 {
     "557680433245061130": {
-        "rounds": 16,
+        "rounds": 17,
         "users": {
             "287282266261159937": {
-                "majority": 9,
-                "played": 9,
-                "points": 16,
-                "streak": 8,
-                "best_streak": 8
+                "majority": 10,
+                "played": 10,
+                "points": 18,
+                "streak": 9,
+                "best_streak": 9
             }
         },
         "history": [
-            {
-                "food": "A whole raw onion, eaten like an apple",
-                "verdict": "none",
-                "eats": 0,
-                "yeets": 0,
-                "ended_at": 1791638850.0198038
-            },
             {
                 "food": "Cold canned sardines",
                 "verdict": "none",
@@ -80,6 +73,13 @@
                 "eats": 1,
                 "yeets": 0,
                 "ended_at": 1791756268.9588494
+            },
+            {
+                "food": "Bean & Sausage Hotpot",
+                "verdict": "eat",
+                "eats": 1,
+                "yeets": 0,
+                "ended_at": 1791813815.2651484
             }
         ]
     }

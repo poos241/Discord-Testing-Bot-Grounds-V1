@@ -1,1 +1,17 @@
-{}
+{
+    "1533507893326778479": {
+        "guild_id": 557680433245061130,
+        "channel_id": 1533507893326778479,
+        "message_id": 1559211401493479485,
+        "food": "Chelsea Buns",
+        "rarity": "fresh",
+        "suggested_by": null,
+        "image_url": "https://www.themealdb.com/images/media/meals/vqpwrv1511723001.jpg",
+        "source": "api",
+        "starter_id": 287282266261159937,
+        "started_at": 1791815366.2264001,
+        "ends_at": 1791818966.2264001,
+        "votes": {},
+        "voter_names": {}
+    }
+}
