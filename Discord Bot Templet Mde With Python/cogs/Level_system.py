@@ -632,7 +632,7 @@ class LevelSystem(commands.Cog):
         else:
             await interaction.respond("No XP event is running.", ephemeral=True)
 
-    @commands.slash_command(name="daily", description="Claim your daily XP bonus")
+    @commands.slash_command(name="daily", description="Claim your daily XP bonus", guild_ids=GUILD_IDS)
     @extra_help("Claim XP once every 20 hours. Claiming on consecutive days builds a streak for bonus XP.")
     async def daily(self, interaction):
         gid, uid = str(interaction.guild.id), str(interaction.user.id)
@@ -659,7 +659,7 @@ class LevelSystem(commands.Cog):
             msg += f"\n🎉 And that leveled you up to **{db[uid]['level']}**!"
         await interaction.respond(msg)
 
-    @commands.slash_command(name="cardcolor", description="Set your rank card accent color")
+    @commands.slash_command(name="cardcolor", description="Set your rank card accent color", guild_ids=GUILD_IDS)
     @extra_help("Personalize your /rank card and level-up card with a hex color (e.g. #EB459E), a preset name, or 'reset'.")
     async def cardcolor(self, interaction, color: str):
         gid, uid = str(interaction.guild.id), str(interaction.user.id)
@@ -685,7 +685,7 @@ class LevelSystem(commands.Cog):
         await save_levels(gid, db)
         await interaction.respond(f"🎨 Card color set to `#{hexcode}`! Check it with /rank.")
 
-    @commands.slash_command(name="set_levelup_message", description="Set a custom level-up message")
+    @commands.slash_command(name="set_levelup_message", description="Set a custom level-up message", guild_ids=GUILD_IDS)
     @extra_help("Set the level-up announcement text. Use {user} for a ping, {name} for the display name, {level} for the new level. Run with no text to reset to the default.")
     @admin_required()
     async def set_levelup_message(self, interaction, message: str = None):
@@ -705,9 +705,6 @@ class LevelSystem(commands.Cog):
         await interaction.respond(f"✅ Level-up message set! Preview:\n{preview}")
 
     @commands.slash_command(name="rank", description="Show your rank card", guild_ids=GUILD_IDS)
-    @extra_help("Generates a rank card image with your level, XP progress, and server rank.")
-    async def rank(self, interaction, member: discord.Member = None):
-        await interaction.response.defer()
     @extra_help("Generates a rank card image with your level, XP progress, and server rank.")
     async def rank(self, interaction, member: discord.Member = None):
         await interaction.response.defer()
