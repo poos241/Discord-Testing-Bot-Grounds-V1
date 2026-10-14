@@ -134,7 +134,7 @@ Discord Bot Templet Mde With Python/
 
 | Command           | What it does                                        | Who can use it |
 |-------------------|-----------------------------------------------------|----------------|
-| `/userinfo`       | Shows an embed with info about a user               | Admins         |
+| `/userinfo`       | User card: account, server profile, XP/level, ban status, watch-list status (accepts a user ID for non-members) | Admins |
 | `/clear_user`     | Deletes a user's messages in one or all channels    | Admins         |
 | `/add_user_role`  | Gives a role to a user                              | Admins         |
 | `/remove_user_role` | Removes a role from a user                        | Admins         |
@@ -143,6 +143,28 @@ Discord Bot Templet Mde With Python/
 | `/reset_user_name`| Clears a user's nickname                            | Admins         |
 | `/shutdown_bot`   | Shuts the bot down                                  | Bot owners only|
 | `/restart_bot`    | Restarts the bot                                    | Bot owners only|
+
+## 👁️ Watch List system
+
+Moderators can put users on a per-server watch list — every message a
+watched user sends is mirrored to a configured log channel (with author,
+channel, timestamps, content, attachments, stickers, and a jump link).
+State lives in `data/watchlist_data.json`. All commands need **Manage
+Server** or **Administrator**.
+
+| Command | What it does |
+|---|---|
+| `/watch_add` | Add a user via the member picker |
+| `/watch_remove` | Remove a user via the member picker |
+| `/watch_add_id` | Add by raw Discord ID |
+| `/watch_remove_id` | Remove by raw Discord ID |
+| `/watch_list` | Show everyone on the watch list |
+| `/watch_status` | System status (count, log channel, logging state) |
+| `/watch_info` | Who added a watched user, and when |
+| `/watch_set_channel` | Set the log channel |
+| `/watch_clear` | Remove everyone (with confirmation) |
+
+`/userinfo` also shows whether a user is on the watch list.
 
 ## Built-in commands (fun cog) — 🍽️ Eat It or Yeet It
 
