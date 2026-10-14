@@ -16,17 +16,17 @@ All commands require **Manage Server** or **Administrator** (via the
 `@watch_admin()` check decorator — broader than the bot-wide
 `@admin_required()`, which is Administrator-only).
 
-| Command | What it does |
-|---|---|
-| `/watch_add` | Add a user via the member picker |
-| `/watch_remove` | Remove a user via the member picker |
-| `/watch_add_id` | Add by raw Discord ID (works when the picker is awkward) |
-| `/watch_remove_id` | Remove by raw Discord ID |
-| `/watch_list` | Show everyone watched + log channel status |
-| `/watch_status` | System status: count, channel, logging state |
-| `/watch_info` | Who added a watched user, and when |
-| `/watch_set_channel` | Set the log channel |
-| `/watch_clear` | Remove everyone (button confirmation) |
+| Command | What it does | Who can use it |
+|---|---|---|
+| `/watch_add` | Add a user via the member picker | Manage Server / Admin |
+| `/watch_remove` | Remove a user via the member picker | Manage Server / Admin |
+| `/watch_add_id` | Add by raw Discord ID (works when the picker is awkward) | Manage Server / Admin |
+| `/watch_remove_id` | Remove by raw Discord ID | Manage Server / Admin |
+| `/watch_list` | Show everyone watched + log channel status | Manage Server / Admin |
+| `/watch_status` | System status: count, channel, logging state | Manage Server / Admin |
+| `/watch_info` | Who added a watched user, and when | Manage Server / Admin |
+| `/watch_set_channel` | Set the log channel | Manage Server / Admin |
+| `/watch_clear` | Remove everyone (button confirmation) | Manage Server / Admin |
 
 Every command carries `@extra_help(...)`, so they appear in the bot's
 help system like every other command.
