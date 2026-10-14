@@ -1,6 +1,6 @@
 {
     "557680433245061130": {
-        "rounds": 19,
+        "rounds": 21,
         "users": {
             "287282266261159937": {
                 "majority": 10,
@@ -11,20 +11,6 @@
             }
         },
         "history": [
-            {
-                "food": "Cevapi Sausages",
-                "verdict": "none",
-                "eats": 0,
-                "yeets": 0,
-                "ended_at": 1791639252.8860881
-            },
-            {
-                "food": "Rigatoni with fennel sausage sauce",
-                "verdict": "eat",
-                "eats": 1,
-                "yeets": 0,
-                "ended_at": 1791639327.1641953
-            },
             {
                 "food": "Moroccan Carrot Soup",
                 "verdict": "none",
@@ -80,6 +66,20 @@
                 "eats": 0,
                 "yeets": 0,
                 "ended_at": 1791822024.9176226
+            },
+            {
+                "food": "Salmon noodle soup",
+                "verdict": "none",
+                "eats": 0,
+                "yeets": 0,
+                "ended_at": 1791984640.138707
+            },
+            {
+                "food": "Thai beef stir-fry",
+                "verdict": "none",
+                "eats": 0,
+                "yeets": 0,
+                "ended_at": 1791984700.162135
             }
         ]
     }
