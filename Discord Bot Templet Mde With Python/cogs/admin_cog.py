@@ -9,6 +9,8 @@ import subprocess
 import asyncio
 from config import  GUILD_IDS, admin_required, is_owner, load_json, save_json, autocomplete_commands , extra_help
 
+USERINFO_COOLDOWN = 60
+
 
 class AdminCog(commands.Cog):
     """Admin commands (e.g. clear_user)."""
@@ -82,20 +84,19 @@ class AdminCog(commands.Cog):
 
    
     # User Info Command
-    @discord.slash_command(name = "userinfo", description="View detailed info about a user.",)
-    @extra_help("View information about a user: account details, server profile, XP/level, ban status, and watch-list status. Pick a member, or pass a user ID to look up someone who left or is banned. If no user is specified, it shows your own information.")
+    @discord.slash_command(name = "userinfo", description="View detailed info about a user.")
+    @extra_help("View information about a user: account details, server profile, XP/level, ban status, and watch-list status. Pick a member, or type a user ID, mention, or username (works for users who left or are banned, when given an ID). If no user is specified, it shows your own information.")
     @admin_required()
     async def userinfo(
         self,
         interaction: discord.ApplicationContext,
-        member: discord.Option(discord.Member, "pick a user to see info about them in the discord", default=None), # type: ignore
-        user_id: discord.Option(str, "or enter a user ID (works for users not in the server)", default=None), # type: ignore
+        member: discord.Option(discord.Member, "pick a server member", default=None), # type: ignore
+        user: discord.Option(str, "or type a user ID, mention, or username", default=None), # type: ignore
         ):
         """View information about a user in the server."""
-        COOLDOWN_SECONDS_User_Info = 60
         await interaction.response.defer()
         try:
-            await self._userinfo_body(interaction, member, user_id)
+            await self._userinfo_body(interaction, member, user)
         except Exception as e:
             try:
                 await interaction.followup.send(f"\u274c /userinfo failed: `{e}`")
@@ -103,7 +104,42 @@ class AdminCog(commands.Cog):
                 pass
         return
 
-    async def _userinfo_body(self, interaction, member, user_id):
+    async def _resolve_userinfo_target(self, guild, query):
+        """Turn a user ID, mention, or username into a Member/User.
+
+        Returns (target, is_member). (None, False) when nothing matches.
+        """
+        digits = query.replace("<@", "").replace("<", "").replace("!", "").replace(">", "").strip()
+        if digits.isdigit():
+            uid = int(digits)
+            target = guild.get_member(uid)
+            if target is None:
+                try:
+                    target = await guild.fetch_member(uid)
+                except (discord.NotFound, discord.Forbidden):
+                    target = None
+            if target is None:
+                try:
+                    target = await self.bot.fetch_user(uid)
+                except Exception:
+                    target = None
+            if target is not None:
+                return target, isinstance(target, discord.Member)
+            return None, False
+        # Username search across server members (exact match, then prefix).
+        q = query.lstrip("@").lower()
+        exact = [m for m in guild.members
+                 if m.name.lower() == q or (m.display_name or "").lower() == q]
+        if len(exact) == 1:
+            return exact[0], True
+        if not exact:
+            starts = [m for m in guild.members
+                      if m.name.lower().startswith(q) or (m.display_name or "").lower().startswith(q)]
+            if len(starts) == 1:
+                return starts[0], True
+        return None, False
+
+    async def _userinfo_body(self, interaction, member, user):
         requester_id = interaction.author.id
         guild = interaction.guild
         guild_id = guild.id
@@ -119,46 +155,39 @@ class AdminCog(commands.Cog):
         # Check cooldown
         if requester_id in user_cooldowns:
             elapsed = now - user_cooldowns[requester_id]
-            if elapsed < COOLDOWN_SECONDS_User_Info:
-                remaining = round(COOLDOWN_SECONDS_User_Info - elapsed, 1)
-                await interaction.followup.send(f"⏳ You're on cooldown {interaction.author.mention}! Try again in {remaining} seconds.")
+            if elapsed < USERINFO_COOLDOWN:
+                remaining = round(USERINFO_COOLDOWN - elapsed, 1)
+                await interaction.followup.send(f"\u23f3 You're on cooldown {interaction.author.mention}! Try again in {remaining} seconds.")
                 return
 
         # Set new cooldown
         user_cooldowns[requester_id] = now
 
-        # ---- Resolve the target (member picker or raw ID) ----
+        # ---- Resolve the target ----
+        # The member picker wins if both are given. Otherwise the text field
+        # accepts a user ID, a mention, or a username. Nothing given = yourself.
         target = None
         is_member = False
-        if user_id:
-            uid = user_id.strip().replace("<@", "").replace("<", "").replace("!", "").replace(">", "")
-            if not uid.isdigit():
-                await interaction.followup.send("❌ That doesn't look like a valid user ID.")
+        if member is not None:
+            target = member
+            is_member = True
+        elif user:
+            target, is_member = await self._resolve_userinfo_target(guild, user.strip())
+            if target is None:
+                await interaction.followup.send(
+                    "\u274c I couldn't find that user. Pick a member, or use a user ID, a mention, or an exact username."
+                )
                 return
-            uid = int(uid)
-            target = guild.get_member(uid)
-            if target is None:
-                try:
-                    target = await guild.fetch_member(uid)
-                except (discord.NotFound, discord.Forbidden):
-                    target = None
-            if target is None:
-                try:
-                    target = await self.bot.fetch_user(uid)
-                except Exception:
-                    await interaction.followup.send("❌ I couldn't find that user.")
-                    return
-            is_member = isinstance(target, discord.Member)
         else:
-            target = member or interaction.author
+            target = interaction.author
             is_member = True
 
         # ---- Ban status ----
         ban_status = "No"
         ban_reason = None
         try:
-            ban = await guild.fetch_ban(target.id)
-            ban_status = "🔨 Yes"
+            ban = await guild.fetch_ban(target)
+            ban_status = "\U0001f528 Yes"
             ban_reason = ban.reason
         except discord.NotFound:
             pass
@@ -192,7 +221,7 @@ class AdminCog(commands.Cog):
         color = (target.color if is_member and target.color != discord.Color.default()
                  else discord.Color.blurple())
         info_embed = discord.Embed(
-            title=f"👤 {display}",
+            title=f"\U0001f464 {display}",
             description=f"{target.mention}\n`{target.id}`",
             color=color,
             timestamp=datetime.now(timezone.utc),
