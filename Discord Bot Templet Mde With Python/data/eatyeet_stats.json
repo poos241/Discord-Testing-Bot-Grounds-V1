@@ -1,6 +1,6 @@
 {
     "557680433245061130": {
-        "rounds": 17,
+        "rounds": 19,
         "users": {
             "287282266261159937": {
                 "majority": 10,
@@ -11,20 +11,6 @@
             }
         },
         "history": [
-            {
-                "food": "Cold canned sardines",
-                "verdict": "none",
-                "eats": 0,
-                "yeets": 0,
-                "ended_at": 1791638907.643734
-            },
-            {
-                "food": "Limburger cheese aged in a gym bag",
-                "verdict": "none",
-                "eats": 0,
-                "yeets": 0,
-                "ended_at": 1791638987.499216
-            },
             {
                 "food": "Cevapi Sausages",
                 "verdict": "none",
@@ -80,6 +66,20 @@
                 "eats": 1,
                 "yeets": 0,
                 "ended_at": 1791813815.2651484
+            },
+            {
+                "food": "Chelsea Buns",
+                "verdict": "none",
+                "eats": 0,
+                "yeets": 0,
+                "ended_at": 1791816501.7644844
+            },
+            {
+                "food": "Seri muka kuih",
+                "verdict": "none",
+                "eats": 0,
+                "yeets": 0,
+                "ended_at": 1791822024.9176226
             }
         ]
     }
