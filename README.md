@@ -134,7 +134,7 @@ Discord Bot Templet Mde With Python/
 
 | Command           | What it does                                        | Who can use it |
 |-------------------|-----------------------------------------------------|----------------|
-| `/userinfo`       | User card: account, server profile, XP/level, ban status, watch-list status (accepts a user ID for non-members) | Admins |
+| `/userinfo`       | User card: account, server profile, XP/level, ban status, watch-list status (pick a member, or type an ID, mention, or username) | Admins |
 | `/clear_user`     | Deletes a user's messages in one or all channels    | Admins         |
 | `/add_user_role`  | Gives a role to a user                              | Admins         |
 | `/remove_user_role` | Removes a role from a user                        | Admins         |
