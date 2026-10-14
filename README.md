@@ -152,17 +152,17 @@ channel, timestamps, content, attachments, stickers, and a jump link).
 State lives in `data/watchlist_data.json`. All commands need **Manage
 Server** or **Administrator**.
 
-| Command | What it does |
-|---|---|
-| `/watch_add` | Add a user via the member picker |
-| `/watch_remove` | Remove a user via the member picker |
-| `/watch_add_id` | Add by raw Discord ID |
-| `/watch_remove_id` | Remove by raw Discord ID |
-| `/watch_list` | Show everyone on the watch list |
-| `/watch_status` | System status (count, log channel, logging state) |
-| `/watch_info` | Who added a watched user, and when |
-| `/watch_set_channel` | Set the log channel |
-| `/watch_clear` | Remove everyone (with confirmation) |
+| Command | What it does | Who can use it |
+|---|---|---|
+| `/watch_add` | Add a user via the member picker | Manage Server / Admin |
+| `/watch_remove` | Remove a user via the member picker | Manage Server / Admin |
+| `/watch_add_id` | Add by raw Discord ID | Manage Server / Admin |
+| `/watch_remove_id` | Remove by raw Discord ID | Manage Server / Admin |
+| `/watch_list` | Show everyone on the watch list | Manage Server / Admin |
+| `/watch_status` | System status (count, log channel, logging state) | Manage Server / Admin |
+| `/watch_info` | Who added a watched user, and when | Manage Server / Admin |
+| `/watch_set_channel` | Set the log channel | Manage Server / Admin |
+| `/watch_clear` | Remove everyone (with confirmation) | Manage Server / Admin |
 
 `/userinfo` also shows whether a user is on the watch list.
 
