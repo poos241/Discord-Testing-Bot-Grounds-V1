@@ -63,5 +63,5 @@ embed. `AllowedMentions.none()` on the send keeps watched users'
 `/userinfo` (in `admin_cog.py`) reads the same JSON file to show
 whether a user is on the watch list, alongside their server XP (from
 the level system's `get_levels`) and ban status (via
-`guild.fetch_ban`). It also accepts a raw user ID, so moderators can
-look up users who left or are banned.
+`guild.fetch_ban`). Give it a member pick, or type a user ID, mention,
+or username — an ID also works for users who left or are banned.
