@@ -27,6 +27,7 @@ COGS = [
     "cogs.admin_cog",
     "cogs.fun_cog",
     "cogs.Level_system",
+    "cogs.WatchList",
 ]
 
 for cog in COGS:
