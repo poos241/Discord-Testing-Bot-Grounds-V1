@@ -1,5 +1,6 @@
 # cogs/admin_cog.py
 import time
+from datetime import datetime, timezone
 import discord
 from discord.ext import commands
 import os
@@ -81,23 +82,22 @@ class AdminCog(commands.Cog):
 
    
     # User Info Command
-    @discord.slash_command(name = "userinfo")
-    @extra_help("View information about a user in the server. You can specify a user by selecting them or by providing their ID. If no user is specified, it will show your own information.")
+    @discord.slash_command(name = "userinfo", description="View detailed info about a user.")
+    @extra_help("View information about a user: account details, server profile, XP/level, ban status, and watch-list status. Pick a member, or pass a user ID to look up someone who left or is banned. If no user is specified, it shows your own information.")
     @admin_required()
     async def userinfo(
         self,
         interaction: discord.ApplicationContext,
-        member: discord.Option(discord.Member, "pick a user to see info about them in the discord", default=None) # type: ignore
+        member: discord.Option(discord.Member, "pick a user to see info about them in the discord", default=None), # type: ignore
+        user_id: discord.Option(str, "or enter a user ID (works for users not in the server)", default=None), # type: ignore
         ):
         """View information about a user in the server."""
         COOLDOWN_SECONDS_User_Info = 60
         await interaction.response.defer()
-        user_id = interaction.author.id
-        guild_id = interaction.guild.id
+        requester_id = interaction.author.id
+        guild = interaction.guild
+        guild_id = guild.id
         now = time.time()
-
-        if member is None:
-            member = interaction.author
 
         # Ensure guild key exists
         if guild_id not in self.cooldownUserInfo:
@@ -107,31 +107,132 @@ class AdminCog(commands.Cog):
         user_cooldowns = self.cooldownUserInfo[guild_id]
 
         # Check cooldown
-        if user_id in user_cooldowns:
-            elapsed = now - user_cooldowns[user_id]
+        if requester_id in user_cooldowns:
+            elapsed = now - user_cooldowns[requester_id]
             if elapsed < COOLDOWN_SECONDS_User_Info:
                 remaining = round(COOLDOWN_SECONDS_User_Info - elapsed, 1)
                 await interaction.followup.send(f"⏳ You're on cooldown {interaction.author.mention}! Try again in {remaining} seconds.")
                 return
 
         # Set new cooldown
-        user_cooldowns[user_id] = now
+        user_cooldowns[requester_id] = now
 
-        join_timestamp = int(member.joined_at.timestamp())
-        formatted_date = f"<t:{join_timestamp}:F>"
-        info_embed = discord.Embed(title=f"{member.name} ({member.display_name})`s User Information", description="All information about this user.", color=member.color)
-        roles = ", ".join(r.name for r in member.roles if r.name != "@everyone") or "None"
-        info_embed.set_thumbnail(url=member.avatar)
-        info_embed.add_field(name="Name:", value=member.name, inline=False)
-        info_embed.add_field(name="Nick Name:", value=member.display_name, inline=False)
-        info_embed.add_field(name="Discriminator:", value=member.discriminator, inline=False)
-        info_embed.add_field(name="ID:", value=member.id, inline=False)
-        info_embed.add_field(name="Top Role:", value=member.top_role, inline=False)
-        info_embed.add_field(name="All Roles:", value=roles, inline=False)
-        info_embed.add_field(name="status:", value=member.status, inline=False)
-        info_embed.add_field(name="bot User?", value=member.bot, inline=False)
-        info_embed.add_field(name="creation Date:", value=f"<t:{int(member.created_at.timestamp())}:F>", inline=False)
-        info_embed.add_field(name="join Date:", value=formatted_date, inline=False)
+        # ---- Resolve the target (member picker or raw ID) ----
+        target = None
+        is_member = False
+        if user_id:
+            uid = user_id.strip().replace("<@", "").replace("<", "").replace("!", "").replace(">", "")
+            if not uid.isdigit():
+                await interaction.followup.send("❌ That doesn't look like a valid user ID.")
+                return
+            uid = int(uid)
+            target = guild.get_member(uid)
+            if target is None:
+                try:
+                    target = await guild.fetch_member(uid)
+                except (discord.NotFound, discord.Forbidden):
+                    target = None
+            if target is None:
+                try:
+                    target = await self.bot.fetch_user(uid)
+                except Exception:
+                    await interaction.followup.send("❌ I couldn't find that user.")
+                    return
+            is_member = isinstance(target, discord.Member)
+        else:
+            target = member or interaction.author
+            is_member = True
+
+        # ---- Ban status ----
+        ban_status = "No"
+        ban_reason = None
+        try:
+            ban = await guild.fetch_ban(target.id)
+            ban_status = "🔨 Yes"
+            ban_reason = ban.reason
+        except discord.NotFound:
+            pass
+        except discord.Forbidden:
+            ban_status = "Unknown (missing Ban Members permission)"
+
+        # ---- Server XP ----
+        xp_line = "No XP recorded yet"
+        try:
+            from data.DB.Storage.storage import get_levels
+            db = await get_levels(str(guild_id))
+            udata = db.get(str(target.id))
+            if udata:
+                lvl = udata.get("level", 1)
+                xp = udata.get("xp", 0)
+                need = lvl * 100 - xp
+                xp_line = f"Level **{lvl}** • **{xp}** XP\n{need} XP to level {lvl + 1}"
+        except Exception:
+            xp_line = "Couldn't load XP data"
+
+        # ---- Watch-list status ----
+        watched = False
+        try:
+            wl_data = load_json("watchlist_data.json") or {}
+            watched = str(target.id) in wl_data.get(str(guild_id), {}).get("users", {})
+        except Exception:
+            pass
+
+        # ---- Build the embed ----
+        display = target.display_name if is_member else target.name
+        color = (target.color if is_member and target.color != discord.Color.default()
+                 else discord.Color.blurple())
+        info_embed = discord.Embed(
+            title=f"👤 {display}",
+            description=f"{target.mention}\n`{target.id}`",
+            color=color,
+            timestamp=datetime.now(timezone.utc),
+        )
+        info_embed.set_thumbnail(url=target.display_avatar.url)
+
+        created_ts = int(target.created_at.timestamp())
+        info_embed.add_field(
+            name="Account",
+            value=f"**Username:** `{target.name}`\n**Created:** <t:{created_ts}:F>",
+            inline=True,
+        )
+
+        if is_member:
+            joined = (f"<t:{int(target.joined_at.timestamp())}:F>"
+                      if target.joined_at else "Unknown")
+            info_embed.add_field(
+                name="Server",
+                value=(f"**Nickname:** `{target.display_name}`\n"
+                       f"**Joined:** {joined}\n"
+                       f"**Top role:** {target.top_role.mention}"),
+                inline=True,
+            )
+            roles = [r.mention for r in target.roles if r.name != "@everyone"]
+            roles_value = ", ".join(roles) if roles else "None"
+            if len(roles_value) > 1024:
+                roles_value = roles_value[:1000] + "…"
+            info_embed.add_field(
+                name=f"Roles ({len(roles)})",
+                value=roles_value,
+                inline=False,
+            )
+            status = str(target.status).title() if getattr(target, "status", None) else "Unknown"
+            info_embed.add_field(
+                name="Presence",
+                value=f"**Status:** {status}\n**Bot:** {'Yes' if target.bot else 'No'}",
+                inline=True,
+            )
+        else:
+            info_embed.add_field(name="Server", value="*Not in this server*", inline=True)
+
+        info_embed.add_field(name="⭐ Server XP", value=xp_line, inline=True)
+
+        mod_value = f"**Banned:** {ban_status}"
+        if ban_reason:
+            mod_value += f"\n**Reason:** {ban_reason}"
+        mod_value += f"\n**Watch list:** {'👁️ Yes' if watched else 'No'}"
+        info_embed.add_field(name="🛡️ Moderation", value=mod_value, inline=False)
+
+        info_embed.set_footer(text=f"Requested by {interaction.author.display_name}")
         await interaction.followup.send(embed=info_embed)
 
 
