@@ -1,6 +1,7 @@
 # cogs/admin_cog.py
 import time
-from datetime import datetime, timezone
+import re
+from datetime import datetime, timezone, timedelta
 import discord
 from discord.ext import commands
 import os
@@ -10,6 +11,251 @@ import asyncio
 from config import  GUILD_IDS, admin_required, is_owner, load_json, save_json, autocomplete_commands , extra_help
 
 USERINFO_COOLDOWN = 60
+
+
+# ---------------------------------------------------------------------------
+# /userinfo mini mod panel: Timeout / Kick / Ban buttons (+ test mode)
+# ---------------------------------------------------------------------------
+
+def parse_mod_duration(text):
+    """Parse '10m', '2h', '1d', '30s', '1w' (bare number = minutes) -> timedelta.
+
+    Returns None when the text is invalid or outside Discord's 28-day cap.
+    """
+    m = re.match(r"^\s*(\d+)\s*([smhdwSMHDW]?)\s*$", text or "")
+    if not m:
+        return None
+    amount = int(m.group(1))
+    unit = (m.group(2) or "m").lower()
+    seconds = amount * {"s": 1, "m": 60, "h": 3600, "d": 86400, "w": 604800}[unit]
+    delta = timedelta(seconds=seconds)
+    if delta <= timedelta(0) or delta > timedelta(days=28):
+        return None
+    return delta
+
+
+class TimeoutModal(discord.ui.Modal):
+    def __init__(self, panel, member):
+        super().__init__(title=f"Timeout {member.display_name}"[:45])
+        self.panel = panel
+        self.member_id = member.id
+        self.add_item(discord.ui.InputText(
+            label="Duration",
+            placeholder="10m, 2h, 1d, 1w (max 28d)",
+            max_length=12,
+        ))
+        self.add_item(discord.ui.InputText(
+            label="Reason",
+            style=discord.InputTextStyle.paragraph,
+            placeholder="Why are they being timed out?",
+            max_length=400,
+        ))
+
+    async def callback(self, interaction: discord.Interaction):
+        raw = (self.children[0].value or "").strip()
+        duration = parse_mod_duration(raw)
+        reason = (self.children[1].value or "").strip() or "No reason given"
+        if duration is None:
+            await interaction.response.send_message(
+                "\u274c Couldn't parse that duration. Try e.g. `10m`, `2h`, `1d`.",
+                ephemeral=True,
+            )
+            return
+        member = self.panel.guild.get_member(self.member_id)
+        if member is None:
+            await interaction.response.send_message(
+                "\u274c That user isn't in the server anymore.", ephemeral=True
+            )
+            return
+        audit = f"{interaction.user} ({interaction.user.id}): {reason}"
+        if self.panel.test_mode:
+            await interaction.response.send_message(
+                f"\U0001f9ea TEST \u2014 would timeout {member.mention} for `{raw}`\n**Reason:** {reason}",
+                ephemeral=True,
+            )
+            return
+        try:
+            await member.timeout_for(duration, reason=audit)
+        except discord.Forbidden:
+            await interaction.response.send_message(
+                "\u274c I can't time out that user \u2014 is my role above theirs?",
+                ephemeral=True,
+            )
+            return
+        except Exception as e:
+            await interaction.response.send_message(f"\u274c Timeout failed: `{e}`", ephemeral=True)
+            return
+        await interaction.response.send_message(
+            f"\u23f1\ufe0f Timed out {member.mention} for `{raw}`\n**Reason:** {reason}",
+            ephemeral=True,
+        )
+
+
+class KickModal(discord.ui.Modal):
+    def __init__(self, panel, member):
+        super().__init__(title=f"Kick {member.display_name}"[:45])
+        self.panel = panel
+        self.member_id = member.id
+        self.add_item(discord.ui.InputText(
+            label="Reason",
+            style=discord.InputTextStyle.paragraph,
+            placeholder="Why are they being kicked?",
+            max_length=400,
+        ))
+
+    async def callback(self, interaction: discord.Interaction):
+        reason = (self.children[0].value or "").strip() or "No reason given"
+        member = self.panel.guild.get_member(self.member_id)
+        if member is None:
+            await interaction.response.send_message(
+                "\u274c That user isn't in the server anymore.", ephemeral=True
+            )
+            return
+        audit = f"{interaction.user} ({interaction.user.id}): {reason}"
+        if self.panel.test_mode:
+            await interaction.response.send_message(
+                f"\U0001f9ea TEST \u2014 would kick {member.mention}\n**Reason:** {reason}",
+                ephemeral=True,
+            )
+            return
+        try:
+            await member.kick(reason=audit)
+        except discord.Forbidden:
+            await interaction.response.send_message(
+                "\u274c I can't kick that user \u2014 is my role above theirs?",
+                ephemeral=True,
+            )
+            return
+        except Exception as e:
+            await interaction.response.send_message(f"\u274c Kick failed: `{e}`", ephemeral=True)
+            return
+        await interaction.response.send_message(
+            f"\U0001f462 Kicked {member.mention}\n**Reason:** {reason}",
+            ephemeral=True,
+        )
+
+
+class BanModal(discord.ui.Modal):
+    def __init__(self, panel):
+        target = panel.target
+        name = target.display_name if isinstance(target, discord.Member) else target.name
+        super().__init__(title=f"Ban {name}"[:45])
+        self.panel = panel
+        self.add_item(discord.ui.InputText(
+            label="Reason",
+            style=discord.InputTextStyle.paragraph,
+            placeholder="Why are they being banned?",
+            max_length=400,
+        ))
+        self.add_item(discord.ui.InputText(
+            label="Delete recent messages (0-7 days)",
+            placeholder="0",
+            max_length=1,
+            required=False,
+        ))
+
+    async def callback(self, interaction: discord.Interaction):
+        reason = (self.children[0].value or "").strip() or "No reason given"
+        days_raw = (self.children[1].value or "0").strip()
+        days = int(days_raw) if days_raw.isdigit() else -1
+        if days < 0 or days > 7:
+            await interaction.response.send_message(
+                "\u274c Message-delete days must be 0\u20137.", ephemeral=True
+            )
+            return
+        audit = f"{interaction.user} ({interaction.user.id}): {reason}"
+        mention = self.panel.target.mention
+        if self.panel.test_mode:
+            await interaction.response.send_message(
+                f"\U0001f9ea TEST \u2014 would ban {mention} (delete {days}d of messages)\n**Reason:** {reason}",
+                ephemeral=True,
+            )
+            return
+        try:
+            await self.panel.guild.ban(
+                self.panel.target, reason=audit, delete_message_days=days
+            )
+        except discord.Forbidden:
+            await interaction.response.send_message(
+                "\u274c I can't ban that user \u2014 is my role above theirs?",
+                ephemeral=True,
+            )
+            return
+        except Exception as e:
+            await interaction.response.send_message(f"\u274c Ban failed: `{e}`", ephemeral=True)
+            return
+        await interaction.response.send_message(
+            f"\U0001f528 Banned {mention}\n**Reason:** {reason}",
+            ephemeral=True,
+        )
+
+
+class UserinfoModView(discord.ui.View):
+    """Mini admin panel attached to the /userinfo card."""
+
+    def __init__(self, guild, target, is_member):
+        super().__init__(timeout=600)
+        self.guild = guild
+        self.target = target
+        self.target_id = target.id
+        self.test_mode = False
+        if not is_member:
+            # Timeout/kick only make sense for someone in the server.
+            self.timeout_button.disabled = True
+            self.kick_button.disabled = True
+
+    async def _check_admin(self, interaction: discord.Interaction):
+        perms = interaction.user.guild_permissions
+        if perms.manage_guild or perms.administrator:
+            return True
+        await interaction.response.send_message(
+            "\u274c You need **Manage Server** or **Administrator** to use this panel.",
+            ephemeral=True,
+        )
+        return False
+
+    @discord.ui.button(label="Timeout", emoji="\u23f1\ufe0f", style=discord.ButtonStyle.primary)
+    async def timeout_button(self, button: discord.ui.Button, interaction: discord.Interaction):
+        if not await self._check_admin(interaction):
+            return
+        member = self.guild.get_member(self.target_id)
+        if member is None:
+            await interaction.response.send_message(
+                "\u274c That user isn't in the server anymore.", ephemeral=True
+            )
+            return
+        await interaction.response.send_modal(TimeoutModal(self, member))
+
+    @discord.ui.button(label="Kick", emoji="\U0001f462", style=discord.ButtonStyle.danger)
+    async def kick_button(self, button: discord.ui.Button, interaction: discord.Interaction):
+        if not await self._check_admin(interaction):
+            return
+        member = self.guild.get_member(self.target_id)
+        if member is None:
+            await interaction.response.send_message(
+                "\u274c That user isn't in the server anymore.", ephemeral=True
+            )
+            return
+        await interaction.response.send_modal(KickModal(self, member))
+
+    @discord.ui.button(label="Ban", emoji="\U0001f528", style=discord.ButtonStyle.danger)
+    async def ban_button(self, button: discord.ui.Button, interaction: discord.Interaction):
+        if not await self._check_admin(interaction):
+            return
+        await interaction.response.send_modal(BanModal(self))
+
+    @discord.ui.button(label="Test mode: OFF", emoji="\U0001f9ea", style=discord.ButtonStyle.secondary)
+    async def test_button(self, button: discord.ui.Button, interaction: discord.Interaction):
+        if not await self._check_admin(interaction):
+            return
+        self.test_mode = not self.test_mode
+        button.label = f"Test mode: {'ON' if self.test_mode else 'OFF'}"
+        await interaction.response.edit_message(view=self)
+        if self.test_mode:
+            await interaction.followup.send(
+                "\U0001f9ea Test mode **ON** \u2014 Timeout/Kick/Ban will only simulate their actions.",
+                ephemeral=True,
+            )
 
 
 class AdminCog(commands.Cog):
@@ -85,18 +331,19 @@ class AdminCog(commands.Cog):
    
     # User Info Command
     @discord.slash_command(name = "userinfo", description="View detailed info about a user.")
-    @extra_help("View information about a user: account details, server profile, XP/level, ban status, and watch-list status. Pick a member, or type a user ID, mention, or username (works for users who left or are banned, when given an ID). If no user is specified, it shows your own information.")
+    @extra_help("Mini admin panel: user card (account, server profile, XP/level, ban status, watch-list status) with Timeout/Kick/Ban buttons, a test mode that simulates actions, and a visibility toggle. Pick a member, or type a user ID, mention, or username. If no user is specified, it shows your own information.")
     @admin_required()
     async def userinfo(
         self,
         interaction: discord.ApplicationContext,
         member: discord.Option(discord.Member, "pick a server member", default=None), # type: ignore
         user: discord.Option(str, "or type a user ID, mention, or username", default=None), # type: ignore
+        visible: discord.Option(bool, "show this card to everyone in the channel", default=False), # type: ignore
         ):
         """View information about a user in the server."""
         await interaction.response.defer()
         try:
-            await self._userinfo_body(interaction, member, user)
+            await self._userinfo_body(interaction, member, user, visible)
         except Exception as e:
             try:
                 await interaction.followup.send(f"\u274c /userinfo failed: `{e}`")
@@ -139,7 +386,7 @@ class AdminCog(commands.Cog):
                 return starts[0], True
         return None, False
 
-    async def _userinfo_body(self, interaction, member, user):
+    async def _userinfo_body(self, interaction, member, user, visible):
         requester_id = interaction.author.id
         guild = interaction.guild
         guild_id = guild.id
@@ -272,7 +519,8 @@ class AdminCog(commands.Cog):
         info_embed.add_field(name="🛡️ Moderation", value=mod_value, inline=False)
 
         info_embed.set_footer(text=f"Requested by {interaction.author.display_name}")
-        await interaction.followup.send(embed=info_embed)
+        view = UserinfoModView(guild, target, is_member)
+        await interaction.followup.send(embed=info_embed, view=view, ephemeral=not visible)
 
 
     @discord.slash_command(name='remove_user_role', description="use this to remove a users role")
