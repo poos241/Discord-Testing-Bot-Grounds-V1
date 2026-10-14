@@ -15,7 +15,7 @@ const sidebars = {
     {
       type: 'category',
       label: 'Systems',
-      items: ['level-system', 'eat-it-or-yeet-it', 'adding-a-food-source'],
+      items: ['level-system', 'eat-it-or-yeet-it', 'adding-a-food-source', 'watch-list'],
     },
     {
       type: 'category',
