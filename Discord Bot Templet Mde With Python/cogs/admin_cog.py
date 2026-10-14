@@ -82,7 +82,7 @@ class AdminCog(commands.Cog):
 
    
     # User Info Command
-    @discord.slash_command(name = "userinfo", description="View detailed info about a user.", guild_ids=GUILD_IDS)
+    @discord.slash_command(name = "userinfo", description="View detailed info about a user.")
     @extra_help("View information about a user: account details, server profile, XP/level, ban status, and watch-list status. Pick a member, or pass a user ID to look up someone who left or is banned. If no user is specified, it shows your own information.")
     @admin_required()
     async def userinfo(
@@ -94,6 +94,16 @@ class AdminCog(commands.Cog):
         """View information about a user in the server."""
         COOLDOWN_SECONDS_User_Info = 60
         await interaction.response.defer()
+        try:
+            await self._userinfo_body(interaction, member, user_id)
+        except Exception as e:
+            try:
+                await interaction.followup.send(f"\u274c /userinfo failed: `{e}`")
+            except Exception:
+                pass
+        return
+
+    async def _userinfo_body(self, interaction, member, user_id):
         requester_id = interaction.author.id
         guild = interaction.guild
         guild_id = guild.id
