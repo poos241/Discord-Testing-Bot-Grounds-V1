@@ -17,7 +17,7 @@ const sections = [
   },
   {
     title: 'Systems',
-    desc: 'How the level system and Eat It or Yeet It work internally, plus adding food sources.',
+    desc: 'How the level system, Eat It or Yeet It, and Watch List work internally, plus adding food sources.',
     to: '/docs/level-system',
   },
   {
