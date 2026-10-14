@@ -65,3 +65,11 @@ whether a user is on the watch list, alongside their server XP (from
 the level system's `get_levels`) and ban status (via
 `guild.fetch_ban`). Give it a member pick, or type a user ID, mention,
 or username — an ID also works for users who left or are banned.
+
+The card doubles as a mini mod panel: **Timeout** (duration like
+`10m`/`2h`/`1d`), **Kick**, and **Ban** (with 0–7 days of message
+deletion) buttons, each opening a form that asks for a reason; a
+**Test mode** toggle simulates the actions without applying them; and
+a `visible` option posts the card publicly or keeps it private. Only
+members with Manage Server / Administrator can press the buttons
+(Timeout/Kick are disabled when the target isn't in the server).
