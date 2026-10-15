@@ -68,9 +68,9 @@ or username — an ID also works for users who left or are banned.
 
 The card doubles as a mini mod panel: **Timeout** (duration like
 `10m`/`2h`/`1d`), **Kick**, **Ban** (with 0–7 days of message
-deletion), and **Clear** (delete the user's messages in one channel —
-by mention, ID, or name — or all channels; pick a count or `all`)
-buttons, each opening a form that asks for a reason. A `test_mode`
+deletion), and **Clear** buttons, each opening a form that asks for a reason —
+Clear first shows a channel picker (plus an All-channels button),
+then asks how many messages to delete or `all`. A `test_mode`
 true/false option on the command simulates the actions without
 applying them (the card footer shows when it's on), and a `private`
 option (default on) keeps the card to yourself — turn it off to post
