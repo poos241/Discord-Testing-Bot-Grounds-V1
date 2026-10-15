@@ -1,7 +1,14 @@
 {
     "557680433245061130": {
         "765094342279954509": {
-            "warns": [],
+            "warns": [
+                {
+                    "reason": "this is just a test to see if this works.",
+                    "mod_id": 287282266261159937,
+                    "mod_name": "poos241 (Purekush)",
+                    "ts": 1792107578.4310265
+                }
+            ],
             "notes": [
                 {
                     "text": "the user was acting bad in gen chat and had to give them a warning about it lets keep a eye on this user.",
