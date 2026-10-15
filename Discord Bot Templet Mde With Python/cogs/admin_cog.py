@@ -330,7 +330,7 @@ class AdminCog(commands.Cog):
 
    
     # User Info Command
-    @discord.slash_command(name = "userinfo", description="View detailed info about a user.")
+    @discord.slash_command(name = "userinfo", description="View detailed info about a user.", guild_ids=GUILD_IDS)
     @extra_help("Mini admin panel: user card (account, server profile, XP/level, ban status, watch-list status) with Timeout/Kick/Ban buttons, a test mode that simulates actions, and a visibility toggle. Pick a member, or type a user ID, mention, or username. If no user is specified, it shows your own information.")
     @admin_required()
     async def userinfo(
