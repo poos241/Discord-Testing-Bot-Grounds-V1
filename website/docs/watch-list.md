@@ -75,7 +75,13 @@ and Timeout flips to **Remove timeout** when one is already active.
 Clear first shows a channel picker (plus an All-channels button),
 then asks how many messages to delete or `all`. Notes keeps a
 numbered per-user mod-notes list you can add to and remove from;
-warns are counted on the card (stored in `data/mod_data.json`). A `test_mode`
+warns are counted on the card (stored in `data/mod_data.json`). The
+**Watch** button adds the user to the watch list (asking for an
+optional reason) or removes them if they're already on it — the
+button flips to **Unwatch** when they're watched, and the card shows
+who added them, when, and the reason. **Add XP** / **Remove XP**
+buttons let you correct someone's XP by a set amount (adding runs
+through the normal level-up path with role rewards). A `test_mode`
 true/false option on the command simulates the actions without
 applying them (the card footer shows when it's on), and a `private`
 option (default on) keeps the card to yourself — turn it off to post
