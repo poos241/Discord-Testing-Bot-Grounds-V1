@@ -134,7 +134,7 @@ Discord Bot Templet Mde With Python/
 
 | Command           | What it does                                        | Who can use it |
 |-------------------|-----------------------------------------------------|----------------|
-| `/userinfo`       | Mini mod panel: user card (account, server profile, XP/level, ban status, watch-list status) with Timeout/Kick/Ban buttons, test mode, and public/private visibility toggle | Admins |
+| `/userinfo`       | Mini mod panel: user card (account, server profile, XP/level, ban status, watch-list status) with Timeout/Kick/Ban/Clear buttons, `test_mode` simulation toggle, and `private` visibility toggle | Admins |
 | `/clear_user`     | Deletes a user's messages in one or all channels    | Admins         |
 | `/add_user_role`  | Gives a role to a user                              | Admins         |
 | `/remove_user_role` | Removes a role from a user                        | Admins         |
@@ -164,7 +164,7 @@ Server** or **Administrator**.
 | `/watch_set_channel` | Set the log channel | Manage Server / Admin |
 | `/watch_clear` | Remove everyone (with confirmation) | Manage Server / Admin |
 
-`/userinfo` also shows whether a user is on the watch list. Its card carries a mini mod panel: **Timeout** (duration like `10m`/`2h`/`1d`), **Kick**, and **Ban** (with message-delete days) buttons, each asking for a reason; a **Test mode** toggle simulates the actions without applying them; and a `visible` option posts the card publicly or keeps it private to you.
+`/userinfo` also shows whether a user is on the watch list. Its card carries a mini mod panel: **Timeout** (duration like `10m`/`2h`/`1d`), **Kick**, **Ban** (with message-delete days), and **Clear** (delete the user's messages in one channel or all, pick a count or `all`) buttons, each asking for a reason; a `test_mode` true/false option simulates the actions without applying them; and a `private` option (default on) keeps the card to yourself — turn it off to post publicly.
 
 ## Built-in commands (fun cog) — 🍽️ Eat It or Yeet It
 
