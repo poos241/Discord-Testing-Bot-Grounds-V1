@@ -74,6 +74,10 @@ class TimeoutModal(discord.ui.Modal):
                 ephemeral=True,
             )
             return
+        dm_ok = await _dm_target(
+            member,
+            f"\u23f1\ufe0f You've been timed out in **{self.panel.guild.name}** for `{raw}`\n**Reason:** {reason}",
+        )
         try:
             await member.timeout_for(duration, reason=audit)
         except discord.Forbidden:
@@ -85,8 +89,9 @@ class TimeoutModal(discord.ui.Modal):
         except Exception as e:
             await interaction.response.send_message(f"\u274c Timeout failed: `{e}`", ephemeral=True)
             return
+        dm_note = "\U0001f4e8 DM sent" if dm_ok else "\U0001f4ea Couldn't DM them (DMs closed?)"
         await interaction.response.send_message(
-            f"\u23f1\ufe0f Timed out {member.mention} for `{raw}`\n**Reason:** {reason}",
+            f"\u23f1\ufe0f Timed out {member.mention} for `{raw}`\n**Reason:** {reason}\n{dm_note}",
             ephemeral=True,
         )
 
@@ -118,6 +123,10 @@ class KickModal(discord.ui.Modal):
                 ephemeral=True,
             )
             return
+        dm_ok = await _dm_target(
+            member,
+            f"\U0001f462 You've been kicked from **{self.panel.guild.name}**\n**Reason:** {reason}",
+        )
         try:
             await member.kick(reason=audit)
         except discord.Forbidden:
@@ -129,8 +138,9 @@ class KickModal(discord.ui.Modal):
         except Exception as e:
             await interaction.response.send_message(f"\u274c Kick failed: `{e}`", ephemeral=True)
             return
+        dm_note = "\U0001f4e8 DM sent" if dm_ok else "\U0001f4ea Couldn't DM them (DMs closed?)"
         await interaction.response.send_message(
-            f"\U0001f462 Kicked {member.mention}\n**Reason:** {reason}",
+            f"\U0001f462 Kicked {member.mention}\n**Reason:** {reason}\n{dm_note}",
             ephemeral=True,
         )
 
@@ -171,6 +181,10 @@ class BanModal(discord.ui.Modal):
                 ephemeral=True,
             )
             return
+        dm_ok = await _dm_target(
+            self.panel.target,
+            f"\U0001f528 You've been banned from **{self.panel.guild.name}**\n**Reason:** {reason}",
+        )
         try:
             await self.panel.guild.ban(
                 self.panel.target, reason=audit, delete_message_days=days
@@ -184,8 +198,9 @@ class BanModal(discord.ui.Modal):
         except Exception as e:
             await interaction.response.send_message(f"\u274c Ban failed: `{e}`", ephemeral=True)
             return
+        dm_note = "\U0001f4e8 DM sent" if dm_ok else "\U0001f4ea Couldn't DM them (DMs closed?)"
         await interaction.response.send_message(
-            f"\U0001f528 Banned {mention}\n**Reason:** {reason}",
+            f"\U0001f528 Banned {mention}\n**Reason:** {reason}\n{dm_note}",
             ephemeral=True,
         )
 
@@ -311,19 +326,201 @@ class ClearPickView(discord.ui.View):
         await interaction.response.send_modal(ClearAmountModal(self.panel, None))
 
 
+MOD_DATA_FILE = "mod_data.json"
+
+
+def _mod_record(guild_id, user_id):
+    """Load mod_data.json and return (full_data, user_record)."""
+    data = load_json(MOD_DATA_FILE) or {}
+    grec = data.setdefault(str(guild_id), {})
+    urec = grec.setdefault(str(user_id), {"warns": [], "notes": []})
+    urec.setdefault("warns", [])
+    urec.setdefault("notes", [])
+    return data, urec
+
+
+def _save_mod_data(data):
+    save_json(MOD_DATA_FILE, data)
+
+
+async def _dm_target(target, text):
+    """Try to DM someone. Returns True on success, False when DMs are closed."""
+    try:
+        await target.send(text)
+        return True
+    except Exception:
+        return False
+
+
+class WarnModal(discord.ui.Modal):
+    def __init__(self, panel):
+        target = panel.target
+        name = target.display_name if isinstance(target, discord.Member) else target.name
+        super().__init__(title=f"Warn {name}"[:45])
+        self.panel = panel
+        self.add_item(discord.ui.InputText(
+            label="Reason",
+            style=discord.InputTextStyle.paragraph,
+            placeholder="What did they do?",
+            max_length=400,
+        ))
+
+    async def callback(self, interaction: discord.Interaction):
+        reason = (self.children[0].value or "").strip() or "No reason given"
+        guild = self.panel.guild
+        target = self.panel.target
+        mention = target.mention
+        if self.panel.test_mode:
+            await interaction.response.send_message(
+                f"\U0001f9ea TEST \u2014 would warn {mention}\n**Reason:** {reason}",
+                ephemeral=True,
+            )
+            return
+        dm_ok = await _dm_target(
+            target,
+            f"\u26a0\ufe0f You've been warned in **{guild.name}**\n**Reason:** {reason}",
+        )
+        data, urec = _mod_record(guild.id, target.id)
+        urec["warns"].append({
+            "reason": reason,
+            "mod_id": interaction.user.id,
+            "mod_name": str(interaction.user),
+            "ts": time.time(),
+        })
+        _save_mod_data(data)
+        n = len(urec["warns"])
+        dm_note = "\U0001f4e8 DM sent" if dm_ok else "\U0001f4ea Couldn't DM them (DMs closed?)"
+        await interaction.response.send_message(
+            f"\u26a0\ufe0f Warned {mention} (warn #{n})\n**Reason:** {reason}\n{dm_note}",
+            ephemeral=True,
+        )
+
+
+class NoteAddModal(discord.ui.Modal):
+    def __init__(self, notes_view):
+        super().__init__(title="Add mod note")
+        self.notes_view = notes_view
+        self.add_item(discord.ui.InputText(
+            label="Note",
+            style=discord.InputTextStyle.paragraph,
+            placeholder="Only mods will see this\u2026",
+            max_length=500,
+        ))
+
+    async def callback(self, interaction: discord.Interaction):
+        text = (self.children[0].value or "").strip()
+        if not text:
+            await interaction.response.send_message("\u274c Note can't be empty.", ephemeral=True)
+            return
+        data, urec = _mod_record(self.notes_view.guild_id, self.notes_view.target_id)
+        urec["notes"].append({
+            "text": text,
+            "mod_id": interaction.user.id,
+            "mod_name": str(interaction.user),
+            "ts": time.time(),
+        })
+        _save_mod_data(data)
+        await self.notes_view.refresh()
+        await interaction.response.send_message("\U0001f4dd Note added.", ephemeral=True)
+
+
+class NoteRemoveModal(discord.ui.Modal):
+    def __init__(self, notes_view, count):
+        super().__init__(title="Remove mod note")
+        self.notes_view = notes_view
+        self.add_item(discord.ui.InputText(
+            label=f"Note number to remove (1-{count})",
+            placeholder="e.g. 2",
+            max_length=4,
+        ))
+
+    async def callback(self, interaction: discord.Interaction):
+        raw = (self.children[0].value or "").strip()
+        data, urec = _mod_record(self.notes_view.guild_id, self.notes_view.target_id)
+        notes = urec["notes"]
+        if not raw.isdigit() or not (1 <= int(raw) <= len(notes)):
+            await interaction.response.send_message(
+                f"\u274c Pick a number between 1 and {len(notes)}.", ephemeral=True
+            )
+            return
+        removed = notes.pop(int(raw) - 1)
+        _save_mod_data(data)
+        await self.notes_view.refresh()
+        await interaction.response.send_message(
+            f"\U0001f5d1\ufe0f Removed note: \"{removed['text'][:80]}\"",
+            ephemeral=True,
+        )
+
+
+class NotesView(discord.ui.View):
+    """View a user's mod notes; add or remove them."""
+
+    def __init__(self, guild, target):
+        super().__init__(timeout=300)
+        self.guild_id = guild.id
+        self.target_id = target.id
+        self.target_mention = target.mention
+        self.message = None
+
+    def _notes(self):
+        data = load_json(MOD_DATA_FILE) or {}
+        return data.get(str(self.guild_id), {}).get(str(self.target_id), {}).get("notes", [])
+
+    def content(self):
+        notes = self._notes()
+        if not notes:
+            body = "_No notes yet._"
+        else:
+            lines = []
+            for i, n in enumerate(notes, 1):
+                ts = datetime.fromtimestamp(n.get("ts", 0), tz=timezone.utc).strftime("%Y-%m-%d")
+                lines.append(f"**{i}.** {n.get('text', '')}\n\u2014 {n.get('mod_name', '?')} \u2022 {ts}")
+            body = "\n".join(lines)
+        return f"\U0001f4dd Notes for {self.target_mention}:\n{body}"
+
+    async def refresh(self):
+        if self.message is None:
+            return
+        try:
+            await self.message.edit(content=self.content(), view=self)
+        except Exception:
+            pass
+
+    @discord.ui.button(label="Add note", emoji="\u2795", style=discord.ButtonStyle.primary)
+    async def add_button(self, button: discord.ui.Button, interaction: discord.Interaction):
+        await interaction.response.send_modal(NoteAddModal(self))
+
+    @discord.ui.button(label="Remove note", emoji="\U0001f5d1\ufe0f", style=discord.ButtonStyle.danger)
+    async def remove_button(self, button: discord.ui.Button, interaction: discord.Interaction):
+        notes = self._notes()
+        if not notes:
+            await interaction.response.send_message("\u274c There are no notes to remove.", ephemeral=True)
+            return
+        await interaction.response.send_modal(NoteRemoveModal(self, len(notes)))
+
+
 class UserinfoModView(discord.ui.View):
     """Mini admin panel attached to the /userinfo card."""
 
-    def __init__(self, guild, target, is_member, test_mode=False):
+    def __init__(self, guild, target, is_member, test_mode=False, is_banned=False, is_timed_out=False):
         super().__init__(timeout=1800)
         self.guild = guild
         self.target = target
         self.target_id = target.id
         self.test_mode = test_mode
+        self.is_banned = is_banned
+        self.is_timed_out = is_timed_out
         if not is_member:
             # Timeout/kick only make sense for someone in the server.
             self.timeout_button.disabled = True
             self.kick_button.disabled = True
+        if is_banned:
+            self.ban_button.label = "Unban"
+            self.ban_button.emoji = "\U0001f513"
+            self.ban_button.style = discord.ButtonStyle.success
+        if is_timed_out:
+            self.timeout_button.label = "Remove timeout"
+            self.timeout_button.style = discord.ButtonStyle.success
 
     async def _check_admin(self, interaction: discord.Interaction):
         perms = interaction.user.guild_permissions
@@ -335,7 +532,13 @@ class UserinfoModView(discord.ui.View):
         )
         return False
 
-    @discord.ui.button(label="Timeout", emoji="\u23f1\ufe0f", style=discord.ButtonStyle.primary)
+    @discord.ui.button(label="Warn", emoji="\u26a0\ufe0f", style=discord.ButtonStyle.secondary, row=0)
+    async def warn_button(self, button: discord.ui.Button, interaction: discord.Interaction):
+        if not await self._check_admin(interaction):
+            return
+        await interaction.response.send_modal(WarnModal(self))
+
+    @discord.ui.button(label="Timeout", emoji="\u23f1\ufe0f", style=discord.ButtonStyle.primary, row=0)
     async def timeout_button(self, button: discord.ui.Button, interaction: discord.Interaction):
         if not await self._check_admin(interaction):
             return
@@ -345,9 +548,36 @@ class UserinfoModView(discord.ui.View):
                 "\u274c That user isn't in the server anymore.", ephemeral=True
             )
             return
+        if self.is_timed_out:
+            if self.test_mode:
+                await interaction.response.send_message(
+                    f"\U0001f9ea TEST \u2014 would remove timeout from {member.mention}",
+                    ephemeral=True,
+                )
+                return
+            try:
+                await member.remove_timeout(
+                    reason=f"{interaction.user} ({interaction.user.id}): timeout removed via panel"
+                )
+            except discord.Forbidden:
+                await interaction.response.send_message(
+                    "\u274c I can't do that \u2014 is my role above theirs?", ephemeral=True
+                )
+                return
+            except Exception as e:
+                await interaction.response.send_message(f"\u274c Failed: `{e}`", ephemeral=True)
+                return
+            self.is_timed_out = False
+            button.label = "Timeout"
+            button.style = discord.ButtonStyle.primary
+            await interaction.response.edit_message(view=self)
+            await interaction.followup.send(
+                f"\u23f1\ufe0f Removed timeout from {member.mention}", ephemeral=True
+            )
+            return
         await interaction.response.send_modal(TimeoutModal(self, member))
 
-    @discord.ui.button(label="Kick", emoji="\U0001f462", style=discord.ButtonStyle.danger)
+    @discord.ui.button(label="Kick", emoji="\U0001f462", style=discord.ButtonStyle.danger, row=0)
     async def kick_button(self, button: discord.ui.Button, interaction: discord.Interaction):
         if not await self._check_admin(interaction):
             return
@@ -359,13 +589,42 @@ class UserinfoModView(discord.ui.View):
             return
         await interaction.response.send_modal(KickModal(self, member))
 
-    @discord.ui.button(label="Ban", emoji="\U0001f528", style=discord.ButtonStyle.danger)
+    @discord.ui.button(label="Ban", emoji="\U0001f528", style=discord.ButtonStyle.danger, row=0)
     async def ban_button(self, button: discord.ui.Button, interaction: discord.Interaction):
         if not await self._check_admin(interaction):
             return
+        if self.is_banned:
+            if self.test_mode:
+                await interaction.response.send_message(
+                    f"\U0001f9ea TEST \u2014 would unban {self.target.mention}",
+                    ephemeral=True,
+                )
+                return
+            try:
+                await self.guild.unban(
+                    discord.Object(id=self.target_id),
+                    reason=f"{interaction.user} ({interaction.user.id}): unbanned via panel",
+                )
+            except discord.Forbidden:
+                await interaction.response.send_message(
+                    "\u274c I can't unban them \u2014 check my permissions.", ephemeral=True
+                )
+                return
+            except Exception as e:
+                await interaction.response.send_message(f"\u274c Unban failed: `{e}`", ephemeral=True)
+                return
+            self.is_banned = False
+            button.label = "Ban"
+            button.emoji = "\U0001f528"
+            button.style = discord.ButtonStyle.danger
+            await interaction.response.edit_message(view=self)
+            await interaction.followup.send(
+                f"\U0001f513 Unbanned {self.target.mention}", ephemeral=True
+            )
+            return
         await interaction.response.send_modal(BanModal(self))
 
-    @discord.ui.button(label="Clear", emoji="\U0001f9f9", style=discord.ButtonStyle.secondary)
+    @discord.ui.button(label="Clear", emoji="\U0001f9f9", style=discord.ButtonStyle.secondary, row=0)
     async def clear_button(self, button: discord.ui.Button, interaction: discord.Interaction):
         if not await self._check_admin(interaction):
             return
@@ -374,6 +633,19 @@ class UserinfoModView(discord.ui.View):
             view=ClearPickView(self),
             ephemeral=True,
         )
+
+    @discord.ui.button(label="Notes", emoji="\U0001f4dd", style=discord.ButtonStyle.secondary, row=1)
+    async def notes_button(self, button: discord.ui.Button, interaction: discord.Interaction):
+        if not await self._check_admin(interaction):
+            return
+        view = NotesView(self.guild, self.target)
+        await interaction.response.send_message(
+            view.content(), view=view, ephemeral=True
+        )
+        try:
+            view.message = await interaction.original_response()
+        except Exception:
+            pass
 
 
 class AdminCog(commands.Cog):
@@ -449,7 +721,7 @@ class AdminCog(commands.Cog):
    
     # User Info Command
     @discord.slash_command(name = "userinfo", description="View detailed info about a user.", guild_ids=GUILD_IDS)
-    @extra_help("Mini admin panel: user card (account, server profile, XP/level, ban status, watch-list status) with Timeout/Kick/Ban/Clear buttons. Each action asks for a reason; Clear asks for channel + amount. Set test_mode to simulate actions, private to keep the card to yourself. Pick a member, or type a user ID, mention, or username. If no user is specified, it shows your own information.")
+    @extra_help("Mini admin panel: user card (account, server profile, XP/level, ban status, watch-list status, warns, notes) with Warn/Timeout/Kick/Ban/Clear/Notes buttons. Ban/Timeout flip to Unban/Remove-timeout when active. Every action DMs the user the reason. Set test_mode to simulate actions, private to keep the card to yourself. Pick a member, or type a user ID, mention, or username. If no user is specified, it shows your own information.")
     @admin_required()
     async def userinfo(
         self,
@@ -551,10 +823,12 @@ class AdminCog(commands.Cog):
         # ---- Ban status ----
         ban_status = "No"
         ban_reason = None
+        is_banned = False
         try:
             ban = await guild.fetch_ban(target)
             ban_status = "\U0001f528 Yes"
             ban_reason = ban.reason
+            is_banned = True
         except discord.NotFound:
             pass
         except discord.Forbidden:
@@ -581,6 +855,24 @@ class AdminCog(commands.Cog):
             watched = str(target.id) in wl_data.get(str(guild_id), {}).get("users", {})
         except Exception:
             pass
+
+        # ---- Warns / notes ----
+        warns = []
+        notes = []
+        try:
+            md = load_json(MOD_DATA_FILE) or {}
+            urec = md.get(str(guild_id), {}).get(str(target.id), {})
+            warns = urec.get("warns", [])
+            notes = urec.get("notes", [])
+        except Exception:
+            pass
+
+        # ---- Timeout state ----
+        is_timed_out = False
+        if is_member:
+            tu = getattr(target, "timed_out_until", None)
+            if tu and tu > datetime.now(timezone.utc):
+                is_timed_out = True
 
         # ---- Build the embed ----
         display = target.display_name if is_member else target.name
@@ -635,13 +927,21 @@ class AdminCog(commands.Cog):
         if ban_reason:
             mod_value += f"\n**Reason:** {ban_reason}"
         mod_value += f"\n**Watch list:** {'👁️ Yes' if watched else 'No'}"
+        if warns:
+            latest = warns[-1].get("reason", "")[:50]
+            mod_value += f"\n**Warnings:** {len(warns)} (latest: \"{latest}\")"
+        else:
+            mod_value += "\n**Warnings:** 0"
+        if notes:
+            mod_value += f"\n**Notes:** {len(notes)}"
         info_embed.add_field(name="🛡️ Moderation", value=mod_value, inline=False)
 
         footer = f"Requested by {interaction.author.display_name}"
         if test_mode:
             footer += " \u2022 \U0001f9ea TEST MODE \u2014 actions are simulated"
         info_embed.set_footer(text=footer)
-        view = UserinfoModView(guild, target, is_member, test_mode=test_mode)
+        view = UserinfoModView(guild, target, is_member, test_mode=test_mode,
+                                is_banned=is_banned, is_timed_out=is_timed_out)
         await interaction.followup.send(embed=info_embed, view=view, ephemeral=private)
 
 
