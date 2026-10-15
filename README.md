@@ -119,8 +119,11 @@ Discord Bot Templet Mde With Python/
 │   ├── admin_cog.py        # Admin slash commands (see table below)
 │   ├── fun_cog.py          # Eat It or Yeet It party game (see section below)
 │   ├── Level_system.py     # Message XP, levels, leaderboard (see section below)
+│   ├── WatchList.py        # Watch List system: log watched users' messages (see section below)
 ├── data/
 │   ├── eatyeet_*.json      # Eat It or Yeet It stats, suggestions, active rounds
+│   ├── watchlist_data.json # Watch List: watched users per server
+│   ├── mod_data.json       # /userinfo panel: warns + mod notes per server
 │   └── DB/
 │       ├── db.py           # Database connection (SQLite)
 │       ├── models.py       # Table definitions
@@ -134,7 +137,7 @@ Discord Bot Templet Mde With Python/
 
 | Command           | What it does                                        | Who can use it |
 |-------------------|-----------------------------------------------------|----------------|
-| `/userinfo`       | Mini mod panel: user card + Warn/Timeout/Kick/Ban/Clear/Notes/Watch/Add-XP/Remove-XP buttons (Ban/Timeout/Watch flip to Unban/Remove-timeout/Unwatch when active), `test_mode` simulation toggle, `private` visibility toggle | Admins |
+| `/userinfo`       | Self-updating mini mod panel: user card + Warn/Timeout/Kick/Ban/Clear/Notes/Watch/Add-XP/Remove-XP buttons (Ban/Timeout/Watch flip to Unban/Remove-timeout/Unwatch when active); Warn/Timeout/Kick/Ban show a confirm step with a DM on/off toggle; `test_mode` simulation toggle, `private` visibility toggle | Admins |
 | `/clear_user`     | Deletes a user's messages in one or all channels    | Admins         |
 | `/add_user_role`  | Gives a role to a user                              | Admins         |
 | `/remove_user_role` | Removes a role from a user                        | Admins         |
