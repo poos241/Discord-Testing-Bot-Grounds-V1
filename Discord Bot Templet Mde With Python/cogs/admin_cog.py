@@ -190,15 +190,130 @@ class BanModal(discord.ui.Modal):
         )
 
 
+def _resolve_text_channel(guild, query):
+    """Turn a channel mention, ID, or name into a TextChannel. None when no match."""
+    query = (query or "").strip()
+    m = re.match(r"^<#(\d+)>$", query)
+    if m:
+        ch = guild.get_channel(int(m.group(1)))
+        return ch if isinstance(ch, discord.TextChannel) else None
+    if query.isdigit():
+        ch = guild.get_channel(int(query))
+        return ch if isinstance(ch, discord.TextChannel) else None
+    name = query.lstrip("#").lower()
+    for ch in guild.text_channels:
+        if ch.name.lower() == name:
+            return ch
+    return None
+
+
+class ClearModal(discord.ui.Modal):
+    """Clear-messages form: channel scope + how many (mirrors /clear_user)."""
+
+    def __init__(self, panel):
+        target = panel.target
+        name = target.display_name if isinstance(target, discord.Member) else target.name
+        super().__init__(title=f"Clear messages: {name}"[:45])
+        self.panel = panel
+        self.add_item(discord.ui.InputText(
+            label="Channel",
+            placeholder="#channel, channel ID, name, or 'all'",
+            value="all",
+            max_length=100,
+        ))
+        self.add_item(discord.ui.InputText(
+            label="How many",
+            placeholder="number of messages or 'all'",
+            value="100",
+            max_length=10,
+        ))
+
+    async def callback(self, interaction: discord.Interaction):
+        where_raw = (self.children[0].value or "all").strip()
+        how_raw = (self.children[1].value or "100").strip()
+        guild = self.panel.guild
+        target_id = self.panel.target_id
+
+        # Resolve channel scope.
+        if where_raw.lower() == "all":
+            channels = [
+                ch for ch in guild.text_channels
+                if ch.permissions_for(guild.me).read_message_history
+                and ch.permissions_for(guild.me).manage_messages
+            ]
+            where_desc = "all channels"
+        else:
+            ch = _resolve_text_channel(guild, where_raw)
+            if ch is None:
+                await interaction.response.send_message(
+                    "\u274c Couldn't find that channel. Use a #mention, ID, name, or 'all'.",
+                    ephemeral=True,
+                )
+                return
+            perms = ch.permissions_for(guild.me)
+            if not (perms.read_message_history and perms.manage_messages):
+                await interaction.response.send_message(
+                    f"\u274c I can't manage messages in {ch.mention}.", ephemeral=True
+                )
+                return
+            channels = [ch]
+            where_desc = ch.mention
+
+        # Resolve amount.
+        if how_raw.lower() == "all":
+            limit = None
+            how_desc = "all of them"
+        elif how_raw.isdigit() and int(how_raw) > 0:
+            limit = int(how_raw)
+            how_desc = f"up to {limit}"
+        else:
+            await interaction.response.send_message(
+                "\u274c How many must be a positive number or 'all'.", ephemeral=True
+            )
+            return
+
+        mention = self.panel.target.mention
+        if self.panel.test_mode:
+            await interaction.response.send_message(
+                f"\U0001f9ea TEST \u2014 would clear {mention}'s messages in {where_desc} ({how_desc})",
+                ephemeral=True,
+            )
+            return
+
+        await interaction.response.defer(ephemeral=True)
+
+        def is_target(msg):
+            return msg.author.id == target_id
+
+        total = 0
+        per_channel = []
+        for ch in channels:
+            try:
+                deleted = await ch.purge(limit=limit, check=is_target)
+            except (discord.Forbidden, discord.HTTPException):
+                per_channel.append(f"\u26a0\ufe0f Skipped {ch.mention} (no access)")
+                continue
+            total += len(deleted)
+            per_channel.append(f"{len(deleted)} in {ch.mention}")
+
+        lines = "\n".join(per_channel[:10])
+        if len(per_channel) > 10:
+            lines += f"\n\u2026and {len(per_channel) - 10} more channels"
+        await interaction.followup.send(
+            f"\U0001f9f9 Cleared **{total}** messages from {mention} in {where_desc}.\n{lines}",
+            ephemeral=True,
+        )
+
+
 class UserinfoModView(discord.ui.View):
     """Mini admin panel attached to the /userinfo card."""
 
-    def __init__(self, guild, target, is_member):
+    def __init__(self, guild, target, is_member, test_mode=False):
         super().__init__(timeout=600)
         self.guild = guild
         self.target = target
         self.target_id = target.id
-        self.test_mode = False
+        self.test_mode = test_mode
         if not is_member:
             # Timeout/kick only make sense for someone in the server.
             self.timeout_button.disabled = True
@@ -244,18 +359,11 @@ class UserinfoModView(discord.ui.View):
             return
         await interaction.response.send_modal(BanModal(self))
 
-    @discord.ui.button(label="Test mode: OFF", emoji="\U0001f9ea", style=discord.ButtonStyle.secondary)
-    async def test_button(self, button: discord.ui.Button, interaction: discord.Interaction):
+    @discord.ui.button(label="Clear", emoji="\U0001f9f9", style=discord.ButtonStyle.secondary)
+    async def clear_button(self, button: discord.ui.Button, interaction: discord.Interaction):
         if not await self._check_admin(interaction):
             return
-        self.test_mode = not self.test_mode
-        button.label = f"Test mode: {'ON' if self.test_mode else 'OFF'}"
-        await interaction.response.edit_message(view=self)
-        if self.test_mode:
-            await interaction.followup.send(
-                "\U0001f9ea Test mode **ON** \u2014 Timeout/Kick/Ban will only simulate their actions.",
-                ephemeral=True,
-            )
+        await interaction.response.send_modal(ClearModal(self))
 
 
 class AdminCog(commands.Cog):
@@ -331,22 +439,23 @@ class AdminCog(commands.Cog):
    
     # User Info Command
     @discord.slash_command(name = "userinfo", description="View detailed info about a user.", guild_ids=GUILD_IDS)
-    @extra_help("Mini admin panel: user card (account, server profile, XP/level, ban status, watch-list status) with Timeout/Kick/Ban buttons, a test mode that simulates actions, and a visibility toggle. Pick a member, or type a user ID, mention, or username. If no user is specified, it shows your own information.")
+    @extra_help("Mini admin panel: user card (account, server profile, XP/level, ban status, watch-list status) with Timeout/Kick/Ban/Clear buttons. Each action asks for a reason; Clear asks for channel + amount. Set test_mode to simulate actions, private to keep the card to yourself. Pick a member, or type a user ID, mention, or username. If no user is specified, it shows your own information.")
     @admin_required()
     async def userinfo(
         self,
         interaction: discord.ApplicationContext,
         member: discord.Option(discord.Member, "pick a server member", default=None), # type: ignore
         user: discord.Option(str, "or type a user ID, mention, or username", default=None), # type: ignore
-        visible: discord.Option(bool, "show this card to everyone in the channel", default=False), # type: ignore
+        private: discord.Option(bool, "only you can see this card", default=True), # type: ignore
+        test_mode: discord.Option(bool, "simulate mod actions instead of applying them", default=False), # type: ignore
         ):
         """View information about a user in the server."""
-        await interaction.response.defer()
+        await interaction.response.defer(ephemeral=private)
         try:
-            await self._userinfo_body(interaction, member, user, visible)
+            await self._userinfo_body(interaction, member, user, private, test_mode)
         except Exception as e:
             try:
-                await interaction.followup.send(f"\u274c /userinfo failed: `{e}`")
+                await interaction.followup.send(f"\u274c /userinfo failed: `{e}`", ephemeral=private)
             except Exception:
                 pass
         return
@@ -386,7 +495,7 @@ class AdminCog(commands.Cog):
                 return starts[0], True
         return None, False
 
-    async def _userinfo_body(self, interaction, member, user, visible):
+    async def _userinfo_body(self, interaction, member, user, private, test_mode):
         requester_id = interaction.author.id
         guild = interaction.guild
         guild_id = guild.id
@@ -518,9 +627,12 @@ class AdminCog(commands.Cog):
         mod_value += f"\n**Watch list:** {'👁️ Yes' if watched else 'No'}"
         info_embed.add_field(name="🛡️ Moderation", value=mod_value, inline=False)
 
-        info_embed.set_footer(text=f"Requested by {interaction.author.display_name}")
-        view = UserinfoModView(guild, target, is_member)
-        await interaction.followup.send(embed=info_embed, view=view, ephemeral=not visible)
+        footer = f"Requested by {interaction.author.display_name}"
+        if test_mode:
+            footer += " \u2022 \U0001f9ea TEST MODE \u2014 actions are simulated"
+        info_embed.set_footer(text=footer)
+        view = UserinfoModView(guild, target, is_member, test_mode=test_mode)
+        await interaction.followup.send(embed=info_embed, view=view, ephemeral=private)
 
 
     @discord.slash_command(name='remove_user_role', description="use this to remove a users role")
