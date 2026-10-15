@@ -69,9 +69,13 @@ or username — an ID also works for users who left or are banned.
 The card doubles as a mini mod panel: **Warn**, **Timeout** (duration
 like `10m`/`2h`/`1d`), **Kick**, **Ban** (with 0–7 days of message
 deletion), **Clear**, and **Notes** buttons. Warn/Timeout/Kick/Ban
-each open a form asking for a reason, and the reason is DM'd to the
-user (with a note when their DMs are closed). Ban flips to **Unban**
-and Timeout flips to **Remove timeout** when one is already active.
+each open a form asking for a reason, then a confirm step with a
+**DM them: Yes/No** toggle — the reason is only DM'd to the user if
+you leave it on (with a note when their DMs are closed). The card
+refreshes itself after every action, so there's no need to re-run
+the command to see the new warn count, XP, or button states. Ban
+flips to **Unban** and Timeout flips to **Remove timeout** when one
+is already active.
 Clear first shows a channel picker (plus an All-channels button),
 then asks how many messages to delete or `all`. Notes keeps a
 numbered per-user mod-notes list you can add to and remove from;
