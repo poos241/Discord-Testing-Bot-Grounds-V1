@@ -190,76 +190,67 @@ class BanModal(discord.ui.Modal):
         )
 
 
-def _resolve_text_channel(guild, query):
-    """Turn a channel mention, ID, or name into a TextChannel. None when no match."""
-    query = (query or "").strip()
-    m = re.match(r"^<#(\d+)>$", query)
-    if m:
-        ch = guild.get_channel(int(m.group(1)))
-        return ch if isinstance(ch, discord.TextChannel) else None
-    if query.isdigit():
-        ch = guild.get_channel(int(query))
-        return ch if isinstance(ch, discord.TextChannel) else None
-    name = query.lstrip("#").lower()
-    for ch in guild.text_channels:
-        if ch.name.lower() == name:
-            return ch
-    return None
+async def _purge_user_messages(guild, target_id, channels, limit):
+    """Purge target's messages across channels. Returns (total, per_channel_lines)."""
+    def is_target(msg):
+        return msg.author.id == target_id
+
+    total = 0
+    per_channel = []
+    for ch in channels:
+        try:
+            deleted = await ch.purge(limit=limit, check=is_target)
+        except (discord.Forbidden, discord.HTTPException):
+            per_channel.append(f"\u26a0\ufe0f Skipped {ch.mention} (no access)")
+            continue
+        total += len(deleted)
+        per_channel.append(f"{len(deleted)} in {ch.mention}")
+    return total, per_channel
 
 
-class ClearModal(discord.ui.Modal):
-    """Clear-messages form: channel scope + how many (mirrors /clear_user)."""
+def _clear_channels_all(guild):
+    """All text channels the bot can read/purge in."""
+    return [
+        ch for ch in guild.text_channels
+        if ch.permissions_for(guild.me).read_message_history
+        and ch.permissions_for(guild.me).manage_messages
+    ]
 
-    def __init__(self, panel):
-        target = panel.target
-        name = target.display_name if isinstance(target, discord.Member) else target.name
-        super().__init__(title=f"Clear messages: {name}"[:45])
+
+class ClearAmountModal(discord.ui.Modal):
+    """How-many form for the clear-messages action (channel already picked)."""
+
+    def __init__(self, panel, channel):
+        label = f"#{channel.name}" if channel else "all channels"
+        super().__init__(title=f"Clear messages in {label}"[:45])
         self.panel = panel
+        self.channel = channel
         self.add_item(discord.ui.InputText(
-            label="Channel",
-            placeholder="#channel, channel ID, name, or 'all'",
-            value="all",
-            max_length=100,
-        ))
-        self.add_item(discord.ui.InputText(
-            label="How many",
-            placeholder="number of messages or 'all'",
+            label="How many messages",
+            placeholder="a number or 'all'",
             value="100",
             max_length=10,
         ))
 
     async def callback(self, interaction: discord.Interaction):
-        where_raw = (self.children[0].value or "all").strip()
-        how_raw = (self.children[1].value or "100").strip()
+        how_raw = (self.children[0].value or "100").strip()
         guild = self.panel.guild
         target_id = self.panel.target_id
 
-        # Resolve channel scope.
-        if where_raw.lower() == "all":
-            channels = [
-                ch for ch in guild.text_channels
-                if ch.permissions_for(guild.me).read_message_history
-                and ch.permissions_for(guild.me).manage_messages
-            ]
+        if self.channel is None:
+            channels = _clear_channels_all(guild)
             where_desc = "all channels"
         else:
-            ch = _resolve_text_channel(guild, where_raw)
-            if ch is None:
+            ch = guild.get_channel(self.channel.id)
+            perms = ch.permissions_for(guild.me) if ch else None
+            if ch is None or not (perms.read_message_history and perms.manage_messages):
                 await interaction.response.send_message(
-                    "\u274c Couldn't find that channel. Use a #mention, ID, name, or 'all'.",
-                    ephemeral=True,
-                )
-                return
-            perms = ch.permissions_for(guild.me)
-            if not (perms.read_message_history and perms.manage_messages):
-                await interaction.response.send_message(
-                    f"\u274c I can't manage messages in {ch.mention}.", ephemeral=True
+                    "\u274c I can't manage messages there anymore.", ephemeral=True
                 )
                 return
             channels = [ch]
             where_desc = ch.mention
 
-        # Resolve amount.
         if how_raw.lower() == "all":
             limit = None
             how_desc = "all of them"
@@ -281,21 +272,7 @@ class ClearModal(discord.ui.Modal):
             return
 
         await interaction.response.defer(ephemeral=True)
-
-        def is_target(msg):
-            return msg.author.id == target_id
-
-        total = 0
-        per_channel = []
-        for ch in channels:
-            try:
-                deleted = await ch.purge(limit=limit, check=is_target)
-            except (discord.Forbidden, discord.HTTPException):
-                per_channel.append(f"\u26a0\ufe0f Skipped {ch.mention} (no access)")
-                continue
-            total += len(deleted)
-            per_channel.append(f"{len(deleted)} in {ch.mention}")
-
+        total, per_channel = await _purge_user_messages(guild, target_id, channels, limit)
         lines = "\n".join(per_channel[:10])
         if len(per_channel) > 10:
             lines += f"\n\u2026and {len(per_channel) - 10} more channels"
@@ -305,11 +282,40 @@ class ClearModal(discord.ui.Modal):
         )
 
 
+class ClearChannelSelect(discord.ui.Select):
+    """Channel picker for the clear-messages action."""
+
+    def __init__(self, panel):
+        super().__init__(
+            select_type=discord.ComponentType.channel_select,
+            channel_types=[discord.ChannelType.text],
+            placeholder="Pick a channel to clear messages from\u2026",
+        )
+        self.panel = panel
+
+    async def callback(self, interaction: discord.Interaction):
+        channel = self.values[0]
+        await interaction.response.send_modal(ClearAmountModal(self.panel, channel))
+
+
+class ClearPickView(discord.ui.View):
+    """Pick one channel (or all) for clearing a user's messages."""
+
+    def __init__(self, panel):
+        super().__init__(timeout=300)
+        self.panel = panel
+        self.add_item(ClearChannelSelect(panel))
+
+    @discord.ui.button(label="All channels", style=discord.ButtonStyle.primary)
+    async def all_button(self, button: discord.ui.Button, interaction: discord.Interaction):
+        await interaction.response.send_modal(ClearAmountModal(self.panel, None))
+
+
 class UserinfoModView(discord.ui.View):
     """Mini admin panel attached to the /userinfo card."""
 
     def __init__(self, guild, target, is_member, test_mode=False):
-        super().__init__(timeout=600)
+        super().__init__(timeout=1800)
         self.guild = guild
         self.target = target
         self.target_id = target.id
@@ -363,7 +369,11 @@ class UserinfoModView(discord.ui.View):
     async def clear_button(self, button: discord.ui.Button, interaction: discord.Interaction):
         if not await self._check_admin(interaction):
             return
-        await interaction.response.send_modal(ClearModal(self))
+        await interaction.response.send_message(
+            f"Clear {self.target.mention}'s messages \u2014 pick a channel:",
+            view=ClearPickView(self),
+            ephemeral=True,
+        )
 
 
 class AdminCog(commands.Cog):

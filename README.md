@@ -164,7 +164,7 @@ Server** or **Administrator**.
 | `/watch_set_channel` | Set the log channel | Manage Server / Admin |
 | `/watch_clear` | Remove everyone (with confirmation) | Manage Server / Admin |
 
-`/userinfo` also shows whether a user is on the watch list. Its card carries a mini mod panel: **Timeout** (duration like `10m`/`2h`/`1d`), **Kick**, **Ban** (with message-delete days), and **Clear** (delete the user's messages in one channel or all, pick a count or `all`) buttons, each asking for a reason; a `test_mode` true/false option simulates the actions without applying them; and a `private` option (default on) keeps the card to yourself — turn it off to post publicly.
+`/userinfo` also shows whether a user is on the watch list. Its card carries a mini mod panel: **Timeout** (duration like `10m`/`2h`/`1d`), **Kick**, **Ban** (with message-delete days), and **Clear** buttons, each asking for a reason — Clear opens a channel picker (or an All-channels button) then asks how many messages or `all`; a `test_mode` true/false option simulates the actions without applying them; and a `private` option (default on) keeps the card to yourself — turn it off to post publicly.
 
 ## Built-in commands (fun cog) — 🍽️ Eat It or Yeet It
 
