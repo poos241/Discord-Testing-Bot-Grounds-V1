@@ -839,6 +839,7 @@ class UserinfoModView(discord.ui.View):
 
     async def _refresh_panel(self, force=None):
         """Rebuild the card embed and button states from live data."""
+        print(f"[userinfo] refresh start: target={self.target_id} message={'set' if self.message is not None else 'NONE'}")
         member = self.guild.get_member(self.target_id)
         is_member = member is not None
         if force and "is_member" in force:
@@ -846,18 +847,25 @@ class UserinfoModView(discord.ui.View):
             is_member = force["is_member"]
         target = member if member is not None else self.target
         self.target = target
-        embed, state = await build_userinfo_embed(
-            self.guild, target, is_member, self.test_mode,
-            self.watch_cog, self.requester_name,
-        )
+        try:
+            embed, state = await build_userinfo_embed(
+                self.guild, target, is_member, self.test_mode,
+                self.watch_cog, self.requester_name,
+            )
+        except Exception as e:
+            print(f"[userinfo] refresh: build failed: {e!r}")
+            raise
         if force:
             state.update(force)
         self._sync_buttons(state)
         if self.message is not None:
             try:
                 await self.message.edit(embed=embed, view=self)
-            except Exception:
-                pass
+                print("[userinfo] refresh: card edit ok")
+            except Exception as e:
+                print(f"[userinfo] refresh: card edit FAILED: {e!r}")
+        else:
+            print("[userinfo] refresh: skipped, self.message is None")
 
     async def _apply_mod_action(self, action, params, dm_enabled, moderator):
         """Apply a warn/timeout/kick/ban. Returns a human-readable result string."""
