@@ -67,31 +67,20 @@ class TimeoutModal(discord.ui.Modal):
                 "\u274c That user isn't in the server anymore.", ephemeral=True
             )
             return
-        audit = f"{interaction.user} ({interaction.user.id}): {reason}"
         if self.panel.test_mode:
             await interaction.response.send_message(
                 f"\U0001f9ea TEST \u2014 would timeout {member.mention} for `{raw}`\n**Reason:** {reason}",
                 ephemeral=True,
             )
             return
-        dm_ok = await _dm_target(
-            member,
-            f"\u23f1\ufe0f You've been timed out in **{self.panel.guild.name}** for `{raw}`\n**Reason:** {reason}",
-        )
-        try:
-            await member.timeout_for(duration, reason=audit)
-        except discord.Forbidden:
-            await interaction.response.send_message(
-                "\u274c I can't time out that user \u2014 is my role above theirs?",
-                ephemeral=True,
-            )
-            return
-        except Exception as e:
-            await interaction.response.send_message(f"\u274c Timeout failed: `{e}`", ephemeral=True)
-            return
-        dm_note = "\U0001f4e8 DM sent" if dm_ok else "\U0001f4ea Couldn't DM them (DMs closed?)"
+        summary = f"\u23f1\ufe0f Timeout {member.mention} for `{raw}`\n**Reason:** {reason}"
         await interaction.response.send_message(
-            f"\u23f1\ufe0f Timed out {member.mention} for `{raw}`\n**Reason:** {reason}\n{dm_note}",
+            f"{summary}\n\n_Use the toggle to choose whether they get a DM, then confirm._",
+            view=ModConfirmView(
+                self.panel, "timeout",
+                {"reason": reason, "duration": duration, "duration_str": raw},
+                summary,
+            ),
             ephemeral=True,
         )
 
@@ -116,31 +105,16 @@ class KickModal(discord.ui.Modal):
                 "\u274c That user isn't in the server anymore.", ephemeral=True
             )
             return
-        audit = f"{interaction.user} ({interaction.user.id}): {reason}"
         if self.panel.test_mode:
             await interaction.response.send_message(
                 f"\U0001f9ea TEST \u2014 would kick {member.mention}\n**Reason:** {reason}",
                 ephemeral=True,
             )
             return
-        dm_ok = await _dm_target(
-            member,
-            f"\U0001f462 You've been kicked from **{self.panel.guild.name}**\n**Reason:** {reason}",
-        )
-        try:
-            await member.kick(reason=audit)
-        except discord.Forbidden:
-            await interaction.response.send_message(
-                "\u274c I can't kick that user \u2014 is my role above theirs?",
-                ephemeral=True,
-            )
-            return
-        except Exception as e:
-            await interaction.response.send_message(f"\u274c Kick failed: `{e}`", ephemeral=True)
-            return
-        dm_note = "\U0001f4e8 DM sent" if dm_ok else "\U0001f4ea Couldn't DM them (DMs closed?)"
+        summary = f"\U0001f462 Kick {member.mention}\n**Reason:** {reason}"
         await interaction.response.send_message(
-            f"\U0001f462 Kicked {member.mention}\n**Reason:** {reason}\n{dm_note}",
+            f"{summary}\n\n_Use the toggle to choose whether they get a DM, then confirm._",
+            view=ModConfirmView(self.panel, "kick", {"reason": reason}, summary),
             ephemeral=True,
         )
 
@@ -173,7 +147,6 @@ class BanModal(discord.ui.Modal):
                 "\u274c Message-delete days must be 0\u20137.", ephemeral=True
             )
             return
-        audit = f"{interaction.user} ({interaction.user.id}): {reason}"
         mention = self.panel.target.mention
         if self.panel.test_mode:
             await interaction.response.send_message(
@@ -181,26 +154,13 @@ class BanModal(discord.ui.Modal):
                 ephemeral=True,
             )
             return
-        dm_ok = await _dm_target(
-            self.panel.target,
-            f"\U0001f528 You've been banned from **{self.panel.guild.name}**\n**Reason:** {reason}",
-        )
-        try:
-            await self.panel.guild.ban(
-                self.panel.target, reason=audit, delete_message_days=days
-            )
-        except discord.Forbidden:
-            await interaction.response.send_message(
-                "\u274c I can't ban that user \u2014 is my role above theirs?",
-                ephemeral=True,
-            )
-            return
-        except Exception as e:
-            await interaction.response.send_message(f"\u274c Ban failed: `{e}`", ephemeral=True)
-            return
-        dm_note = "\U0001f4e8 DM sent" if dm_ok else "\U0001f4ea Couldn't DM them (DMs closed?)"
+        summary = (f"\U0001f528 Ban {mention} (delete {days}d of messages)\n"
+                   f"**Reason:** {reason}")
         await interaction.response.send_message(
-            f"\U0001f528 Banned {mention}\n**Reason:** {reason}\n{dm_note}",
+            f"{summary}\n\n_Use the toggle to choose whether they get a DM, then confirm._",
+            view=ModConfirmView(
+                self.panel, "ban", {"reason": reason, "delete_days": days}, summary
+            ),
             ephemeral=True,
         )
 
@@ -367,31 +327,17 @@ class WarnModal(discord.ui.Modal):
 
     async def callback(self, interaction: discord.Interaction):
         reason = (self.children[0].value or "").strip() or "No reason given"
-        guild = self.panel.guild
-        target = self.panel.target
-        mention = target.mention
+        mention = self.panel.target.mention
         if self.panel.test_mode:
             await interaction.response.send_message(
                 f"\U0001f9ea TEST \u2014 would warn {mention}\n**Reason:** {reason}",
                 ephemeral=True,
             )
             return
-        dm_ok = await _dm_target(
-            target,
-            f"\u26a0\ufe0f You've been warned in **{guild.name}**\n**Reason:** {reason}",
-        )
-        data, urec = _mod_record(guild.id, target.id)
-        urec["warns"].append({
-            "reason": reason,
-            "mod_id": interaction.user.id,
-            "mod_name": str(interaction.user),
-            "ts": time.time(),
-        })
-        _save_mod_data(data)
-        n = len(urec["warns"])
-        dm_note = "\U0001f4e8 DM sent" if dm_ok else "\U0001f4ea Couldn't DM them (DMs closed?)"
+        summary = f"\u26a0\ufe0f Warn {mention}\n**Reason:** {reason}"
         await interaction.response.send_message(
-            f"\u26a0\ufe0f Warned {mention} (warn #{n})\n**Reason:** {reason}\n{dm_note}",
+            f"{summary}\n\n_Use the toggle to choose whether they get a DM, then confirm._",
+            view=ModConfirmView(self.panel, "warn", {"reason": reason}, summary),
             ephemeral=True,
         )
 
@@ -422,6 +368,8 @@ class NoteAddModal(discord.ui.Modal):
         _save_mod_data(data)
         await self.notes_view.refresh()
         await interaction.response.send_message("\U0001f4dd Note added.", ephemeral=True)
+        if self.notes_view.panel is not None:
+            await self.notes_view.panel._refresh_panel()
 
 
 class NoteRemoveModal(discord.ui.Modal):
@@ -450,17 +398,20 @@ class NoteRemoveModal(discord.ui.Modal):
             f"\U0001f5d1\ufe0f Removed note: \"{removed['text'][:80]}\"",
             ephemeral=True,
         )
+        if self.notes_view.panel is not None:
+            await self.notes_view.panel._refresh_panel()
 
 
 class NotesView(discord.ui.View):
     """View a user's mod notes; add or remove them."""
 
-    def __init__(self, guild, target):
+    def __init__(self, guild, target, panel=None):
         super().__init__(timeout=300)
         self.guild_id = guild.id
         self.target_id = target.id
         self.target_mention = target.mention
         self.message = None
+        self.panel = panel
 
     def _notes(self):
         data = load_json(MOD_DATA_FILE) or {}
@@ -545,20 +496,12 @@ class WatchAddModal(discord.ui.Modal):
         guild_data = cog._guild_data(panel.guild.id)
         guild_data["users"][str(target.id)] = record
         cog._save_db()
-        panel.is_watched = True
-        panel.watch_button.label = "Unwatch"
-        panel.watch_button.emoji = "\U0001f441\ufe0f"
-        panel.watch_button.style = discord.ButtonStyle.success
         await interaction.response.send_message(
             f"\U0001f441\ufe0f Added {target.mention} to the watch list"
             + (f"\n**Reason:** {reason}" if reason else ""),
             ephemeral=True,
         )
-        if panel.message is not None:
-            try:
-                await panel.message.edit(view=panel)
-            except Exception:
-                pass
+        await panel._refresh_panel()
 
 
 class XPModal(discord.ui.Modal):
@@ -608,6 +551,7 @@ class XPModal(discord.ui.Modal):
                     f"(now Level **{lvl}**, **{xp}** XP){extra}",
                     ephemeral=True,
                 )
+                await panel._refresh_panel()
             else:
                 db = await get_levels(gid)
                 ud = db.get(uid)
@@ -627,15 +571,218 @@ class XPModal(discord.ui.Modal):
                     f"(now Level **{ud['level']}**, **{ud['xp']}** XP)",
                     ephemeral=True,
                 )
+                await panel._refresh_panel()
         except Exception as e:
             await interaction.response.send_message(f"\u274c XP update failed: `{e}`", ephemeral=True)
+
+
+async def build_userinfo_embed(guild, target, is_member, test_mode, watch_cog, requester_name):
+    """Build the /userinfo card embed from live data.
+
+    Returns (embed, state) where state has is_member/is_banned/is_timed_out/is_watched.
+    """
+    guild_id = guild.id
+    # ---- Ban status ----
+    ban_status = "No"
+    ban_reason = None
+    is_banned = False
+    try:
+        ban = await guild.fetch_ban(target)
+        ban_status = "\U0001f528 Yes"
+        ban_reason = ban.reason
+        is_banned = True
+    except discord.NotFound:
+        pass
+    except discord.Forbidden:
+        ban_status = "Unknown (missing Ban Members permission)"
+
+    # ---- Server XP ----
+    xp_line = "No XP recorded yet"
+    try:
+        from data.DB.Storage.storage import get_levels
+        db = await get_levels(str(guild_id))
+        udata = db.get(str(target.id))
+        if udata:
+            lvl = udata.get("level", 1)
+            xp = udata.get("xp", 0)
+            need = lvl * 100 - xp
+            xp_line = f"Level **{lvl}** • **{xp}** XP\n{need} XP to level {lvl + 1}"
+    except Exception:
+        xp_line = "Couldn't load XP data"
+
+    # ---- Watch-list status (via the cog so we share its in-memory db) ----
+    watched = False
+    watch_record = None
+    try:
+        if watch_cog is not None:
+            watch_record = watch_cog._guild_data(guild_id)["users"].get(str(target.id))
+        else:
+            wl_data = load_json("watchlist_data.json") or {}
+            watch_record = wl_data.get(str(guild_id), {}).get("users", {}).get(str(target.id))
+        watched = watch_record is not None
+    except Exception:
+        pass
+
+    # ---- Warns / notes ----
+    warns = []
+    notes = []
+    try:
+        md = load_json(MOD_DATA_FILE) or {}
+        urec = md.get(str(guild_id), {}).get(str(target.id), {})
+        warns = urec.get("warns", [])
+        notes = urec.get("notes", [])
+    except Exception:
+        pass
+
+    # ---- Timeout state ----
+    is_timed_out = False
+    if is_member:
+        tu = getattr(target, "timed_out_until", None)
+        if tu and tu > datetime.now(timezone.utc):
+            is_timed_out = True
+
+    # ---- Build the embed ----
+    display = target.display_name if is_member else target.name
+    color = (target.color if is_member and target.color != discord.Color.default()
+             else discord.Color.blurple())
+    info_embed = discord.Embed(
+        title=f"\U0001f464 {display}",
+        description=f"{target.mention}\n`{target.id}`",
+        color=color,
+        timestamp=datetime.now(timezone.utc),
+    )
+    info_embed.set_thumbnail(url=target.display_avatar.url)
+
+    created_ts = int(target.created_at.timestamp())
+    info_embed.add_field(
+        name="Account",
+        value=f"**Username:** `{target.name}`\n**Created:** <t:{created_ts}:F>",
+        inline=True,
+    )
+
+    if is_member:
+        joined = (f"<t:{int(target.joined_at.timestamp())}:F>"
+                  if target.joined_at else "Unknown")
+        info_embed.add_field(
+            name="Server",
+            value=(f"**Nickname:** `{target.display_name}`\n"
+                   f"**Joined:** {joined}\n"
+                   f"**Top role:** {target.top_role.mention}"),
+            inline=True,
+        )
+        roles = [r.mention for r in target.roles if r.name != "@everyone"]
+        roles_value = ", ".join(roles) if roles else "None"
+        if len(roles_value) > 1024:
+            roles_value = roles_value[:1000] + "…"
+        info_embed.add_field(
+            name=f"Roles ({len(roles)})",
+            value=roles_value,
+            inline=False,
+        )
+        status = str(target.status).title() if getattr(target, "status", None) else "Unknown"
+        info_embed.add_field(
+            name="Presence",
+            value=f"**Status:** {status}\n**Bot:** {'Yes' if target.bot else 'No'}",
+            inline=True,
+        )
+    else:
+        info_embed.add_field(name="Server", value="*Not in this server*", inline=True)
+
+    info_embed.add_field(name="⭐ Server XP", value=xp_line, inline=True)
+
+    mod_value = f"**Banned:** {ban_status}"
+    if ban_reason:
+        mod_value += f"\n**Reason:** {ban_reason}"
+    if watched and watch_record:
+        adder = watch_record.get("added_by_name", "?")
+        when = watch_record.get("added_at", "")
+        try:
+            when = f"<t:{int(datetime.fromisoformat(when).timestamp())}:D>"
+        except Exception:
+            when = when[:10]
+        mod_value += f"\n**Watch list:** \U0001f441\ufe0f Yes (by {adder}, {when})"
+        if watch_record.get("reason"):
+            mod_value += f"\n**Watch reason:** \"{watch_record['reason'][:80]}\""
+    else:
+        mod_value += "\n**Watch list:** No"
+    if warns:
+        latest = warns[-1].get("reason", "")[:50]
+        mod_value += f"\n**Warnings:** {len(warns)} (latest: \"{latest}\")"
+    else:
+        mod_value += "\n**Warnings:** 0"
+    if notes:
+        mod_value += f"\n**Notes:** {len(notes)}"
+    info_embed.add_field(name="🛡️ Moderation", value=mod_value, inline=False)
+
+    footer = f"Requested by {requester_name}"
+    if test_mode:
+        footer += " \u2022 \U0001f9ea TEST MODE \u2014 actions are simulated"
+    info_embed.set_footer(text=footer)
+    state = {
+        "is_member": is_member,
+        "is_banned": is_banned,
+        "is_timed_out": is_timed_out,
+        "is_watched": watched,
+    }
+    return info_embed, state
+
+
+class ModConfirmView(discord.ui.View):
+    """Confirm a warn/timeout/kick/ban, with a toggle for whether to DM the target."""
+
+    def __init__(self, panel, action, params, summary):
+        super().__init__(timeout=180)
+        self.panel = panel
+        self.action = action
+        self.params = params
+        self.summary = summary
+        self.dm_enabled = True
+        self.done = False
+
+    @discord.ui.button(label="DM them: Yes", style=discord.ButtonStyle.success, row=0)
+    async def dm_toggle(self, button: discord.ui.Button, interaction: discord.Interaction):
+        if self.done:
+            return
+        self.dm_enabled = not self.dm_enabled
+        button.label = f"DM them: {'Yes' if self.dm_enabled else 'No'}"
+        button.style = (discord.ButtonStyle.success if self.dm_enabled
+                        else discord.ButtonStyle.secondary)
+        await interaction.response.edit_message(view=self)
+
+    @discord.ui.button(label="Confirm", style=discord.ButtonStyle.danger, row=1)
+    async def confirm_button(self, button: discord.ui.Button, interaction: discord.Interaction):
+        if self.done:
+            return
+        self.done = True
+        await interaction.response.defer(ephemeral=True)
+        try:
+            result = await self.panel._apply_mod_action(
+                self.action, self.params, self.dm_enabled, interaction.user
+            )
+            # After a kick the member cache may lag behind; force the card
+            # to treat them as gone.
+            force = None
+            if self.action == "kick" and not result.startswith("\u274c"):
+                force = {"is_member": False}
+            await self.panel._refresh_panel(force=force)
+        except Exception as e:
+            result = f"\u274c Failed: `{e}`"
+        await interaction.edit_original_response(content=result, view=None)
+
+    @discord.ui.button(label="Cancel", style=discord.ButtonStyle.secondary, row=1)
+    async def cancel_button(self, button: discord.ui.Button, interaction: discord.Interaction):
+        if self.done:
+            return
+        self.done = True
+        await interaction.response.edit_message(content="\u274c Cancelled.", view=None)
 
 
 class UserinfoModView(discord.ui.View):
     """Mini admin panel attached to the /userinfo card."""
 
     def __init__(self, guild, target, is_member, test_mode=False, is_banned=False,
-                 is_timed_out=False, watch_cog=None, is_watched=False):
+                 is_timed_out=False, watch_cog=None, is_watched=False,
+                 requester_name=""):
         super().__init__(timeout=1800)
         self.guild = guild
         self.target = target
@@ -645,24 +792,163 @@ class UserinfoModView(discord.ui.View):
         self.is_timed_out = is_timed_out
         self.watch_cog = watch_cog
         self.is_watched = is_watched
+        self.requester_name = requester_name
         self.message = None
-        if not is_member:
-            # Timeout/kick only make sense for someone in the server.
-            self.timeout_button.disabled = True
-            self.kick_button.disabled = True
-        if is_banned:
+        self._sync_buttons({
+            "is_member": is_member,
+            "is_banned": is_banned,
+            "is_timed_out": is_timed_out,
+            "is_watched": is_watched,
+        })
+
+    def _sync_buttons(self, state):
+        """Match every button to the current moderation state."""
+        is_member = state["is_member"]
+        self.is_banned = state["is_banned"]
+        self.is_timed_out = state["is_timed_out"]
+        self.is_watched = state["is_watched"]
+        # Timeout/kick only make sense for someone in the server.
+        self.timeout_button.disabled = not is_member
+        self.kick_button.disabled = not is_member
+        if state["is_banned"]:
             self.ban_button.label = "Unban"
             self.ban_button.emoji = "\U0001f513"
             self.ban_button.style = discord.ButtonStyle.success
-        if is_timed_out:
+        else:
+            self.ban_button.label = "Ban"
+            self.ban_button.emoji = "\U0001f528"
+            self.ban_button.style = discord.ButtonStyle.danger
+        if state["is_timed_out"] and is_member:
             self.timeout_button.label = "Remove timeout"
             self.timeout_button.style = discord.ButtonStyle.success
-        if watch_cog is None:
+        else:
+            self.timeout_button.label = "Timeout"
+            self.timeout_button.style = discord.ButtonStyle.primary
+        if self.watch_cog is None:
             self.watch_button.disabled = True
-        elif is_watched:
-            self.watch_button.label = "Unwatch"
-            self.watch_button.emoji = "\U0001f441\ufe0f"
-            self.watch_button.style = discord.ButtonStyle.success
+        else:
+            self.watch_button.disabled = False
+            if state["is_watched"]:
+                self.watch_button.label = "Unwatch"
+                self.watch_button.emoji = "\U0001f441\ufe0f"
+                self.watch_button.style = discord.ButtonStyle.success
+            else:
+                self.watch_button.label = "Watch"
+                self.watch_button.emoji = "\u2795"
+                self.watch_button.style = discord.ButtonStyle.secondary
+
+    async def _refresh_panel(self, force=None):
+        """Rebuild the card embed and button states from live data."""
+        member = self.guild.get_member(self.target_id)
+        is_member = member is not None
+        if force and "is_member" in force:
+            # e.g. right after a kick, before the member cache catches up
+            is_member = force["is_member"]
+        target = member if member is not None else self.target
+        self.target = target
+        embed, state = await build_userinfo_embed(
+            self.guild, target, is_member, self.test_mode,
+            self.watch_cog, self.requester_name,
+        )
+        if force:
+            state.update(force)
+        self._sync_buttons(state)
+        if self.message is not None:
+            try:
+                await self.message.edit(embed=embed, view=self)
+            except Exception:
+                pass
+
+    async def _apply_mod_action(self, action, params, dm_enabled, moderator):
+        """Apply a warn/timeout/kick/ban. Returns a human-readable result string."""
+        guild = self.guild
+        target = self.target
+        reason = params["reason"]
+        audit = f"{moderator} ({moderator.id}): {reason}"
+
+        def dm_note(ok):
+            return "\U0001f4e8 DM sent" if ok else "\U0001f4ea Couldn't DM them (DMs closed?)"
+
+        if action == "warn":
+            note = ""
+            if dm_enabled:
+                ok = await _dm_target(
+                    target,
+                    f"\u26a0\ufe0f You've been warned in **{guild.name}**\n**Reason:** {reason}",
+                )
+                note = f"\n{dm_note(ok)}"
+            data, urec = _mod_record(guild.id, target.id)
+            urec["warns"].append({
+                "reason": reason,
+                "mod_id": moderator.id,
+                "mod_name": str(moderator),
+                "ts": time.time(),
+            })
+            _save_mod_data(data)
+            n = len(urec["warns"])
+            return f"\u26a0\ufe0f Warned {target.mention} (warn #{n})\n**Reason:** {reason}{note}"
+
+        member = guild.get_member(self.target_id)
+        if member is None:
+            return "\u274c That user isn't in the server anymore."
+
+        if action == "timeout":
+            duration = params["duration"]
+            raw = params["duration_str"]
+            note = ""
+            if dm_enabled:
+                ok = await _dm_target(
+                    member,
+                    f"\u23f1\ufe0f You've been timed out in **{guild.name}** for `{raw}`\n**Reason:** {reason}",
+                )
+                note = f"\n{dm_note(ok)}"
+            try:
+                await member.timeout_for(duration, reason=audit)
+            except discord.Forbidden:
+                return "\u274c I can't time out that user \u2014 is my role above theirs?"
+            except Exception as e:
+                return f"\u274c Timeout failed: `{e}`"
+            # Update the cached member so the refreshed card is accurate immediately.
+            try:
+                member.timed_out_until = datetime.now(timezone.utc) + duration
+            except Exception:
+                pass
+            return f"\u23f1\ufe0f Timed out {member.mention} for `{raw}`\n**Reason:** {reason}{note}"
+
+        if action == "kick":
+            note = ""
+            if dm_enabled:
+                ok = await _dm_target(
+                    member,
+                    f"\U0001f462 You've been kicked from **{guild.name}**\n**Reason:** {reason}",
+                )
+                note = f"\n{dm_note(ok)}"
+            try:
+                await member.kick(reason=audit)
+            except discord.Forbidden:
+                return "\u274c I can't kick that user \u2014 is my role above theirs?"
+            except Exception as e:
+                return f"\u274c Kick failed: `{e}`"
+            return f"\U0001f462 Kicked {member.mention}\n**Reason:** {reason}{note}"
+
+        if action == "ban":
+            days = params["delete_days"]
+            note = ""
+            if dm_enabled:
+                ok = await _dm_target(
+                    target,
+                    f"\U0001f528 You've been banned from **{guild.name}**\n**Reason:** {reason}",
+                )
+                note = f"\n{dm_note(ok)}"
+            try:
+                await guild.ban(target, reason=audit, delete_message_days=days)
+            except discord.Forbidden:
+                return "\u274c I can't ban that user \u2014 is my role above theirs?"
+            except Exception as e:
+                return f"\u274c Ban failed: `{e}`"
+            return f"\U0001f528 Banned {target.mention}\n**Reason:** {reason}{note}"
+
+        return "\u274c Unknown action."
 
     async def _check_admin(self, interaction: discord.Interaction):
         perms = interaction.user.guild_permissions
@@ -697,22 +983,24 @@ class UserinfoModView(discord.ui.View):
                     ephemeral=True,
                 )
                 return
+            await interaction.response.defer(ephemeral=True)
             try:
                 await member.remove_timeout(
                     reason=f"{interaction.user} ({interaction.user.id}): timeout removed via panel"
                 )
             except discord.Forbidden:
-                await interaction.response.send_message(
+                await interaction.followup.send(
                     "\u274c I can't do that \u2014 is my role above theirs?", ephemeral=True
                 )
                 return
             except Exception as e:
-                await interaction.response.send_message(f"\u274c Failed: `{e}`", ephemeral=True)
+                await interaction.followup.send(f"\u274c Failed: `{e}`", ephemeral=True)
                 return
-            self.is_timed_out = False
-            button.label = "Timeout"
-            button.style = discord.ButtonStyle.primary
-            await interaction.response.edit_message(view=self)
+            try:
+                member.timed_out_until = None
+            except Exception:
+                pass
+            await self._refresh_panel()
             await interaction.followup.send(
                 f"\u23f1\ufe0f Removed timeout from {member.mention}", ephemeral=True
             )
@@ -742,24 +1030,21 @@ class UserinfoModView(discord.ui.View):
                     ephemeral=True,
                 )
                 return
+            await interaction.response.defer(ephemeral=True)
             try:
                 await self.guild.unban(
                     discord.Object(id=self.target_id),
                     reason=f"{interaction.user} ({interaction.user.id}): unbanned via panel",
                 )
             except discord.Forbidden:
-                await interaction.response.send_message(
+                await interaction.followup.send(
                     "\u274c I can't unban them \u2014 check my permissions.", ephemeral=True
                 )
                 return
             except Exception as e:
-                await interaction.response.send_message(f"\u274c Unban failed: `{e}`", ephemeral=True)
+                await interaction.followup.send(f"\u274c Unban failed: `{e}`", ephemeral=True)
                 return
-            self.is_banned = False
-            button.label = "Ban"
-            button.emoji = "\U0001f528"
-            button.style = discord.ButtonStyle.danger
-            await interaction.response.edit_message(view=self)
+            await self._refresh_panel()
             await interaction.followup.send(
                 f"\U0001f513 Unbanned {self.target.mention}", ephemeral=True
             )
@@ -780,7 +1065,7 @@ class UserinfoModView(discord.ui.View):
     async def notes_button(self, button: discord.ui.Button, interaction: discord.Interaction):
         if not await self._check_admin(interaction):
             return
-        view = NotesView(self.guild, self.target)
+        view = NotesView(self.guild, self.target, panel=self)
         await interaction.response.send_message(
             view.content(), view=view, ephemeral=True
         )
@@ -808,13 +1093,10 @@ class UserinfoModView(discord.ui.View):
                     ephemeral=True,
                 )
                 return
+            await interaction.response.defer(ephemeral=True)
             guild_data["users"].pop(str(self.target_id), None)
             cog._save_db()
-            self.is_watched = False
-            button.label = "Watch"
-            button.emoji = "\u2795"
-            button.style = discord.ButtonStyle.secondary
-            await interaction.response.edit_message(view=self)
+            await self._refresh_panel()
             await interaction.followup.send(
                 f"\u2796 Removed {self.target.mention} from the watch list", ephemeral=True
             )
@@ -907,7 +1189,7 @@ class AdminCog(commands.Cog):
    
     # User Info Command
     @discord.slash_command(name = "userinfo", description="View detailed info about a user.", guild_ids=GUILD_IDS)
-    @extra_help("Mini admin panel: user card (account, server profile, XP/level, ban status, watch-list status, warns, notes) with Warn/Timeout/Kick/Ban/Clear/Notes/Watch/Add-XP/Remove-XP buttons. Ban/Timeout/Watch flip to Unban/Remove-timeout/Unwatch when active. Every action DMs the user the reason. Set test_mode to simulate actions, private to keep the card to yourself. Pick a member, or type a user ID, mention, or username. If no user is specified, it shows your own information.")
+    @extra_help("Mini admin panel: user card (account, server profile, XP/level, ban status, watch-list status, warns, notes) with Warn/Timeout/Kick/Ban/Clear/Notes/Watch/Add-XP/Remove-XP buttons. Ban/Timeout/Watch flip to Unban/Remove-timeout/Unwatch when active. Warn/Timeout/Kick/Ban ask for a reason, then a confirm step with a DM on/off toggle. The card refreshes itself after every action. Set test_mode to simulate actions, private to keep the card to yourself. Pick a member, or type a user ID, mention, or username. If no user is specified, it shows your own information.")
     @admin_required()
     async def userinfo(
         self,
@@ -1006,146 +1288,19 @@ class AdminCog(commands.Cog):
             target = interaction.author
             is_member = True
 
-        # ---- Ban status ----
-        ban_status = "No"
-        ban_reason = None
-        is_banned = False
-        try:
-            ban = await guild.fetch_ban(target)
-            ban_status = "\U0001f528 Yes"
-            ban_reason = ban.reason
-            is_banned = True
-        except discord.NotFound:
-            pass
-        except discord.Forbidden:
-            ban_status = "Unknown (missing Ban Members permission)"
-
-        # ---- Server XP ----
-        xp_line = "No XP recorded yet"
-        try:
-            from data.DB.Storage.storage import get_levels
-            db = await get_levels(str(guild_id))
-            udata = db.get(str(target.id))
-            if udata:
-                lvl = udata.get("level", 1)
-                xp = udata.get("xp", 0)
-                need = lvl * 100 - xp
-                xp_line = f"Level **{lvl}** • **{xp}** XP\n{need} XP to level {lvl + 1}"
-        except Exception:
-            xp_line = "Couldn't load XP data"
-
-        # ---- Watch-list status (via the cog so we share its in-memory db) ----
-        watched = False
-        watch_record = None
         watch_cog = self.bot.get_cog("WatchList")
-        try:
-            if watch_cog is not None:
-                watch_record = watch_cog._guild_data(guild_id)["users"].get(str(target.id))
-            else:
-                wl_data = load_json("watchlist_data.json") or {}
-                watch_record = wl_data.get(str(guild_id), {}).get("users", {}).get(str(target.id))
-            watched = watch_record is not None
-        except Exception:
-            pass
-
-        # ---- Warns / notes ----
-        warns = []
-        notes = []
-        try:
-            md = load_json(MOD_DATA_FILE) or {}
-            urec = md.get(str(guild_id), {}).get(str(target.id), {})
-            warns = urec.get("warns", [])
-            notes = urec.get("notes", [])
-        except Exception:
-            pass
-
-        # ---- Timeout state ----
-        is_timed_out = False
-        if is_member:
-            tu = getattr(target, "timed_out_until", None)
-            if tu and tu > datetime.now(timezone.utc):
-                is_timed_out = True
-
-        # ---- Build the embed ----
-        display = target.display_name if is_member else target.name
-        color = (target.color if is_member and target.color != discord.Color.default()
-                 else discord.Color.blurple())
-        info_embed = discord.Embed(
-            title=f"\U0001f464 {display}",
-            description=f"{target.mention}\n`{target.id}`",
-            color=color,
-            timestamp=datetime.now(timezone.utc),
+        info_embed, state = await build_userinfo_embed(
+            guild, target, is_member, test_mode, watch_cog,
+            interaction.author.display_name,
         )
-        info_embed.set_thumbnail(url=target.display_avatar.url)
+        is_banned = state["is_banned"]
+        is_timed_out = state["is_timed_out"]
+        watched = state["is_watched"]
 
-        created_ts = int(target.created_at.timestamp())
-        info_embed.add_field(
-            name="Account",
-            value=f"**Username:** `{target.name}`\n**Created:** <t:{created_ts}:F>",
-            inline=True,
-        )
-
-        if is_member:
-            joined = (f"<t:{int(target.joined_at.timestamp())}:F>"
-                      if target.joined_at else "Unknown")
-            info_embed.add_field(
-                name="Server",
-                value=(f"**Nickname:** `{target.display_name}`\n"
-                       f"**Joined:** {joined}\n"
-                       f"**Top role:** {target.top_role.mention}"),
-                inline=True,
-            )
-            roles = [r.mention for r in target.roles if r.name != "@everyone"]
-            roles_value = ", ".join(roles) if roles else "None"
-            if len(roles_value) > 1024:
-                roles_value = roles_value[:1000] + "…"
-            info_embed.add_field(
-                name=f"Roles ({len(roles)})",
-                value=roles_value,
-                inline=False,
-            )
-            status = str(target.status).title() if getattr(target, "status", None) else "Unknown"
-            info_embed.add_field(
-                name="Presence",
-                value=f"**Status:** {status}\n**Bot:** {'Yes' if target.bot else 'No'}",
-                inline=True,
-            )
-        else:
-            info_embed.add_field(name="Server", value="*Not in this server*", inline=True)
-
-        info_embed.add_field(name="⭐ Server XP", value=xp_line, inline=True)
-
-        mod_value = f"**Banned:** {ban_status}"
-        if ban_reason:
-            mod_value += f"\n**Reason:** {ban_reason}"
-        if watched and watch_record:
-            adder = watch_record.get("added_by_name", "?")
-            when = watch_record.get("added_at", "")
-            try:
-                when = f"<t:{int(datetime.fromisoformat(when).timestamp())}:D>"
-            except Exception:
-                when = when[:10]
-            mod_value += f"\n**Watch list:** \U0001f441\ufe0f Yes (by {adder}, {when})"
-            if watch_record.get("reason"):
-                mod_value += f"\n**Watch reason:** \"{watch_record['reason'][:80]}\""
-        else:
-            mod_value += "\n**Watch list:** No"
-        if warns:
-            latest = warns[-1].get("reason", "")[:50]
-            mod_value += f"\n**Warnings:** {len(warns)} (latest: \"{latest}\")"
-        else:
-            mod_value += "\n**Warnings:** 0"
-        if notes:
-            mod_value += f"\n**Notes:** {len(notes)}"
-        info_embed.add_field(name="🛡️ Moderation", value=mod_value, inline=False)
-
-        footer = f"Requested by {interaction.author.display_name}"
-        if test_mode:
-            footer += " \u2022 \U0001f9ea TEST MODE \u2014 actions are simulated"
-        info_embed.set_footer(text=footer)
         view = UserinfoModView(guild, target, is_member, test_mode=test_mode,
                                 is_banned=is_banned, is_timed_out=is_timed_out,
-                                watch_cog=watch_cog, is_watched=watched)
+                                watch_cog=watch_cog, is_watched=watched,
+                                requester_name=interaction.author.display_name)
         view.message = await interaction.followup.send(
             embed=info_embed, view=view, ephemeral=private, wait=True
         )
