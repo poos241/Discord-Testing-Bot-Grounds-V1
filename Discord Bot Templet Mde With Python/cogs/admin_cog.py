@@ -499,10 +499,143 @@ class NotesView(discord.ui.View):
         await interaction.response.send_modal(NoteRemoveModal(self, len(notes)))
 
 
+class WatchAddModal(discord.ui.Modal):
+    """Optional reason when adding someone to the watch list from the panel."""
+
+    def __init__(self, panel):
+        target = panel.target
+        name = target.display_name if isinstance(target, discord.Member) else target.name
+        super().__init__(title=f"Watch {name}"[:45])
+        self.panel = panel
+        self.add_item(discord.ui.InputText(
+            label="Reason (optional)",
+            style=discord.InputTextStyle.paragraph,
+            placeholder="Why are they being watched?",
+            max_length=300,
+            required=False,
+        ))
+
+    async def callback(self, interaction: discord.Interaction):
+        reason = (self.children[0].value or "").strip() or None
+        panel = self.panel
+        cog = panel.watch_cog
+        if cog is None:
+            await interaction.response.send_message(
+                "\u274c The Watch List system isn't loaded.", ephemeral=True
+            )
+            return
+        if panel.test_mode:
+            await interaction.response.send_message(
+                f"\U0001f9ea TEST \u2014 would add {panel.target.mention} to the watch list",
+                ephemeral=True,
+            )
+            return
+        target = panel.target
+        display = target.display_name if isinstance(target, discord.Member) else target.name
+        record = {
+            "user_id": str(target.id),
+            "username": target.name,
+            "display_name": display,
+            "added_by": str(interaction.user.id),
+            "added_by_name": str(interaction.user),
+            "added_at": datetime.now(timezone.utc).isoformat(),
+        }
+        if reason:
+            record["reason"] = reason
+        guild_data = cog._guild_data(panel.guild.id)
+        guild_data["users"][str(target.id)] = record
+        cog._save_db()
+        panel.is_watched = True
+        panel.watch_button.label = "Unwatch"
+        panel.watch_button.emoji = "\U0001f441\ufe0f"
+        panel.watch_button.style = discord.ButtonStyle.success
+        await interaction.response.send_message(
+            f"\U0001f441\ufe0f Added {target.mention} to the watch list"
+            + (f"\n**Reason:** {reason}" if reason else ""),
+            ephemeral=True,
+        )
+        if panel.message is not None:
+            try:
+                await panel.message.edit(view=panel)
+            except Exception:
+                pass
+
+
+class XPModal(discord.ui.Modal):
+    """Add or remove XP for a manual correction."""
+
+    def __init__(self, panel, adding):
+        self.panel = panel
+        self.adding = adding
+        super().__init__(title=f"{'Add' if adding else 'Remove'} XP")
+        self.add_item(discord.ui.InputText(
+            label="Amount of XP",
+            placeholder="e.g. 100",
+            max_length=7,
+        ))
+
+    async def callback(self, interaction: discord.Interaction):
+        raw = (self.children[0].value or "").strip()
+        if not raw.isdigit() or int(raw) <= 0:
+            await interaction.response.send_message(
+                "\u274c Amount must be a positive whole number.", ephemeral=True
+            )
+            return
+        amount = int(raw)
+        panel = self.panel
+        guild = panel.guild
+        target = panel.target
+        gid, uid = str(guild.id), str(target.id)
+        display = target.display_name if isinstance(target, discord.Member) else target.name
+        if panel.test_mode:
+            await interaction.response.send_message(
+                f"\U0001f9ea TEST \u2014 would {'add' if self.adding else 'remove'} {amount} XP "
+                f"{'to' if self.adding else 'from'} {target.mention}",
+                ephemeral=True,
+            )
+            return
+        try:
+            from data.DB.Storage.storage import get_levels, save_levels
+            if self.adding:
+                from cogs.Level_system import award_xp
+                gained = await award_xp(guild, target.id, display, amount, apply_event=False)
+                db = await get_levels(gid)
+                ud = db.get(uid, {})
+                lvl, xp = ud.get("level", 1), ud.get("xp", 0)
+                extra = f"\n\U0001f389 Leveled up to **{lvl}**!" if gained else ""
+                await interaction.response.send_message(
+                    f"\u2795 Added **{amount}** XP to {target.mention} "
+                    f"(now Level **{lvl}**, **{xp}** XP){extra}",
+                    ephemeral=True,
+                )
+            else:
+                db = await get_levels(gid)
+                ud = db.get(uid)
+                if not ud:
+                    await interaction.response.send_message(
+                        "\u274c That user has no XP recorded.", ephemeral=True
+                    )
+                    return
+                ud["xp"] = ud.get("xp", 0) - amount
+                while ud["xp"] < 0 and ud.get("level", 1) > 1:
+                    ud["level"] -= 1
+                    ud["xp"] += ud["level"] * 100
+                ud["xp"] = max(0, ud["xp"])
+                await save_levels(gid, db)
+                await interaction.response.send_message(
+                    f"\u2796 Removed **{amount}** XP from {target.mention} "
+                    f"(now Level **{ud['level']}**, **{ud['xp']}** XP)",
+                    ephemeral=True,
+                )
+        except Exception as e:
+            await interaction.response.send_message(f"\u274c XP update failed: `{e}`", ephemeral=True)
+
+
 class UserinfoModView(discord.ui.View):
     """Mini admin panel attached to the /userinfo card."""
 
-    def __init__(self, guild, target, is_member, test_mode=False, is_banned=False, is_timed_out=False):
+    def __init__(self, guild, target, is_member, test_mode=False, is_banned=False,
+                 is_timed_out=False, watch_cog=None, is_watched=False):
         super().__init__(timeout=1800)
         self.guild = guild
         self.target = target
@@ -510,6 +643,9 @@ class UserinfoModView(discord.ui.View):
         self.test_mode = test_mode
         self.is_banned = is_banned
         self.is_timed_out = is_timed_out
+        self.watch_cog = watch_cog
+        self.is_watched = is_watched
+        self.message = None
         if not is_member:
             # Timeout/kick only make sense for someone in the server.
             self.timeout_button.disabled = True
@@ -521,6 +657,12 @@ class UserinfoModView(discord.ui.View):
         if is_timed_out:
             self.timeout_button.label = "Remove timeout"
             self.timeout_button.style = discord.ButtonStyle.success
+        if watch_cog is None:
+            self.watch_button.disabled = True
+        elif is_watched:
+            self.watch_button.label = "Unwatch"
+            self.watch_button.emoji = "\U0001f441\ufe0f"
+            self.watch_button.style = discord.ButtonStyle.success
 
     async def _check_admin(self, interaction: discord.Interaction):
         perms = interaction.user.guild_permissions
@@ -647,6 +789,50 @@ class UserinfoModView(discord.ui.View):
         except Exception:
             pass
 
+    @discord.ui.button(label="Watch", emoji="\u2795", style=discord.ButtonStyle.secondary, row=1)
+    async def watch_button(self, button: discord.ui.Button, interaction: discord.Interaction):
+        if not await self._check_admin(interaction):
+            return
+        cog = self.watch_cog
+        if cog is None:
+            await interaction.response.send_message(
+                "\u274c The Watch List system isn't loaded.", ephemeral=True
+            )
+            return
+        guild_data = cog._guild_data(self.guild.id)
+        currently = str(self.target_id) in guild_data["users"]
+        if currently:
+            if self.test_mode:
+                await interaction.response.send_message(
+                    f"\U0001f9ea TEST \u2014 would remove {self.target.mention} from the watch list",
+                    ephemeral=True,
+                )
+                return
+            guild_data["users"].pop(str(self.target_id), None)
+            cog._save_db()
+            self.is_watched = False
+            button.label = "Watch"
+            button.emoji = "\u2795"
+            button.style = discord.ButtonStyle.secondary
+            await interaction.response.edit_message(view=self)
+            await interaction.followup.send(
+                f"\u2796 Removed {self.target.mention} from the watch list", ephemeral=True
+            )
+            return
+        await interaction.response.send_modal(WatchAddModal(self))
+
+    @discord.ui.button(label="Add XP", emoji="\u2b06\ufe0f", style=discord.ButtonStyle.success, row=1)
+    async def add_xp_button(self, button: discord.ui.Button, interaction: discord.Interaction):
+        if not await self._check_admin(interaction):
+            return
+        await interaction.response.send_modal(XPModal(self, True))
+
+    @discord.ui.button(label="Remove XP", emoji="\u2b07\ufe0f", style=discord.ButtonStyle.secondary, row=1)
+    async def remove_xp_button(self, button: discord.ui.Button, interaction: discord.Interaction):
+        if not await self._check_admin(interaction):
+            return
+        await interaction.response.send_modal(XPModal(self, False))
+
 
 class AdminCog(commands.Cog):
     """Admin commands (e.g. clear_user)."""
@@ -721,7 +907,7 @@ class AdminCog(commands.Cog):
    
     # User Info Command
     @discord.slash_command(name = "userinfo", description="View detailed info about a user.", guild_ids=GUILD_IDS)
-    @extra_help("Mini admin panel: user card (account, server profile, XP/level, ban status, watch-list status, warns, notes) with Warn/Timeout/Kick/Ban/Clear/Notes buttons. Ban/Timeout flip to Unban/Remove-timeout when active. Every action DMs the user the reason. Set test_mode to simulate actions, private to keep the card to yourself. Pick a member, or type a user ID, mention, or username. If no user is specified, it shows your own information.")
+    @extra_help("Mini admin panel: user card (account, server profile, XP/level, ban status, watch-list status, warns, notes) with Warn/Timeout/Kick/Ban/Clear/Notes/Watch/Add-XP/Remove-XP buttons. Ban/Timeout/Watch flip to Unban/Remove-timeout/Unwatch when active. Every action DMs the user the reason. Set test_mode to simulate actions, private to keep the card to yourself. Pick a member, or type a user ID, mention, or username. If no user is specified, it shows your own information.")
     @admin_required()
     async def userinfo(
         self,
@@ -848,11 +1034,17 @@ class AdminCog(commands.Cog):
         except Exception:
             xp_line = "Couldn't load XP data"
 
-        # ---- Watch-list status ----
+        # ---- Watch-list status (via the cog so we share its in-memory db) ----
         watched = False
+        watch_record = None
+        watch_cog = self.bot.get_cog("WatchList")
         try:
-            wl_data = load_json("watchlist_data.json") or {}
-            watched = str(target.id) in wl_data.get(str(guild_id), {}).get("users", {})
+            if watch_cog is not None:
+                watch_record = watch_cog._guild_data(guild_id)["users"].get(str(target.id))
+            else:
+                wl_data = load_json("watchlist_data.json") or {}
+                watch_record = wl_data.get(str(guild_id), {}).get("users", {}).get(str(target.id))
+            watched = watch_record is not None
         except Exception:
             pass
 
@@ -926,7 +1118,18 @@ class AdminCog(commands.Cog):
         mod_value = f"**Banned:** {ban_status}"
         if ban_reason:
             mod_value += f"\n**Reason:** {ban_reason}"
-        mod_value += f"\n**Watch list:** {'👁️ Yes' if watched else 'No'}"
+        if watched and watch_record:
+            adder = watch_record.get("added_by_name", "?")
+            when = watch_record.get("added_at", "")
+            try:
+                when = f"<t:{int(datetime.fromisoformat(when).timestamp())}:D>"
+            except Exception:
+                when = when[:10]
+            mod_value += f"\n**Watch list:** \U0001f441\ufe0f Yes (by {adder}, {when})"
+            if watch_record.get("reason"):
+                mod_value += f"\n**Watch reason:** \"{watch_record['reason'][:80]}\""
+        else:
+            mod_value += "\n**Watch list:** No"
         if warns:
             latest = warns[-1].get("reason", "")[:50]
             mod_value += f"\n**Warnings:** {len(warns)} (latest: \"{latest}\")"
@@ -941,8 +1144,11 @@ class AdminCog(commands.Cog):
             footer += " \u2022 \U0001f9ea TEST MODE \u2014 actions are simulated"
         info_embed.set_footer(text=footer)
         view = UserinfoModView(guild, target, is_member, test_mode=test_mode,
-                                is_banned=is_banned, is_timed_out=is_timed_out)
-        await interaction.followup.send(embed=info_embed, view=view, ephemeral=private)
+                                is_banned=is_banned, is_timed_out=is_timed_out,
+                                watch_cog=watch_cog, is_watched=watched)
+        view.message = await interaction.followup.send(
+            embed=info_embed, view=view, ephemeral=private, wait=True
+        )
 
 
     @discord.slash_command(name='remove_user_role', description="use this to remove a users role")
