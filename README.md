@@ -134,7 +134,7 @@ Discord Bot Templet Mde With Python/
 
 | Command           | What it does                                        | Who can use it |
 |-------------------|-----------------------------------------------------|----------------|
-| `/userinfo`       | Mini mod panel: user card + Warn/Timeout/Kick/Ban/Clear/Notes buttons (Ban/Timeout flip to Unban/Remove-timeout when active), `test_mode` simulation toggle, `private` visibility toggle | Admins |
+| `/userinfo`       | Mini mod panel: user card + Warn/Timeout/Kick/Ban/Clear/Notes/Watch/Add-XP/Remove-XP buttons (Ban/Timeout/Watch flip to Unban/Remove-timeout/Unwatch when active), `test_mode` simulation toggle, `private` visibility toggle | Admins |
 | `/clear_user`     | Deletes a user's messages in one or all channels    | Admins         |
 | `/add_user_role`  | Gives a role to a user                              | Admins         |
 | `/remove_user_role` | Removes a role from a user                        | Admins         |
@@ -164,7 +164,7 @@ Server** or **Administrator**.
 | `/watch_set_channel` | Set the log channel | Manage Server / Admin |
 | `/watch_clear` | Remove everyone (with confirmation) | Manage Server / Admin |
 
-`/userinfo` also shows whether a user is on the watch list. Its card carries a mini mod panel: **Warn**, **Timeout** (duration like `10m`/`2h`/`1d`), **Kick**, **Ban** (with message-delete days), **Clear**, and **Notes** buttons — each action asks for a reason and DMs it to the user; Ban flips to **Unban** and Timeout flips to **Remove timeout** when one is active; Clear opens a channel picker (or an All-channels button) then asks how many messages or `all`; Notes keeps a numbered mod-notes list you can add to and remove from; a `test_mode` true/false option simulates the actions without applying them; and a `private` option (default on) keeps the card to yourself — turn it off to post publicly.
+`/userinfo` also shows whether a user is on the watch list. Its card carries a mini mod panel: **Warn**, **Timeout** (duration like `10m`/`2h`/`1d`), **Kick**, **Ban** (with message-delete days), **Clear**, **Notes**, **Watch**, **Add XP**, and **Remove XP** buttons — each action asks for a reason and DMs it to the user; Ban flips to **Unban**, Timeout flips to **Remove timeout**, and Watch flips to **Unwatch** when one is active; Clear opens a channel picker (or an All-channels button) then asks how many messages or `all`; Notes keeps a numbered mod-notes list you can add to and remove from; Watch asks for an optional reason and the card shows who added them, when, and why; Add/Remove XP lets you correct someone's XP (adding uses the normal level-up path); a `test_mode` true/false option simulates the actions without applying them; and a `private` option (default on) keeps the card to yourself — turn it off to post publicly.
 
 ## Built-in commands (fun cog) — 🍽️ Eat It or Yeet It
 
