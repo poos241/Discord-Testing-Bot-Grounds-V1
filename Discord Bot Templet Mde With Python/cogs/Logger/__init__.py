@@ -4,6 +4,9 @@ from .members import MemberLogger
 from .channels import ChannelLogger
 from .emoji import EmojiLogger
 from .moderation import ModerationLogger
+from .voice import VoiceLogger
+from .invites import InviteLogger
+from .roles import RoleLogger
 from .commands import LoggerCommands
 
 
@@ -14,6 +17,9 @@ def setup(bot):
         ChannelLogger,
         EmojiLogger,
         ModerationLogger,
+        VoiceLogger,
+        InviteLogger,
+        RoleLogger,
         LoggerCommands,
     ):
         bot.add_cog(cog(bot))
