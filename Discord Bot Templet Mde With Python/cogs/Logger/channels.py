@@ -1,177 +1,91 @@
+"""Logs channel and thread create/delete/update events."""
 import discord
-
 from discord.ext import commands
 
-from cogs.Logger.thread_embeds import ThreadEmbeds
-
-from .channel_embeds import ChannelEmbeds
-
 from .base import BaseLogger
-
+from .config import SERVER, COLORS
+from .embeds import LoggerEmbed
 
 
 class ChannelLogger(BaseLogger):
-
-    def __init__(self, bot):
-
-        super().__init__(bot)
-
-    #
-    # -----------------------------
-    #
+    # ----- channels -----
 
     @commands.Cog.listener()
-
-    async def on_guild_channel_create(
-
-        self,
-
-        channel
-
-    ):
-
-        await ChannelEmbeds.created(
-
-            self.bot,
-
-            channel
-
+    async def on_guild_channel_create(self, channel):
+        embed = LoggerEmbed.base("📁 Channel Created", COLORS[SERVER])
+        LoggerEmbed.field(embed, "Name", f"#{channel.name}" if hasattr(channel, "name") else str(channel))
+        LoggerEmbed.field(embed, "Type", str(channel.type), inline=True)
+        category = getattr(channel, "category", None)
+        LoggerEmbed.field(embed, "Category", category.name if category else "None", inline=True)
+        entry = await self.audit_entry(
+            channel.guild, discord.AuditLogAction.channel_create, target_id=channel.id
         )
-
-    #
-    # -----------------------------
-    #
+        if entry:
+            LoggerEmbed.field(embed, "Created By", str(entry.user), inline=True)
+        LoggerEmbed.finalize(embed)
+        await self.send(channel.guild, SERVER, embed)
 
     @commands.Cog.listener()
-
-    async def on_guild_channel_delete(
-
-        self,
-
-        channel
-
-    ):
-
-        await ChannelEmbeds.deleted(
-
-            self.bot,
-
-            channel
-
+    async def on_guild_channel_delete(self, channel):
+        embed = LoggerEmbed.base("🗑 Channel Deleted", COLORS[SERVER])
+        LoggerEmbed.field(embed, "Name", getattr(channel, "name", str(channel)))
+        category = getattr(channel, "category", None)
+        LoggerEmbed.field(embed, "Category", category.name if category else "None", inline=True)
+        entry = await self.audit_entry(
+            channel.guild, discord.AuditLogAction.channel_delete, target_id=channel.id
         )
-
-    #
-    # -----------------------------
-    #
+        if entry:
+            LoggerEmbed.field(embed, "Deleted By", str(entry.user), inline=True)
+            if entry.reason:
+                LoggerEmbed.field(embed, "Reason", entry.reason)
+        LoggerEmbed.finalize(embed)
+        await self.send(channel.guild, SERVER, embed)
 
     @commands.Cog.listener()
-
-    async def on_guild_channel_update(
-
-        self,
-
-        before,
-
-        after
-
-    ):
-
+    async def on_guild_channel_update(self, before, after):
         if before.name != after.name:
-
-            await ChannelEmbeds.renamed(
-
-                self.bot,
-
-                before,
-
-                after
-
-            )
-
+            await self._renamed(before, after)
         if isinstance(before, discord.TextChannel) and before.topic != after.topic:
+            await self._topic(before, after)
+        if getattr(before, "slowmode_delay", None) != getattr(after, "slowmode_delay", None):
+            await self._slowmode(before, after)
 
-            await ChannelEmbeds.topic(
+    async def _renamed(self, before, after):
+        embed = LoggerEmbed.base("✏ Channel Renamed", COLORS[SERVER])
+        LoggerEmbed.field(embed, "Before", f"#{before.name}")
+        LoggerEmbed.field(embed, "After", f"#{after.name}")
+        LoggerEmbed.finalize(embed)
+        await self.send(after.guild, SERVER, embed)
 
-                self.bot,
+    async def _topic(self, before, after):
+        embed = LoggerEmbed.base("📝 Channel Topic Updated", COLORS[SERVER])
+        LoggerEmbed.field(embed, "Channel", after.mention, inline=True)
+        LoggerEmbed.field(embed, "Before", before.topic or "*None*")
+        LoggerEmbed.field(embed, "After", after.topic or "*None*")
+        LoggerEmbed.finalize(embed)
+        await self.send(after.guild, SERVER, embed)
 
-                before,
+    async def _slowmode(self, before, after):
+        embed = LoggerEmbed.base("🐢 Slowmode Updated", COLORS[SERVER])
+        LoggerEmbed.field(embed, "Channel", after.mention, inline=True)
+        LoggerEmbed.field(embed, "Before", f"{before.slowmode_delay}s", inline=True)
+        LoggerEmbed.field(embed, "After", f"{after.slowmode_delay}s", inline=True)
+        LoggerEmbed.finalize(embed)
+        await self.send(after.guild, SERVER, embed)
 
-                after
+    # ----- threads -----
 
-            )
-
-        if before.slowmode_delay != after.slowmode_delay:
-
-            await ChannelEmbeds.slowmode(
-
-                self.bot,
-
-                before,
-
-                after
-
-            )
-
-        if before.nsfw != after.nsfw:
-
-            await ChannelEmbeds.nsfw(
-
-                self.bot,
-
-                before,
-
-                after
-
-            )
     @commands.Cog.listener()
     async def on_thread_create(self, thread):
-
-        await ThreadEmbeds.created(
-            self.bot,
-            thread
-        )
-
+        embed = LoggerEmbed.base("🧵 Thread Created", COLORS[SERVER])
+        LoggerEmbed.field(embed, "Name", thread.name)
+        LoggerEmbed.field(embed, "Channel", thread.parent.mention if thread.parent else "Unknown", inline=True)
+        LoggerEmbed.finalize(embed)
+        await self.send(thread.guild, SERVER, embed)
 
     @commands.Cog.listener()
     async def on_thread_delete(self, thread):
-
-        await ThreadEmbeds.deleted(
-            self.bot,
-            thread
-        )
-
-
-    @commands.Cog.listener()
-    async def on_thread_update(
-
-        self,
-
-        before,
-
-        after
-
-    ):
-
-        if before.archived != after.archived:
-
-            await ThreadEmbeds.archived(
-
-                self.bot,
-
-                before,
-
-                after
-
-            )
-
-        if before.locked != after.locked:
-
-            await ThreadEmbeds.locked(
-
-                self.bot,
-
-                before,
-
-                after
-
-            )
+        embed = LoggerEmbed.base("🗑 Thread Deleted", COLORS[SERVER])
+        LoggerEmbed.field(embed, "Name", thread.name)
+        LoggerEmbed.finalize(embed)
+        await self.send(thread.guild, SERVER, embed)
