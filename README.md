@@ -132,7 +132,10 @@ Discord Bot Templet Mde With Python/
 │       ├── channels.py     # ChannelLogger: channel + thread create/delete/update
 │       ├── emoji.py        # EmojiLogger: emoji create/delete/rename
 │       ├── moderation.py   # ModerationLogger: bans, unbans, timeouts
-│       ├── commands.py     # /setup_logs, /change_logchannel, /log_settings
+│       ├── voice.py        # VoiceLogger: joins, leaves, moves, mute/deafen
+│       ├── invites.py      # InviteLogger: invite create/delete
+│       ├── roles.py        # RoleLogger: role create/delete/update
+│       ├── commands.py     # /setup_logs, /change_logchannel, /log_settings, /log_toggle
 │       └── audit.py        # Audit-log lookup (target-matched)
 ├── data/
 │   ├── eatyeet_*.json      # Eat It or Yeet It stats, suggestions, active rounds
@@ -191,9 +194,9 @@ Logs server events to dedicated channels, one per category:
 | Category | Logs |
 |---|---|
 | 📜 message | Message edits, deletes, bulk deletes (with original content) |
-| 👥 member | Joins, leaves, nickname/avatar changes, role adds/removes |
-| 🛠 server | Channel create/delete/rename/topic/slowmode, thread events, emoji create/delete/rename |
-| 🚨 moderation | Bans, unbans, timeouts (with moderator + reason from the audit log) |
+| 👥 member | Joins, leaves, kicks (detected via audit log), nickname/avatar changes, role adds/removes, voice joins/leaves/moves/mute/deafen |
+| 🛠 server | Channel create/delete/rename/topic/slowmode, thread events, emoji create/delete/rename, role create/delete/update, invite create/delete |
+| 🚨 moderation | Bans, unbans, timeouts, message clears, user data wipes (with moderator + reason from the audit log) |
 
 Messages are cached in `data/message_log.db` so deletes show the original
 content even when Discord doesn't provide it. Log channel config lives in the
@@ -203,7 +206,8 @@ same database (`guild_logs` table), set per guild per category.
 |---|---|---|
 | `/setup_logs` | Administrator | Creates the 📜 Server Logs category + 4 log channels (staff-only) and wires them up |
 | `/change_logchannel` | Administrator | Point one log category at a different channel |
-| `/log_settings` | Everyone | Show which channels each category logs to |
+| `/log_settings` | Everyone | Show which channels each category logs to + disabled events |
+| `/log_toggle` | Administrator | Enable/disable logging for a specific event type (29 toggleable events) |
 
 > **Note:** the Logger needs the **Message Content** privileged intent to log
 > message text. It's enabled in `bot.py` (`intents.message_content = True`) —
