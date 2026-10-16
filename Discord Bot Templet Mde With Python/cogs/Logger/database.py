@@ -38,6 +38,14 @@ class LoggerDatabase:
                     PRIMARY KEY (guild_id, log_type)
                 )
             """)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS log_toggles(
+                    guild_id INTEGER,
+                    event_key TEXT,
+                    enabled INTEGER,
+                    PRIMARY KEY (guild_id, event_key)
+                )
+            """)
             self._conn.commit()
 
     # ----- message cache -----
@@ -97,6 +105,25 @@ class LoggerDatabase:
             )
             row = cur.fetchone()
             return row["channel_id"] if row else None
+
+    def is_enabled(self, guild_id, event_key):
+        """True unless the guild explicitly disabled this event."""
+        with self._lock:
+            cur = self._conn.execute(
+                "SELECT enabled FROM log_toggles WHERE guild_id = ? AND event_key = ?",
+                (guild_id, event_key),
+            )
+            row = cur.fetchone()
+            return bool(row["enabled"]) if row else True
+
+    def set_enabled(self, guild_id, event_key, enabled):
+        with self._lock:
+            self._conn.execute(
+                "INSERT OR REPLACE INTO log_toggles (guild_id, event_key, enabled)"
+                " VALUES (?, ?, ?)",
+                (guild_id, event_key, 1 if enabled else 0),
+            )
+            self._conn.commit()
 
     def get_all_log_channels(self, guild_id):
         """Return {log_type: channel_id} for a guild."""
