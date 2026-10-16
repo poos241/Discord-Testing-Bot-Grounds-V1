@@ -258,6 +258,23 @@ class ClearAmountModal(discord.ui.Modal):
             f"\U0001f9f9 Cleared **{total}** messages from {mention} in {where_desc}.\n{lines}",
             ephemeral=True,
         )
+        # Log the purge to the moderation log channel if the Logger is loaded.
+        try:
+            logger_cog = interaction.client.get_cog("ModerationLogger")
+            if logger_cog is not None:
+                embed = discord.Embed(
+                    title="\U0001f9f9 Messages Cleared",
+                    color=discord.Color.orange(),
+                    timestamp=discord.utils.utcnow(),
+                )
+                embed.add_field(name="User", value=f"{mention}\n`{target_id}`", inline=True)
+                embed.add_field(name="Moderator", value=str(interaction.user), inline=True)
+                embed.add_field(name="Where", value=where_desc, inline=True)
+                embed.add_field(name="Deleted", value=f"**{total}** messages ({how_desc})")
+                embed.set_footer(text="Kush Bush Logger")
+                await logger_cog.send(guild, "moderation", embed)
+        except Exception:
+            pass
 
 
 class ClearChannelSelect(discord.ui.Select):
@@ -783,6 +800,98 @@ class ModConfirmView(discord.ui.View):
         await interaction.response.edit_message(content="\u274c Cancelled.", view=None)
 
 
+class WipeConfirmView(discord.ui.View):
+    """Confirm wiping ALL of a user's server data (XP, warns, notes, watch)."""
+
+    def __init__(self, panel):
+        super().__init__(timeout=300)
+        self.panel = panel
+
+    @discord.ui.button(label="Yes, wipe everything", style=discord.ButtonStyle.danger)
+    async def confirm(self, button: discord.ui.Button, interaction: discord.Interaction):
+        panel = self.panel
+        if not await panel._check_admin(interaction):
+            return
+        await interaction.response.defer(ephemeral=True)
+        guild = panel.guild
+        target_id = panel.target_id
+        gid, uid = str(guild.id), str(target_id)
+        wiped = []
+
+        if panel.test_mode:
+            await interaction.followup.send(
+                f"\U0001f9ea TEST \u2014 would wipe all data for {panel.target.mention}",
+                ephemeral=True,
+            )
+            return
+
+        # XP / level
+        try:
+            from data.DB.Storage.storage import get_levels, save_levels
+            db = await get_levels(gid)
+            if uid in db:
+                db[uid] = {"xp": 0, "level": 1,
+                           "username": getattr(panel.target, "display_name", str(panel.target))}
+                await save_levels(gid, db)
+                wiped.append("XP/level reset")
+        except Exception:
+            pass
+
+        # Warns + notes
+        try:
+            data, urec = _mod_record(guild.id, target_id)
+            if urec.get("warns"):
+                wiped.append(f"{len(urec['warns'])} warn(s)")
+            if urec.get("notes"):
+                wiped.append(f"{len(urec['notes'])} note(s)")
+            urec["warns"] = []
+            urec["notes"] = []
+            _save_mod_data(data)
+        except Exception:
+            pass
+
+        # Watch list
+        try:
+            cog = panel.watch_cog
+            if cog is not None:
+                guild_data = cog._guild_data(guild.id)
+                if str(target_id) in guild_data["users"]:
+                    guild_data["users"].pop(str(target_id), None)
+                    cog._save_db()
+                    wiped.append("watch entry")
+        except Exception:
+            pass
+
+        detail = ", ".join(wiped) if wiped else "nothing to wipe"
+        await interaction.followup.send(
+            f"\U0001f9f9 Wiped all data for {panel.target.mention}: {detail}.",
+            ephemeral=True,
+        )
+        # Log to moderation log
+        try:
+            logger_cog = interaction.client.get_cog("ModerationLogger")
+            if logger_cog is not None:
+                embed = discord.Embed(
+                    title="\U0001f9f9 User Data Wiped",
+                    color=discord.Color.red(),
+                    timestamp=discord.utils.utcnow(),
+                )
+                embed.add_field(name="User", value=f"{panel.target.mention}\n`{target_id}`", inline=True)
+                embed.add_field(name="Moderator", value=str(interaction.user), inline=True)
+                embed.add_field(name="Wiped", value=detail)
+                embed.set_footer(text="Kush Bush Logger")
+                await logger_cog.send(guild, "moderation", embed)
+        except Exception:
+            pass
+        await panel._refresh_panel()
+        self.stop()
+
+    @discord.ui.button(label="Cancel", style=discord.ButtonStyle.secondary)
+    async def cancel(self, button: discord.ui.Button, interaction: discord.Interaction):
+        await interaction.response.send_message("Wipe cancelled.", ephemeral=True)
+        self.stop()
+
+
 class UserinfoModView(discord.ui.View):
     """Mini admin panel attached to the /userinfo card."""
 
@@ -1131,6 +1240,18 @@ class UserinfoModView(discord.ui.View):
         if not await self._check_admin(interaction):
             return
         await interaction.response.send_modal(XPModal(self, False))
+
+    @discord.ui.button(label="Wipe Data", emoji="\U0001f9f9", style=discord.ButtonStyle.danger, row=2)
+    async def wipe_button(self, button: discord.ui.Button, interaction: discord.Interaction):
+        if not await self._check_admin(interaction):
+            return
+        await interaction.response.send_message(
+            f"\u26a0\ufe0f Wipe **ALL** data for {self.target.mention}?\n"
+            "This resets their XP/level, deletes all warns and notes, "
+            "and removes them from the watch list. This can't be undone.",
+            view=WipeConfirmView(self),
+            ephemeral=True,
+        )
 
 
 class AdminCog(commands.Cog):
