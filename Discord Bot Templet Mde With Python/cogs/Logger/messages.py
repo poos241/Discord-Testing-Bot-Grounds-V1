@@ -3,7 +3,7 @@ import discord
 from discord.ext import commands
 
 from .base import BaseLogger
-from .config import MESSAGE, COLORS
+from .config import MESSAGE, COLORS, EV_MESSAGE_EDIT, EV_MESSAGE_DELETE, EV_BULK_DELETE
 from .database import db
 from .embeds import LoggerEmbed
 
@@ -20,6 +20,8 @@ class MessageLogger(BaseLogger):
     @commands.Cog.listener()
     async def on_message_delete(self, message):
         if message.guild is None:
+            return
+        if not db.is_enabled(message.guild.id, EV_MESSAGE_DELETE):
             return
         cached = db.get_message(message.id)
         content = message.content or (cached["content"] if cached else "")
@@ -56,6 +58,8 @@ class MessageLogger(BaseLogger):
     async def on_message_edit(self, before, after):
         if before.author.bot or before.guild is None:
             return
+        if not db.is_enabled(before.guild.id, EV_MESSAGE_EDIT):
+            return
         if before.content == after.content:
             return
 
@@ -74,6 +78,8 @@ class MessageLogger(BaseLogger):
     async def on_raw_bulk_message_delete(self, payload):
         guild = self.bot.get_guild(payload.guild_id)
         if guild is None:
+            return
+        if not db.is_enabled(guild.id, EV_BULK_DELETE):
             return
         channel = guild.get_channel(payload.channel_id)
         embed = LoggerEmbed.base("🧹 Bulk Messages Deleted", COLORS[MESSAGE])
