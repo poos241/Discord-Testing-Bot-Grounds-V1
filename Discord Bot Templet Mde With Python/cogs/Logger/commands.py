@@ -3,7 +3,7 @@ import discord
 from discord.ext import commands
 
 from  config import GUILD_IDS
-from .config import CATEGORIES, CHANNEL_NAMES, LOG_CATEGORY_NAME
+from .config import CATEGORIES, CHANNEL_NAMES, LOG_CATEGORY_NAME, ALL_EVENTS, EVENT_GROUPS
 from .database import db
 
 
@@ -97,6 +97,7 @@ class LoggerCommands(commands.Cog):
         guild_ids=GUILD_IDS,
     )
     async def log_settings(self, ctx):
+        await ctx.defer(ephemeral=True)
         configured = db.get_all_log_channels(ctx.guild.id)
         embed = discord.Embed(title="📜 Logger Settings", color=discord.Color.blurple())
         for log_type in CATEGORIES:
@@ -105,5 +106,32 @@ class LoggerCommands(commands.Cog):
             value = channel.mention if channel else (
                 "⚠ Channel deleted" if channel_id else "Not configured"
             )
-            embed.add_field(name=log_type.capitalize(), value=value, inline=True)
-        await ctx.respond(embed=embed, ephemeral=True)
+            embed.add_field(name=f"{log_type.capitalize()} logs", value=value, inline=True)
+        disabled = [e for e in ALL_EVENTS if not db.is_enabled(ctx.guild.id, e)]
+        embed.add_field(
+            name="Disabled events",
+            value=", ".join(f"`{e}`" for e in disabled) or "None \u2014 everything is on",
+            inline=False,
+        )
+        await ctx.followup.send(embed=embed, ephemeral=True)
+
+    @discord.slash_command(
+        name="log_toggle",
+        description="Enable or disable logging for a specific event type.",
+        guild_ids=GUILD_IDS,
+    )
+    async def log_toggle(
+        self,
+        ctx,
+        event: discord.Option(str, "Event type", choices=ALL_EVENTS),  # type: ignore
+        enabled: discord.Option(bool, "Turn this event on or off"),  # type: ignore
+    ):
+        if not ctx.author.guild_permissions.administrator:
+            await ctx.respond("Administrator permission required.", ephemeral=True)
+            return
+        db.set_enabled(ctx.guild.id, event, enabled)
+        state = "enabled \u2705" if enabled else "disabled \u274c"
+        await ctx.respond(
+            f"Logging for `{event}` is now {state}.",
+            ephemeral=True,
+        )
