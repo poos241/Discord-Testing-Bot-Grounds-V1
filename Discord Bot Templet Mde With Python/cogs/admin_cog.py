@@ -72,6 +72,7 @@ class TimeoutModal(discord.ui.Modal):
                 f"\U0001f9ea TEST \u2014 would timeout {member.mention} for `{raw}`\n**Reason:** {reason}",
                 ephemeral=True,
             )
+            await self.panel._refresh_panel()
             return
         summary = f"\u23f1\ufe0f Timeout {member.mention} for `{raw}`\n**Reason:** {reason}"
         await interaction.response.send_message(
@@ -110,6 +111,7 @@ class KickModal(discord.ui.Modal):
                 f"\U0001f9ea TEST \u2014 would kick {member.mention}\n**Reason:** {reason}",
                 ephemeral=True,
             )
+            await self.panel._refresh_panel()
             return
         summary = f"\U0001f462 Kick {member.mention}\n**Reason:** {reason}"
         await interaction.response.send_message(
@@ -153,6 +155,7 @@ class BanModal(discord.ui.Modal):
                 f"\U0001f9ea TEST \u2014 would ban {mention} (delete {days}d of messages)\n**Reason:** {reason}",
                 ephemeral=True,
             )
+            await self.panel._refresh_panel()
             return
         summary = (f"\U0001f528 Ban {mention} (delete {days}d of messages)\n"
                    f"**Reason:** {reason}")
@@ -333,6 +336,7 @@ class WarnModal(discord.ui.Modal):
                 f"\U0001f9ea TEST \u2014 would warn {mention}\n**Reason:** {reason}",
                 ephemeral=True,
             )
+            await self.panel._refresh_panel()
             return
         summary = f"\u26a0\ufe0f Warn {mention}\n**Reason:** {reason}"
         await interaction.response.send_message(
@@ -480,6 +484,7 @@ class WatchAddModal(discord.ui.Modal):
                 f"\U0001f9ea TEST \u2014 would add {panel.target.mention} to the watch list",
                 ephemeral=True,
             )
+            await panel._refresh_panel()
             return
         target = panel.target
         display = target.display_name if isinstance(target, discord.Member) else target.name
@@ -536,6 +541,7 @@ class XPModal(discord.ui.Modal):
                 f"{'to' if self.adding else 'from'} {target.mention}",
                 ephemeral=True,
             )
+            await panel._refresh_panel()
             return
         try:
             from data.DB.Storage.storage import get_levels, save_levels
@@ -990,6 +996,7 @@ class UserinfoModView(discord.ui.View):
                     f"\U0001f9ea TEST \u2014 would remove timeout from {member.mention}",
                     ephemeral=True,
                 )
+                await self._refresh_panel()
                 return
             await interaction.response.defer(ephemeral=True)
             try:
@@ -1037,6 +1044,7 @@ class UserinfoModView(discord.ui.View):
                     f"\U0001f9ea TEST \u2014 would unban {self.target.mention}",
                     ephemeral=True,
                 )
+                await self._refresh_panel()
                 return
             await interaction.response.defer(ephemeral=True)
             try:
@@ -1100,6 +1108,7 @@ class UserinfoModView(discord.ui.View):
                     f"\U0001f9ea TEST \u2014 would remove {self.target.mention} from the watch list",
                     ephemeral=True,
                 )
+                await self._refresh_panel()
                 return
             await interaction.response.defer(ephemeral=True)
             guild_data["users"].pop(str(self.target_id), None)
