@@ -12,9 +12,9 @@ server-wide events.
 | Category | Key | What's logged |
 |---|---|---|
 | Message | `message` | Message edits, deletes (with original content), bulk deletes |
-| Member | `member` | Joins, leaves, nickname/avatar changes, role adds/removes |
-| Server | `server` | Channel create/delete/rename/topic/slowmode, thread create/delete, emoji create/delete/rename |
-| Moderation | `moderation` | Bans, unbans, timeouts (moderator + reason from the audit log) |
+| Member | `member` | Joins, leaves, kicks (via audit log), nickname/avatar changes, role adds/removes, voice joins/leaves/moves/mute/deafen |
+| Server | `server` | Channel create/delete/rename/topic/slowmode, thread create/delete, emoji create/delete/rename, role create/delete/update, invite create/delete |
+| Moderation | `moderation` | Bans, unbans, timeouts, message clears, user data wipes (moderator + reason from the audit log) |
 
 ## Package layout
 
@@ -31,7 +31,10 @@ server-wide events.
 | `channels.py` | `ChannelLogger` — channel + thread events |
 | `emoji.py` | `EmojiLogger` — emoji create/delete/rename |
 | `moderation.py` | `ModerationLogger` — bans, unbans, timeouts |
-| `commands.py` | `/setup_logs`, `/change_logchannel`, `/log_settings` |
+| `commands.py` | `/setup_logs`, `/change_logchannel`, `/log_settings`, `/log_toggle` |
+| `voice.py` | `VoiceLogger` — voice state changes |
+| `invites.py` | `InviteLogger` — invite create/delete |
+| `roles.py` | `RoleLogger` — role create/delete/update |
 | `audit.py` | `Audit.latest()` — audit-log lookup matched by target ID |
 
 ## Commands
@@ -40,7 +43,8 @@ server-wide events.
 |---|---|---|
 | `/setup_logs` | Creates the 📜 Server Logs category + 4 staff-only log channels, wires them up | Administrator |
 | `/change_logchannel` | Point one category at a different channel (picker for category + channel) | Administrator |
-| `/log_settings` | Show which channel each category logs to | Everyone |
+| `/log_settings` | Show which channel each category logs to, plus disabled events | Everyone |
+| `/log_toggle` | Enable/disable one of 29 event types (e.g. `avatar`, `voice_join`) | Administrator |
 
 ## How sending works
 
@@ -68,6 +72,21 @@ a count.
 for an action and returns the first one whose target matches `target_id`.
 This keeps the "Moderator" / "Reason" fields on ban/timeout/channel
 embeds accurate instead of grabbing an unrelated recent entry.
+
+## Per-event toggles
+
+Every log event has a toggle key (see `EVENT_GROUPS` in `config.py` —
+29 events total). They default to on. `/log_toggle` flips one;
+`db.is_enabled(guild_id, key)` is checked at the top of every handler,
+and `/log_settings` lists what's currently disabled. The state lives in
+the `log_toggles` table, keyed by `(guild_id, event_key)`.
+
+## Kick detection
+
+`on_member_remove` can't tell a kick from a leave on its own, so it
+checks the audit log for a `kick` entry targeting that user within the
+last 15 seconds. Kicks go to the 🚨 moderation channel as
+"👢 Member Kicked" (with moderator + reason); plain leaves stay in 👥.
 
 ## Gotchas
 
