@@ -120,10 +120,25 @@ Discord Bot Templet Mde With Python/
 │   ├── fun_cog.py          # Eat It or Yeet It party game (see section below)
 │   ├── Level_system.py     # Message XP, levels, leaderboard (see section below)
 │   ├── WatchList.py        # Watch List system: log watched users' messages (see section below)
+│   └── Logger/             # Server event logging (see section below)
+│       ├── __init__.py     # Registers all Logger cogs
+│       ├── config.py       # Log categories, colors, channel names
+│       ├── database.py     # SQLite: message cache + log channel config
+│       ├── logger.py       # Sends embeds to configured log channels
+│       ├── base.py         # BaseLogger cog (shared send/audit helpers)
+│       ├── embeds.py       # LoggerEmbed builders
+│       ├── messages.py     # MessageLogger: edits, deletes, bulk deletes
+│       ├── members.py      # MemberLogger: joins, leaves, nick/avatar/role changes
+│       ├── channels.py     # ChannelLogger: channel + thread create/delete/update
+│       ├── emoji.py        # EmojiLogger: emoji create/delete/rename
+│       ├── moderation.py   # ModerationLogger: bans, unbans, timeouts
+│       ├── commands.py     # /setup_logs, /change_logchannel, /log_settings
+│       └── audit.py        # Audit-log lookup (target-matched)
 ├── data/
 │   ├── eatyeet_*.json      # Eat It or Yeet It stats, suggestions, active rounds
 │   ├── watchlist_data.json # Watch List: watched users per server
 │   ├── mod_data.json       # /userinfo panel: warns + mod notes per server
+│   ├── message_log.db      # Logger: cached messages + log channel config
 │   └── DB/
 │       ├── db.py           # Database connection (SQLite)
 │       ├── models.py       # Table definitions
@@ -168,6 +183,32 @@ Server** or **Administrator**.
 | `/watch_clear` | Remove everyone (with confirmation) | Manage Server / Admin |
 
 `/userinfo` also shows whether a user is on the watch list. Its card carries a mini mod panel: **Warn**, **Timeout** (duration like `10m`/`2h`/`1d`), **Kick**, **Ban** (with message-delete days), **Clear**, **Notes**, **Watch**, **Add XP**, and **Remove XP** buttons — each action asks for a reason and DMs it to the user; Ban flips to **Unban**, Timeout flips to **Remove timeout**, and Watch flips to **Unwatch** when one is active; Clear opens a channel picker (or an All-channels button) then asks how many messages or `all`; Notes keeps a numbered mod-notes list you can add to and remove from; Watch asks for an optional reason and the card shows who added them, when, and why; Add/Remove XP lets you correct someone's XP (adding uses the normal level-up path); a `test_mode` true/false option simulates the actions without applying them; and a `private` option (default on) keeps the card to yourself — turn it off to post publicly.
+
+## 📜 Logger system
+
+Logs server events to dedicated channels, one per category:
+
+| Category | Logs |
+|---|---|
+| 📜 message | Message edits, deletes, bulk deletes (with original content) |
+| 👥 member | Joins, leaves, nickname/avatar changes, role adds/removes |
+| 🛠 server | Channel create/delete/rename/topic/slowmode, thread events, emoji create/delete/rename |
+| 🚨 moderation | Bans, unbans, timeouts (with moderator + reason from the audit log) |
+
+Messages are cached in `data/message_log.db` so deletes show the original
+content even when Discord doesn't provide it. Log channel config lives in the
+same database (`guild_logs` table), set per guild per category.
+
+| Command | Who can use it | What it does |
+|---|---|---|
+| `/setup_logs` | Administrator | Creates the 📜 Server Logs category + 4 log channels (staff-only) and wires them up |
+| `/change_logchannel` | Administrator | Point one log category at a different channel |
+| `/log_settings` | Everyone | Show which channels each category logs to |
+
+> **Note:** the Logger needs the **Message Content** privileged intent to log
+> message text. It's enabled in `bot.py` (`intents.message_content = True`) —
+> you must also toggle it on in the Discord Developer Portal under
+> Bot → Privileged Gateway Intents.
 
 ## Built-in commands (fun cog) — 🍽️ Eat It or Yeet It
 
