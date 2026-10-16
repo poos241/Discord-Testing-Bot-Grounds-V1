@@ -1,529 +1,77 @@
+"""Logs voice channel joins, leaves, moves, and mute/deafen changes."""
 import discord
-
 from discord.ext import commands
 
-from .voice_cache import voice_cache
-
-from .voice_embeds import VoiceEmbeds
-
 from .base import BaseLogger
+from .config import (
+    MEMBER, COLORS,
+    EV_VOICE_JOIN, EV_VOICE_LEAVE, EV_VOICE_MOVE, EV_VOICE_MUTE,
+)
+from .database import db
+from .embeds import LoggerEmbed
+
 
 class VoiceLogger(BaseLogger):
-
-    def __init__(self, bot):
-
-        super().__init__(bot)
-
-    #
-    # --------------------------------
-    #
-
     @commands.Cog.listener()
-
-    async def on_voice_state_update(
-
-        self,
-
-        member,
-
-        before,
-
-        after
-
-    ):
-
-        #
-        # joined
-        #
-
-        if before.channel is None and after.channel:
-
-            voice_cache.update(
-
-                member,
-
-                after.channel
-
-            )
-
-            await VoiceEmbeds.joined(
-
-                self.bot,
-
-                member,
-
-                after.channel
-
-            )
-
-            return
-
-        #
-        # left
-        #
-
-        if before.channel and after.channel is None:
-
-            voice_cache.remove(
-
-                member
-
-            )
-
-            await VoiceEmbeds.left(
-
-                self.bot,
-
-                member,
-
-                before.channel
-
-            )
-
-            return
-
-        #
-        # moved
-        #
-
-        if before.channel != after.channel:
-
-            voice_cache.update(
-
-                member,
-
-                after.channel
-
-            )
-
-            await VoiceEmbeds.moved(
-
-                self.bot,
-
-                member,
-
-                before.channel,
-
-                after.channel
-
-            )
-
-        #
-        # mute
-        #
-
-        if before.self_mute != after.self_mute:
-
-            await self.self_mute(
-
-                member,
-
-                after.self_mute
-
-            )
-
-        #
-        # deaf
-        #
-
-        if before.self_deaf != after.self_deaf:
-
-            await self.self_deaf(
-
-                member,
-
-                after.self_deaf
-
-            )
-
-        #
-        # stream
-        #
-
-        if before.self_stream != after.self_stream:
-
-            await self.stream(
-
-                member,
-
-                after.self_stream
-
-            )
-
-        #
-        # camera
-        #
-
-        if before.self_video != after.self_video:
-
-            await self.camera(
-
-                member,
-
-                after.self_video
-
-            )
-
-        #
-        # server mute
-        #
-
-        if before.mute != after.mute:
-
-            await self.server_mute(
-
-                member,
-
-                after.mute
-
-            )
-
-        #
-        # server deaf
-        #
-
-        if before.deaf != after.deaf:
-
-            await self.server_deaf(
-
-                member,
-
-                after.deaf
-
-            )
-
-    #
-    # --------------------------------
-    #
-
-    async def self_mute(
-
-        self,
-
-        member,
-
-        enabled
-
-    ):
-
-        
-
-        embed = discord.Embed(
-
-            title="🎤 Self Mute",
-
-            color=discord.Color.orange(),
-
-            timestamp=discord.utils.utcnow()
-
+    async def on_voice_state_update(self, member, before, after):
+        guild = member.guild
+
+        # Join / leave / move
+        if before.channel is None and after.channel is not None:
+            if db.is_enabled(guild.id, EV_VOICE_JOIN):
+                await self._join(member, after.channel)
+        elif before.channel is not None and after.channel is None:
+            if db.is_enabled(guild.id, EV_VOICE_LEAVE):
+                await self._leave(member, before.channel)
+        elif before.channel != after.channel:
+            if db.is_enabled(guild.id, EV_VOICE_MOVE):
+                await self._move(member, before.channel, after.channel)
+
+        # Mute / deafen changes (only meaningful while in a channel)
+        if after.channel is not None and db.is_enabled(guild.id, EV_VOICE_MUTE):
+            changes = []
+            if before.mute != after.mute:
+                changes.append(("Server Muted", after.mute))
+            if before.deaf != after.deaf:
+                changes.append(("Server Deafened", after.deaf))
+            if before.self_mute != after.self_mute:
+                changes.append(("Self Muted", after.self_mute))
+            if before.self_deaf != after.self_deaf:
+                changes.append(("Self Deafened", after.self_deaf))
+            if before.self_stream != after.self_stream:
+                changes.append(("Streaming", after.self_stream))
+            if before.self_video != after.self_video:
+                changes.append(("Camera On", after.self_video))
+            for name, state in changes:
+                await self._voice_flag(member, after.channel, name, state)
+
+    async def _join(self, member, channel):
+        embed = LoggerEmbed.base("🔊 Joined Voice", COLORS[MEMBER])
+        LoggerEmbed.author(embed, member)
+        LoggerEmbed.field(embed, "Channel", channel.mention, inline=True)
+        LoggerEmbed.finalize(embed)
+        await self.send(member.guild, MEMBER, embed)
+
+    async def _leave(self, member, channel):
+        embed = LoggerEmbed.base("🔇 Left Voice", COLORS[MEMBER])
+        LoggerEmbed.author(embed, member)
+        LoggerEmbed.field(embed, "Channel", channel.mention, inline=True)
+        LoggerEmbed.finalize(embed)
+        await self.send(member.guild, MEMBER, embed)
+
+    async def _move(self, member, before, after):
+        embed = LoggerEmbed.base("🔀 Moved Voice Channel", COLORS[MEMBER])
+        LoggerEmbed.author(embed, member)
+        LoggerEmbed.field(embed, "From", before.mention, inline=True)
+        LoggerEmbed.field(embed, "To", after.mention, inline=True)
+        LoggerEmbed.finalize(embed)
+        await self.send(member.guild, MEMBER, embed)
+
+    async def _voice_flag(self, member, channel, name, state):
+        embed = LoggerEmbed.base(
+            f"🎙 {name}: {'On' if state else 'Off'}", COLORS[MEMBER]
         )
-
-        embed.description = (
-
-            "Enabled"
-
-            if enabled
-
-            else
-
-            "Disabled"
-
-        )
-
-        embed.set_author(
-
-            name=str(member),
-
-            icon_url=member.display_avatar.url
-
-        )
-
-        await self.send(
-
-            member.guild,
-
-            "member",
-
-            embed
-
-        )
-
-    #
-    # --------------------------------
-    #
-
-    async def self_deaf(
-
-        self,
-
-        member,
-
-        enabled
-
-    ):
-
-        
-
-        embed = discord.Embed(
-
-            title="🎧 Self Deaf",
-
-            color=discord.Color.orange(),
-
-            timestamp=discord.utils.utcnow()
-
-        )
-
-        embed.description = (
-
-            "Enabled"
-
-            if enabled
-
-            else
-
-            "Disabled"
-
-        )
-
-        embed.set_author(
-
-            name=str(member),
-
-            icon_url=member.display_avatar.url
-
-        )
-
-        await self.send(
-
-            member.guild,
-
-            "member",
-
-            embed
-
-        )
-
-    #
-    # --------------------------------
-    #
-
-    async def stream(
-
-        self,
-
-        member,
-
-        enabled
-
-    ):
-
-        
-
-        embed = discord.Embed(
-
-            title="📺 Streaming",
-
-            color=discord.Color.purple(),
-
-            timestamp=discord.utils.utcnow()
-
-        )
-
-        embed.description = (
-
-            "Started Streaming"
-
-            if enabled
-
-            else
-
-            "Stopped Streaming"
-
-        )
-
-        embed.set_author(
-
-            name=str(member),
-
-            icon_url=member.display_avatar.url
-
-        )
-
-        await self.send(
-
-            member.guild,
-
-            "member",
-
-            embed
-
-        )
-
-    #
-    # --------------------------------
-    #
-
-    async def camera(
-
-        self,
-
-        member,
-
-        enabled
-
-    ):
-
-        
-
-        embed = discord.Embed(
-
-            title="📷 Camera",
-
-            color=discord.Color.blurple(),
-
-            timestamp=discord.utils.utcnow()
-
-        )
-
-        embed.description = (
-
-            "Camera Enabled"
-
-            if enabled
-
-            else
-
-            "Camera Disabled"
-
-        )
-
-        embed.set_author(
-
-            name=str(member),
-
-            icon_url=member.display_avatar.url
-
-        )
-
-        await self.send(
-
-           member.guild,
-
-            "member",
-
-            embed
-
-        )
-
-    #
-    # --------------------------------
-    #
-
-    async def server_mute(
-
-        self,
-
-        member,
-
-        enabled
-
-    ):
-
-        
-
-        embed = discord.Embed(
-
-            title="🔇 Server Mute",
-
-            color=discord.Color.red(),
-
-            timestamp=discord.utils.utcnow()
-
-        )
-
-        embed.description = (
-
-            "Muted"
-
-            if enabled
-
-            else
-
-            "Unmuted"
-
-        )
-
-        embed.set_author(
-
-            name=str(member),
-
-            icon_url=member.display_avatar.url
-
-        )
-
-        await self.send(
-
-            member.guild,
-
-            "member",
-
-            embed
-
-        )
-
-    #
-    # --------------------------------
-    #
-
-    async def server_deaf(
-
-        self,
-
-        member,
-
-        enabled
-
-    ):
-
-        
-
-        embed = discord.Embed(
-
-            title="🔈 Server Deaf",
-
-            color=discord.Color.red(),
-
-            timestamp=discord.utils.utcnow()
-
-        )
-
-        embed.description = (
-
-            "Deafened"
-
-            if enabled
-
-            else
-
-            "Undeafened"
-
-        )
-
-        embed.set_author(
-
-            name=str(member),
-
-            icon_url=member.display_avatar.url
-
-        )
-
-        await self.send(
-
-            member.guild,
-
-            "member",
-
-            embed
-
-        )
+        LoggerEmbed.author(embed, member)
+        LoggerEmbed.field(embed, "Channel", channel.mention, inline=True)
+        LoggerEmbed.finalize(embed)
+        await self.send(member.guild, MEMBER, embed)
