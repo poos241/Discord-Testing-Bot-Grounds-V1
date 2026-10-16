@@ -3,13 +3,16 @@ import discord
 from discord.ext import commands
 
 from .base import BaseLogger
-from .config import MODERATION, COLORS
+from .config import MODERATION, COLORS, EV_BAN, EV_UNBAN, EV_TIMEOUT
 from .embeds import LoggerEmbed
+from .database import db
 
 
 class ModerationLogger(BaseLogger):
     @commands.Cog.listener()
     async def on_member_ban(self, guild, user):
+        if not db.is_enabled(guild.id, EV_BAN):
+            return
         entry = await self.audit_entry(guild, discord.AuditLogAction.ban, target_id=user.id)
         embed = LoggerEmbed.base("🔨 Member Banned", COLORS[MODERATION])
         LoggerEmbed.field(embed, "User", f"{user} (`{user.id}`)")
@@ -20,6 +23,8 @@ class ModerationLogger(BaseLogger):
 
     @commands.Cog.listener()
     async def on_member_unban(self, guild, user):
+        if not db.is_enabled(guild.id, EV_UNBAN):
+            return
         entry = await self.audit_entry(guild, discord.AuditLogAction.unban, target_id=user.id)
         embed = LoggerEmbed.base("♻ Member Unbanned", COLORS[MODERATION])
         LoggerEmbed.field(embed, "User", f"{user} (`{user.id}`)")
@@ -29,6 +34,8 @@ class ModerationLogger(BaseLogger):
 
     @commands.Cog.listener()
     async def on_member_update(self, before, after):
+        if not db.is_enabled(after.guild.id, EV_TIMEOUT):
+            return
         before_to = getattr(before, "timed_out_until", None)
         after_to = getattr(after, "timed_out_until", None)
         if before_to == after_to:
