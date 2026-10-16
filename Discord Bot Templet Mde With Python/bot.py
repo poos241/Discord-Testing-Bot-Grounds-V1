@@ -18,6 +18,7 @@ TOKEN = os.getenv("TOKEN2")
 intents = discord.Intents.default()
 intents.members = True
 intents.voice_states = True
+intents.message_content = True  # required by the Logger cog to log message content
 
 client = commands.Bot(command_prefix="!", intents=intents)
 
