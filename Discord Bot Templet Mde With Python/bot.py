@@ -32,7 +32,7 @@ COGS = [
 
 for cog in COGS:
     client.load_extension(cog)
-
+client.load_extension("cogs.Logger")
 
 @client.event
 async def on_message(message):
