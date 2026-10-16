@@ -2,7 +2,7 @@
 import discord
 from discord.ext import commands
 
-from config import GUILD_IDS
+from  config import GUILD_IDS
 from .config import CATEGORIES, CHANNEL_NAMES, LOG_CATEGORY_NAME
 from .database import db
 
