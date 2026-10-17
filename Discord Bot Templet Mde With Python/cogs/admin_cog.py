@@ -3,7 +3,7 @@ import time
 import re
 from datetime import datetime, timezone, timedelta
 import discord
-from discord.ext import commands
+from discord.ext import commands, tasks
 import os
 import sys
 import subprocess
@@ -139,6 +139,12 @@ class BanModal(discord.ui.Modal):
             max_length=1,
             required=False,
         ))
+        self.add_item(discord.ui.InputText(
+            label="Duration (e.g. 7d, 12h, 30m) — blank = permanent",
+            placeholder="permanent",
+            max_length=10,
+            required=False,
+        ))
 
     async def callback(self, interaction: discord.Interaction):
         reason = (self.children[0].value or "").strip() or "No reason given"
@@ -149,20 +155,36 @@ class BanModal(discord.ui.Modal):
                 "\u274c Message-delete days must be 0\u20137.", ephemeral=True
             )
             return
+        dur_raw = (self.children[2].value or "").strip()
+        duration = None
+        dur_desc = "permanent"
+        if dur_raw and dur_raw.lower() not in ("permanent", "perm", "forever"):
+            duration = parse_mod_duration(dur_raw)
+            if duration is None:
+                await interaction.response.send_message(
+                    "\u274c Duration must look like `30m`, `12h`, `7d`, `1w` (max 28d), "
+                    "or be left blank for a permanent ban.",
+                    ephemeral=True,
+                )
+                return
+            dur_desc = dur_raw
         mention = self.panel.target.mention
         if self.panel.test_mode:
             await interaction.response.send_message(
-                f"\U0001f9ea TEST \u2014 would ban {mention} (delete {days}d of messages)\n**Reason:** {reason}",
+                f"\U0001f9ea TEST \u2014 would ban {mention} (delete {days}d of messages, {dur_desc})\n**Reason:** {reason}",
                 ephemeral=True,
             )
             await self.panel._refresh_panel()
             return
-        summary = (f"\U0001f528 Ban {mention} (delete {days}d of messages)\n"
+        summary = (f"\U0001f528 Ban {mention} (delete {days}d of messages, {dur_desc})\n"
                    f"**Reason:** {reason}")
         await interaction.response.send_message(
             f"{summary}\n\n_Use the toggle to choose whether they get a DM, then confirm._",
             view=ModConfirmView(
-                self.panel, "ban", {"reason": reason, "delete_days": days}, summary
+                self.panel, "ban",
+                {"reason": reason, "delete_days": days, "duration": duration,
+                 "duration_desc": dur_desc},
+                summary,
             ),
             ephemeral=True,
         )
@@ -254,6 +276,9 @@ class ClearAmountModal(discord.ui.Modal):
         lines = "\n".join(per_channel[:10])
         if len(per_channel) > 10:
             lines += f"\n\u2026and {len(per_channel) - 10} more channels"
+        _record_case(guild.id, target_id, "clear",
+                     f"Cleared {total} messages in {where_desc} ({how_desc})",
+                     interaction.user)
         await interaction.followup.send(
             f"\U0001f9f9 Cleared **{total}** messages from {mention} in {where_desc}.\n{lines}",
             ephemeral=True,
@@ -321,6 +346,34 @@ def _mod_record(guild_id, user_id):
 
 def _save_mod_data(data):
     save_json(MOD_DATA_FILE, data)
+
+
+def _record_case(guild_id, user_id, action, reason, moderator, extra=None):
+    """Append a moderation case to the user's history (keeps last 50)."""
+    data, urec = _mod_record(guild_id, user_id)
+    cases = urec.setdefault("cases", [])
+    try:
+        mod_id = moderator.id
+    except AttributeError:
+        mod_id = None
+    cases.append({
+        "action": action,
+        "reason": reason,
+        "mod_id": mod_id,
+        "mod_name": str(moderator),
+        "ts": time.time(),
+        "extra": extra or {},
+    })
+    if len(cases) > 50:
+        del cases[:-50]
+    _save_mod_data(data)
+
+
+def _tempban_data(guild_id):
+    """Load mod_data.json and return (full_data, tempbans_dict)."""
+    data = load_json(MOD_DATA_FILE) or {}
+    grec = data.setdefault(str(guild_id), {})
+    return data, grec.setdefault("tempbans", {})
 
 
 async def _dm_target(target, text):
@@ -800,6 +853,117 @@ class ModConfirmView(discord.ui.View):
         await interaction.response.edit_message(content="\u274c Cancelled.", view=None)
 
 
+class RenameModal(discord.ui.Modal):
+    """Set (or reset) a member's server nickname."""
+
+    def __init__(self, panel):
+        name = panel.target.display_name if isinstance(panel.target, discord.Member) else ""
+        super().__init__(title="Rename user"[:45])
+        self.panel = panel
+        self.add_item(discord.ui.InputText(
+            label="New nickname (blank = reset)",
+            placeholder=name,
+            max_length=32,
+            required=False,
+        ))
+
+    async def callback(self, interaction: discord.Interaction):
+        panel = self.panel
+        nick = (self.children[0].value or "").strip()
+        member = panel.guild.get_member(panel.target_id)
+        if member is None:
+            await interaction.response.send_message(
+                "\u274c That user isn't in the server anymore.", ephemeral=True
+            )
+            return
+        if panel.test_mode:
+            await interaction.response.send_message(
+                f"\U0001f9ea TEST \u2014 would rename {member.mention} to "
+                f"`{nick or '(reset)'}`",
+                ephemeral=True,
+            )
+            await panel._refresh_panel()
+            return
+        try:
+            await member.edit(
+                nick=nick or None,
+                reason=f"{interaction.user} ({interaction.user.id}): renamed via panel",
+            )
+        except discord.Forbidden:
+            await interaction.response.send_message(
+                "\u274c I can't rename them \u2014 is my role above theirs?", ephemeral=True
+            )
+            return
+        except Exception as e:
+            await interaction.response.send_message(f"\u274c Rename failed: `{e}`", ephemeral=True)
+            return
+        _record_case(panel.guild.id, panel.target_id,
+                     "rename", f"Nickname set to `{nick}`" if nick else "Nickname reset",
+                     interaction.user)
+        await interaction.response.send_message(
+            f"\u270f\ufe0f Renamed {member.mention} to `{nick}`" if nick
+            else f"\u270f\ufe0f Reset {member.mention}'s nickname",
+            ephemeral=True,
+        )
+        await panel._refresh_panel()
+
+
+class StripRolesConfirmView(discord.ui.View):
+    """Confirm stripping all of a member's roles."""
+
+    def __init__(self, panel):
+        super().__init__(timeout=300)
+        self.panel = panel
+
+    @discord.ui.button(label="Yes, strip all roles", style=discord.ButtonStyle.danger)
+    async def confirm(self, button: discord.ui.Button, interaction: discord.Interaction):
+        panel = self.panel
+        if not await panel._check_admin(interaction):
+            return
+        member = panel.guild.get_member(panel.target_id)
+        if member is None:
+            await interaction.response.send_message(
+                "\u274c That user isn't in the server anymore.", ephemeral=True
+            )
+            return
+        if panel.test_mode:
+            await interaction.response.send_message(
+                f"\U0001f9ea TEST \u2014 would strip all roles from {member.mention}",
+                ephemeral=True,
+            )
+            return
+        await interaction.response.defer(ephemeral=True)
+        roles = [r for r in member.roles if not r.is_default()]
+        try:
+            await member.edit(
+                roles=[],
+                reason=f"{interaction.user} ({interaction.user.id}): roles stripped via panel",
+            )
+        except discord.Forbidden:
+            await interaction.followup.send(
+                "\u274c I can't edit their roles \u2014 is my role above theirs?",
+                ephemeral=True,
+            )
+            return
+        except Exception as e:
+            await interaction.followup.send(f"\u274c Failed: `{e}`", ephemeral=True)
+            return
+        names = ", ".join(r.name for r in roles) if roles else "none"
+        _record_case(panel.guild.id, panel.target_id, "strip_roles",
+                     f"Removed {len(roles)} role(s): {names}", interaction.user)
+        await interaction.followup.send(
+            f"\U0001f9f9 Stripped **{len(roles)}** roles from {member.mention}.",
+            ephemeral=True,
+        )
+        await panel._refresh_panel()
+        self.stop()
+
+    @discord.ui.button(label="Cancel", style=discord.ButtonStyle.secondary)
+    async def cancel(self, button: discord.ui.Button, interaction: discord.Interaction):
+        await interaction.response.send_message("Cancelled.", ephemeral=True)
+        self.stop()
+
+
 class WipeConfirmView(discord.ui.View):
     """Confirm wiping ALL of a user's server data (XP, warns, notes, watch)."""
 
@@ -863,6 +1027,7 @@ class WipeConfirmView(discord.ui.View):
             pass
 
         detail = ", ".join(wiped) if wiped else "nothing to wipe"
+        _record_case(guild.id, target_id, "wipe", f"Wiped: {detail}", interaction.user)
         await interaction.followup.send(
             f"\U0001f9f9 Wiped all data for {panel.target.mention}: {detail}.",
             ephemeral=True,
@@ -1008,6 +1173,7 @@ class UserinfoModView(discord.ui.View):
                 "ts": time.time(),
             })
             _save_mod_data(data)
+            _record_case(guild.id, target.id, "warn", reason, moderator)
             n = len(urec["warns"])
             return f"\u26a0\ufe0f Warned {target.mention} (warn #{n})\n**Reason:** {reason}{note}"
 
@@ -1036,6 +1202,7 @@ class UserinfoModView(discord.ui.View):
                 member.timed_out_until = datetime.now(timezone.utc) + duration
             except Exception:
                 pass
+            _record_case(guild.id, member.id, "timeout", reason, moderator, {"duration": raw})
             return f"\u23f1\ufe0f Timed out {member.mention} for `{raw}`\n**Reason:** {reason}{note}"
 
         if action == "kick":
@@ -1052,15 +1219,19 @@ class UserinfoModView(discord.ui.View):
                 return "\u274c I can't kick that user \u2014 is my role above theirs?"
             except Exception as e:
                 return f"\u274c Kick failed: `{e}`"
+            _record_case(guild.id, member.id, "kick", reason, moderator)
             return f"\U0001f462 Kicked {member.mention}\n**Reason:** {reason}{note}"
 
         if action == "ban":
             days = params["delete_days"]
+            duration = params.get("duration")
+            dur_desc = params.get("duration_desc", "permanent")
             note = ""
             if dm_enabled:
+                dur_text = f" for {dur_desc}" if duration else " permanently"
                 ok = await _dm_target(
                     target,
-                    f"\U0001f528 You've been banned from **{guild.name}**\n**Reason:** {reason}",
+                    f"\U0001f528 You've been banned from **{guild.name}**{dur_text}\n**Reason:** {reason}",
                 )
                 note = f"\n{dm_note(ok)}"
             try:
@@ -1069,7 +1240,19 @@ class UserinfoModView(discord.ui.View):
                 return "\u274c I can't ban that user \u2014 is my role above theirs?"
             except Exception as e:
                 return f"\u274c Ban failed: `{e}`"
-            return f"\U0001f528 Banned {target.mention}\n**Reason:** {reason}{note}"
+            label = f"tempban ({dur_desc})" if duration else "ban"
+            if duration:
+                tb_data, tb = _tempban_data(guild.id)
+                tb[str(target.id)] = {
+                    "unban_at": time.time() + duration,
+                    "reason": reason,
+                    "mod_id": moderator.id,
+                    "mod_name": str(moderator),
+                }
+                _save_mod_data(tb_data)
+            _record_case(guild.id, target.id, label, reason, moderator,
+                         {"duration": dur_desc} if duration else None)
+            return f"\U0001f528 Banned {target.mention} ({dur_desc})\n**Reason:** {reason}{note}"
 
         return "\u274c Unknown action."
 
@@ -1124,6 +1307,8 @@ class UserinfoModView(discord.ui.View):
                 member.timed_out_until = None
             except Exception:
                 pass
+            _record_case(self.guild.id, self.target_id, "untimeout",
+                         "Timeout removed via panel", interaction.user)
             await self._refresh_panel()
             await interaction.followup.send(
                 f"\u23f1\ufe0f Removed timeout from {member.mention}", ephemeral=True
@@ -1169,6 +1354,14 @@ class UserinfoModView(discord.ui.View):
             except Exception as e:
                 await interaction.followup.send(f"\u274c Unban failed: `{e}`", ephemeral=True)
                 return
+            try:
+                tb_data, tb = _tempban_data(self.guild.id)
+                tb.pop(str(self.target_id), None)
+                _save_mod_data(tb_data)
+            except Exception:
+                pass
+            _record_case(self.guild.id, self.target_id, "unban",
+                         "Unbanned via panel", interaction.user)
             await self._refresh_panel()
             await interaction.followup.send(
                 f"\U0001f513 Unbanned {self.target.mention}", ephemeral=True
@@ -1253,11 +1446,141 @@ class UserinfoModView(discord.ui.View):
             ephemeral=True,
         )
 
+    @discord.ui.button(label="History", emoji="\U0001f4dc", style=discord.ButtonStyle.secondary, row=2)
+    async def history_button(self, button: discord.ui.Button, interaction: discord.Interaction):
+        if not await self._check_admin(interaction):
+            return
+        data, urec = _mod_record(self.guild.id, self.target_id)
+        cases = urec.get("cases", [])
+        warns = urec.get("warns", [])
+        notes = urec.get("notes", [])
+        embed = discord.Embed(
+            title=f"\U0001f4dc Case history — {self.target}",
+            color=discord.Color.blurple(),
+            timestamp=discord.utils.utcnow(),
+        )
+        embed.set_thumbnail(url=self.target.display_avatar.url)
+        action_emoji = {
+            "warn": "\u26a0\ufe0f", "timeout": "\u23f1\ufe0f", "untimeout": "\u23f1\ufe0f",
+            "kick": "\U0001f462", "ban": "\U0001f528", "tempban": "\U0001f528",
+            "unban": "\U0001f513", "clear": "\U0001f9f9", "wipe": "\U0001f9f9",
+            "rename": "\u270f\ufe0f", "strip_roles": "\U0001f9f9",
+        }
+        if cases:
+            lines = []
+            for c in sorted(cases, key=lambda x: x.get("ts", 0), reverse=True)[:15]:
+                ts = int(c.get("ts", 0))
+                emo = action_emoji.get(c.get("action"), "\u2022")
+                lines.append(
+                    f"{emo} **{c.get('action')}** — <t:{ts}:R>\n"
+                    f"> {c.get('reason', '')} _(by {c.get('mod_name', '?')})_"
+                )
+            embed.add_field(name=f"Cases ({len(cases)})", value="\n".join(lines)[:1024], inline=False)
+        else:
+            embed.add_field(name="Cases", value="No recorded actions.", inline=False)
+        embed.add_field(name="Warns", value=str(len(warns)), inline=True)
+        embed.add_field(name="Notes", value=str(len(notes)), inline=True)
+        # Active tempban?
+        try:
+            _, tb = _tempban_data(self.guild.id)
+            entry = tb.get(str(self.target_id))
+            if entry:
+                unban_ts = int(entry["unban_at"])
+                embed.add_field(
+                    name="Tempbanned", value=f"Until <t:{unban_ts}:F>", inline=True
+                )
+        except Exception:
+            pass
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    @discord.ui.button(label="Rename", emoji="\u270f\ufe0f", style=discord.ButtonStyle.secondary, row=2)
+    async def rename_button(self, button: discord.ui.Button, interaction: discord.Interaction):
+        if not await self._check_admin(interaction):
+            return
+        if self.guild.get_member(self.target_id) is None:
+            await interaction.response.send_message(
+                "\u274c That user isn't in the server anymore.", ephemeral=True
+            )
+            return
+        await interaction.response.send_modal(RenameModal(self))
+
+    @discord.ui.button(label="Strip Roles", emoji="\U0001f9f9", style=discord.ButtonStyle.danger, row=2)
+    async def strip_button(self, button: discord.ui.Button, interaction: discord.Interaction):
+        if not await self._check_admin(interaction):
+            return
+        member = self.guild.get_member(self.target_id)
+        if member is None:
+            await interaction.response.send_message(
+                "\u274c That user isn't in the server anymore.", ephemeral=True
+            )
+            return
+        roles = [r for r in member.roles if not r.is_default()]
+        await interaction.response.send_message(
+            f"\u26a0\ufe0f Strip **{len(roles)}** roles from {member.mention}?\n"
+            + (", ".join(r.mention for r in roles[:10]) or "_They have no roles._"),
+            view=StripRolesConfirmView(self),
+            ephemeral=True,
+        )
+
 
 class AdminCog(commands.Cog):
     """Admin commands (e.g. clear_user)."""
     def __init__(self, client):
         self.bot = client
+        self._tempban_sweep.start()
+
+    def cog_unload(self):
+        self._tempban_sweep.cancel()
+
+    @tasks.loop(minutes=1)
+    async def _tempban_sweep(self):
+        """Unban users whose tempban has expired."""
+        try:
+            data = load_json(MOD_DATA_FILE) or {}
+        except Exception:
+            return
+        now = time.time()
+        changed = False
+        for gid, grec in list(data.items()):
+            tb = grec.get("tempbans") or {}
+            for uid, entry in list(tb.items()):
+                if entry.get("unban_at", 0) <= now:
+                    guild = self.bot.get_guild(int(gid))
+                    if guild is not None:
+                        try:
+                            await guild.unban(
+                                discord.Object(id=int(uid)),
+                                reason="Tempban expired (automatic)",
+                            )
+                        except Exception:
+                            pass
+                    _record_case(int(gid), int(uid), "unban",
+                                 "Tempban expired (automatic)", "AutoMod")
+                    # Log to moderation channel if the Logger is loaded.
+                    try:
+                        logger_cog = self.bot.get_cog("ModerationLogger")
+                        if logger_cog is not None and guild is not None:
+                            embed = discord.Embed(
+                                title="\U0001f513 Tempban Expired",
+                                description=f"<@{uid}> has been unbanned.",
+                                color=discord.Color.green(),
+                                timestamp=discord.utils.utcnow(),
+                            )
+                            embed.set_footer(text="Kush Bush Logger")
+                            await logger_cog.send(guild, "moderation", embed)
+                    except Exception:
+                        pass
+                    tb.pop(uid, None)
+                    changed = True
+        if changed:
+            try:
+                save_json(MOD_DATA_FILE, data)
+            except Exception:
+                pass
+
+    @_tempban_sweep.before_loop
+    async def _before_tempban_sweep(self):
+        await self.bot.wait_until_ready()
         self.cooldownRenamebot = {}  # Initialize cooldowns here
         self.COOLDOWN_SECONDS_Remame_bot = 500
         self.cooldownUserInfo = {}  # userinfo cooldowns: guild_id -> {user_id: timestamp}
