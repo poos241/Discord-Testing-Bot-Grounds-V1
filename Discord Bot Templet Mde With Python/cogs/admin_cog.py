@@ -140,8 +140,8 @@ class BanModal(discord.ui.Modal):
             required=False,
         ))
         self.add_item(discord.ui.InputText(
-            label="Duration (e.g. 7d, 12h, 30m) — blank = permanent",
-            placeholder="permanent",
+            label="Duration (blank = permanent)",
+            placeholder="e.g. 7d, 12h, 30m",
             max_length=10,
             required=False,
         ))
