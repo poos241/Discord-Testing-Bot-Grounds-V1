@@ -44,7 +44,11 @@ server-wide events.
 | `/setup_logs` | Creates the 📜 Server Logs category + 4 staff-only log channels, wires them up | Administrator |
 | `/change_logchannel` | Point one category at a different channel (picker for category + channel) | Administrator |
 | `/log_settings` | Show which channel each category logs to, plus disabled events | Everyone |
-| `/log_toggle` | Enable/disable one of 29 event types (e.g. `avatar`, `voice_join`) | Administrator |
+| `/log_toggle message` | Toggle `message_edit`, `message_delete`, `bulk_delete` | Administrator |
+| `/log_toggle member` | Toggle `member_join`, `member_leave`, `member_kick`, `nickname`, `avatar`, `role_member` | Administrator |
+| `/log_toggle voice` | Toggle `voice_join`, `voice_leave`, `voice_move`, `voice_mute` | Administrator |
+| `/log_toggle server` | Toggle channel/thread/emoji/role/invite events (13) | Administrator |
+| `/log_toggle moderation` | Toggle `ban`, `unban`, `timeout` | Administrator |
 
 ## How sending works
 
@@ -76,7 +80,9 @@ embeds accurate instead of grabbing an unrelated recent entry.
 ## Per-event toggles
 
 Every log event has a toggle key (see `EVENT_GROUPS` in `config.py` —
-29 events total). They default to on. `/log_toggle` flips one;
+29 events total). They default to on. `/log_toggle` is a command group
+with per-category subcommands (`/log_toggle voice`, etc.) because Discord
+caps option choices at 25 — one flat list wouldn't fit. Each subcommand flips one;
 `db.is_enabled(guild_id, key)` is checked at the top of every handler,
 and `/log_settings` lists what's currently disabled. The state lives in
 the `log_toggles` table, keyed by `(guild_id, event_key)`.
