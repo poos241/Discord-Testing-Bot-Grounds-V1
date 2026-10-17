@@ -207,7 +207,7 @@ same database (`guild_logs` table), set per guild per category.
 | `/setup_logs` | Administrator | Creates the 📜 Server Logs category + 4 log channels (staff-only) and wires them up |
 | `/change_logchannel` | Administrator | Point one log category at a different channel |
 | `/log_settings` | Everyone | Show which channels each category logs to + disabled events |
-| `/log_toggle` | Administrator | Enable/disable logging for a specific event type (29 toggleable events) |
+| `/log_toggle <category>` | Administrator | Enable/disable one event type (subcommands: message, member, voice, server, moderation) |
 
 > **Note:** the Logger needs the **Message Content** privileged intent to log
 > message text. It's enabled in `bot.py` (`intents.message_content = True`) —
