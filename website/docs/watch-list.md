@@ -68,7 +68,10 @@ or username — an ID also works for users who left or are banned.
 
 The card doubles as a mini mod panel: **Warn**, **Timeout** (duration
 like `10m`/`2h`/`1d`), **Kick**, **Ban** (with 0–7 days of message
-deletion), **Clear**, and **Notes** buttons. Warn/Timeout/Kick/Ban
+deletion plus an optional tempban duration like `7d` — expired tempbans
+are auto-unbanned by a background task), **Clear**, **Notes**,
+**Watch**, **Add XP**, **Remove XP**, **Wipe Data**, **History**,
+**Rename**, and **Strip Roles** buttons. Warn/Timeout/Kick/Ban
 each open a form asking for a reason, then a confirm step with a
 **DM them: Yes/No** toggle — the reason is only DM'd to the user if
 you leave it on (with a note when their DMs are closed). The card
@@ -92,3 +95,11 @@ option (default on) keeps the card to yourself — turn it off to post
 publicly. Only members with Manage Server / Administrator can press
 the buttons (Timeout/Kick are disabled when the target isn't in the
 server).
+
+Every moderation action (warn, timeout, kick, ban/tempban, unban,
+clear, wipe, rename, strip) is appended to the user's case history in
+`data/mod_data.json` (last 50 kept). The **History** button shows the
+timeline newest-first with moderator and timestamp, plus warn/note
+counts and any active tempban. **Rename** sets a member's nickname
+(blank resets it); **Strip Roles** removes all roles after a
+confirmation.
