@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+    <meta charset="UTF-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+
+    <title>
+        Leaderboard - Kush Bush
+    </title>
+
+    <link
+        rel="stylesheet"
+        href="{{ url_for(
+            'static',
+            filename='css/dashboard.css'
+        ) }}"
+    >
+
+    <style>
+        .lb-page { padding: 28px; max-width: 900px; margin: 0 auto; }
+        .lb-header { margin-bottom: 24px; }
+        .lb-header h1 { margin: 0 0 6px; }
+        .lb-header p { opacity: .6; margin: 0; }
+        .lb-row {
+            display: flex; align-items: center; gap: 14px;
+            padding: 12px 16px; border-radius: 12px;
+            background: rgba(255,255,255,.03);
+            border: 1px solid rgba(255,255,255,.07);
+            margin-bottom: 8px;
+        }
+        .lb-row.top1 { border-color: rgba(255,215,0,.4); background: rgba(255,215,0,.06); }
+        .lb-row.top2 { border-color: rgba(192,192,192,.35); background: rgba(192,192,192,.05); }
+        .lb-row.top3 { border-color: rgba(205,127,50,.35); background: rgba(205,127,50,.05); }
+        .lb-rank {
+            font-size: 1.3rem; font-weight: 800; min-width: 44px; text-align: center;
+            opacity: .8;
+        }
+        .lb-avatar {
+            width: 44px; height: 44px; border-radius: 50%;
+            background: #5865f2; display: flex; align-items: center; justify-content: center;
+            font-weight: 700; font-size: 1.1rem; overflow: hidden; flex-shrink: 0;
+        }
+        .lb-avatar img { width: 100%; height: 100%; object-fit: cover; }
+        .lb-info { flex: 1; min-width: 0; }
+        .lb-name { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .lb-sub { font-size: .78rem; opacity: .55; }
+        .lb-stats { text-align: right; }
+        .lb-level {
+            display: inline-block; padding: 3px 10px; border-radius: 999px;
+            background: rgba(88,101,242,.2); color: #aab4ff;
+            font-weight: 700; font-size: .82rem; margin-bottom: 2px;
+        }
+        .lb-xp { font-size: .82rem; opacity: .65; }
+        .lb-medal { font-size: 1.4rem; }
+    </style>
+
+</head>
+
+
+<body>
+
+<div class="lb-page">
+
+    <div class="lb-header">
+        <div style="font-size:.75rem;letter-spacing:.12em;opacity:.5;margin-bottom:4px;">SERVER LEVELS</div>
+        <h1>Leaderboard</h1>
+        <p id="lb-subtitle">Loading...</p>
+    </div>
+
+    <div style="margin-bottom:18px;">
+        <a href="/servers/{{ guild_id }}/dashboard" class="btn btn-sm btn-outline-secondary">← Overview</a>
+        <a href="/servers/{{ guild_id }}/members" class="btn btn-sm btn-outline-secondary">Members</a>
+    </div>
+
+    <div id="lb-list">
+        <div style="text-align:center;opacity:.5;padding:40px;">Loading leaderboard...</div>
+    </div>
+
+</div>
+
+
+<script>
+
+const guildId = "{{ guild_id }}";
+
+function escapeHtml(v) {
+    return String(v ?? "").replace(/[&<>"']/g, c => ({
+        "&": "&amp;", "<": "&lt;", ">": "&gt;",
+        '"': "&quot;", "'": "&#39;"
+    }[c]));
+}
+
+async function load() {
+
+    const response = await fetch(
+        `/api/servers/${guildId}/leaderboard`,
+        {cache: "no-store"}
+    );
+
+    const result = await response.json();
+
+    if (!response.ok || !result.success) {
+        document.getElementById("lb-list").innerHTML =
+            `<div style="text-align:center;opacity:.6;padding:40px;">
+                Unable to load leaderboard: ${escapeHtml(result.error || "unknown error")}
+            </div>`;
+        return;
+    }
+
+    document.getElementById("lb-subtitle").textContent =
+        `${escapeHtml(result.guild_name || "")} · ${result.count} members with XP`;
+
+    const medals = {1: "🥇", 2: "🥈", 3: "🥉"};
+
+    document.getElementById("lb-list").innerHTML =
+        (result.leaderboard || []).map(e => {
+
+            const topClass = e.rank <= 3 ? `top${e.rank}` : "";
+            const medal = medals[e.rank] || "";
+
+            const avatar = e.avatar
+                ? `<img src="${escapeHtml(e.avatar)}" alt="">`
+                : escapeHtml((e.display_name || "?").substring(0, 2).toUpperCase());
+
+            return `
+            <div class="lb-row ${topClass}">
+                <div class="lb-rank">${medal || e.rank}</div>
+                <div class="lb-avatar">${avatar}</div>
+                <div class="lb-info">
+                    <div class="lb-name">${escapeHtml(e.display_name)}</div>
+                    <div class="lb-sub">${escapeHtml(e.username)}${e.bot ? " · BOT" : ""}</div>
+                </div>
+                <div class="lb-stats">
+                    <div class="lb-level">Level ${e.level}</div>
+                    <div class="lb-xp">${Number(e.xp).toLocaleString()} XP</div>
+                </div>
+            </div>`;
+
+        }).join("") ||
+        `<div style="text-align:center;opacity:.5;padding:40px;">No XP recorded yet.</div>`;
+
+}
+
+load().catch(e => {
+    document.getElementById("lb-list").innerHTML =
+        `<div style="text-align:center;opacity:.6;padding:40px;">Error: ${escapeHtml(e.message)}</div>`;
+});
+
+</script>
+
+</body>
+
+</html>
