@@ -1,0 +1,1861 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+    <meta charset="UTF-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+
+    <title>
+        Members | Kush Bush
+    </title>
+
+    <link
+        rel="stylesheet"
+        href="{{ url_for('static', filename='css/dashboard.css') }}"
+    >
+
+</head>
+
+
+<body>
+
+<div class="app">
+
+
+    <!-- =====================================================
+         SIDEBAR
+    ====================================================== -->
+
+    <aside class="sidebar">
+
+        <div class="brand">
+
+            <div class="brand-icon">
+                KB
+            </div>
+
+            <div>
+
+                <div class="brand-title">
+                    Kush Bush
+                </div>
+
+                <div class="brand-subtitle">
+                    Discord Dashboard
+                </div>
+
+            </div>
+
+        </div>
+
+
+        <div class="sidebar-section">
+
+            <div class="sidebar-label">
+                SERVER
+            </div>
+
+
+            <a
+                href="/api/servers/{{ guild_id }}/view"
+                class="nav-item"
+            >
+                <span>◉</span>
+                Server
+            </a>
+
+
+            <a
+                href="/api/servers/{{ guild_id }}/members/view"
+                class="nav-item active"
+            >
+                <span>♙</span>
+                Members
+            </a>
+
+
+            <a
+                href="/api/servers/{{ guild_id }}/channels/view"
+                class="nav-item"
+            >
+                <span>▤</span>
+                Channels
+            </a>
+
+
+            <a
+                href="#"
+                class="nav-item"
+            >
+                <span>◆</span>
+                Roles
+            </a>
+
+        </div>
+
+
+        <div class="sidebar-section">
+
+            <div class="sidebar-label">
+                LOGGING
+            </div>
+
+
+            <a
+                href="/servers/{{ guild_id }}/activity"
+                class="nav-item"
+            >
+                <span>◷</span>
+                Activity
+            </a>
+
+
+            <a
+                href="#"
+                class="nav-item"
+            >
+                <span>⚡</span>
+                Events
+            </a>
+
+        </div>
+
+
+        <div class="sidebar-section">
+
+            <div class="sidebar-label">
+                MANAGEMENT
+            </div>
+
+
+            <a
+                href="#"
+                class="nav-item"
+            >
+                <span>⚔</span>
+                Moderation
+            </a>
+
+
+            <a
+                href="#"
+                class="nav-item"
+            >
+                <span>⚙</span>
+                Settings
+            </a>
+
+        </div>
+
+
+        <div class="sidebar-bottom">
+
+            <div class="bot-status">
+
+                <span
+                    class="status-dot online"
+                ></span>
+
+                <div>
+
+                    <strong>
+                        Discord Connected
+                    </strong>
+
+                    <small>
+                        Bot online
+                    </small>
+
+                </div>
+
+            </div>
+
+        </div>
+
+    </aside>
+
+
+
+    <!-- =====================================================
+         MAIN
+    ====================================================== -->
+
+    <main class="main">
+
+
+        <header class="topbar">
+
+            <div>
+
+                <div class="page-title">
+                    Members
+                </div>
+
+                <div
+                    class="page-subtitle"
+                    id="server-name"
+                >
+                    Loading server...
+                </div>
+
+            </div>
+
+
+            <div class="topbar-actions">
+
+                <button
+                    class="icon-button"
+                    onclick="loadMembers()"
+                    title="Refresh"
+                >
+                    ↻
+                </button>
+
+            </div>
+
+        </header>
+
+
+
+        <section class="content members-page">
+
+
+            <!-- =================================================
+                 MEMBER STATISTICS
+            ================================================== -->
+
+            <div class="stats-grid members-stats-grid">
+
+
+                <div class="stat-card">
+
+                    <div class="stat-icon">
+                        👥
+                    </div>
+
+                    <div>
+
+                        <div class="stat-label">
+                            TOTAL
+                        </div>
+
+                        <div
+                            class="stat-value"
+                            id="total-members"
+                        >
+                            --
+                        </div>
+
+                    </div>
+
+                </div>
+
+
+
+                <div class="stat-card">
+
+                    <div class="stat-icon">
+                        🟢
+                    </div>
+
+                    <div>
+
+                        <div class="stat-label">
+                            ONLINE
+                        </div>
+
+                        <div
+                            class="stat-value"
+                            id="online-members"
+                        >
+                            --
+                        </div>
+
+                    </div>
+
+                </div>
+
+
+
+                <div class="stat-card">
+
+                    <div class="stat-icon">
+                        👤
+                    </div>
+
+                    <div>
+
+                        <div class="stat-label">
+                            HUMANS
+                        </div>
+
+                        <div
+                            class="stat-value"
+                            id="human-members"
+                        >
+                            --
+                        </div>
+
+                    </div>
+
+                </div>
+
+
+
+                <div class="stat-card">
+
+                    <div class="stat-icon">
+                        🤖
+                    </div>
+
+                    <div>
+
+                        <div class="stat-label">
+                            BOTS
+                        </div>
+
+                        <div
+                            class="stat-value"
+                            id="bot-members"
+                        >
+                            --
+                        </div>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+
+
+            <!-- =================================================
+                 MEMBER DIRECTORY
+            ================================================== -->
+
+            <section class="panel member-directory">
+
+
+                <div class="panel-header member-directory-header">
+
+                    <div>
+
+                        <h2>
+                            Member Directory
+                        </h2>
+
+                        <p id="member-count-label">
+                            Loading members...
+                        </p>
+
+                    </div>
+
+
+                    <div class="member-controls">
+
+                        <input
+                            type="search"
+                            id="member-search"
+                            class="member-search"
+                            placeholder="Search members..."
+                            autocomplete="off"
+                        >
+
+
+                        <select
+                            id="member-filter"
+                            class="member-filter"
+                        >
+
+                            <option value="all">
+                                All Members
+                            </option>
+
+                            <option value="humans">
+                                Humans
+                            </option>
+
+                            <option value="bots">
+                                Bots
+                            </option>
+
+                            <option value="online">
+                                Online
+                            </option>
+
+                            <option value="offline">
+                                Offline
+                            </option>
+
+                            <option value="admin">
+                                Administrators
+                            </option>
+
+                        </select>
+
+                    </div>
+
+                </div>
+
+
+
+                <div class="members-table-wrap">
+
+                    <table class="members-table">
+
+                        <thead>
+
+                            <tr>
+
+                                <th>
+                                    MEMBER
+                                </th>
+
+                                <th>
+                                    STATUS
+                                </th>
+
+                                <th>
+                                    ROLES
+                                </th>
+
+                                <th>
+                                    JOINED
+                                </th>
+
+                                <th>
+                                    ACTIONS
+                                </th>
+
+                            </tr>
+
+                        </thead>
+
+
+                        <tbody
+                            id="members-table-body"
+                        >
+
+                            <tr>
+
+                                <td
+                                    colspan="5"
+                                    class="members-loading"
+                                >
+                                    Loading members...
+                                </td>
+
+                            </tr>
+
+                        </tbody>
+
+                    </table>
+
+                </div>
+
+
+                <div
+                    id="members-empty"
+                    class="members-empty"
+                    style="display:none;"
+                >
+
+                    <div class="members-empty-icon">
+                        👥
+                    </div>
+
+                    <strong>
+                        No members found
+                    </strong>
+
+                    <span>
+                        Try changing your search or filter.
+                    </span>
+
+                </div>
+
+
+            </section>
+
+
+        </section>
+
+    </main>
+
+</div>
+
+
+
+<!-- =========================================================
+     MEMBER DETAILS MODAL
+========================================================== -->
+
+<div
+    id="member-modal"
+    class="member-modal"
+    style="display:none;"
+>
+
+    <div
+        id="member-modal-backdrop"
+        class="member-modal-backdrop"
+    ></div>
+
+
+    <div class="member-modal-card">
+
+
+        <button
+            type="button"
+            id="member-modal-close"
+            class="member-modal-close"
+            aria-label="Close member details"
+        >
+            ×
+        </button>
+
+
+        <div
+            id="member-modal-content"
+            class="member-modal-content"
+        >
+
+            Loading...
+
+        </div>
+
+    </div>
+
+</div>
+
+
+
+<script>
+
+const guildId =
+    "{{ guild_id }}";
+
+
+let allMembers = [];
+
+let filteredMembers = [];
+
+
+
+/* =========================================================
+   HELPERS
+========================================================= */
+
+function setText(
+    id,
+    value,
+    fallback = "--"
+) {
+
+    const element =
+        document.getElementById(id);
+
+    if (!element) {
+        return;
+    }
+
+    element.textContent =
+        value ??
+        fallback;
+
+}
+
+
+
+function escapeHtml(value) {
+
+    return String(
+        value ?? ""
+    )
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+
+}
+
+
+
+function formatDate(value) {
+
+    if (!value) {
+        return "Unknown";
+    }
+
+    const date =
+        new Date(value);
+
+    if (Number.isNaN(
+        date.getTime()
+    )) {
+
+        return "Unknown";
+
+    }
+
+    return date.toLocaleDateString(
+        undefined,
+        {
+            year: "numeric",
+            month: "short",
+            day: "numeric"
+        }
+    );
+
+}
+
+
+
+/* =========================================================
+   LOAD SERVER
+========================================================= */
+
+async function loadServerInfo() {
+
+    try {
+
+        const response =
+            await fetch(
+                `/api/servers/${guildId}`,
+                {
+                    cache: "no-store"
+                }
+            );
+
+        if (!response.ok) {
+            return;
+        }
+
+        const result =
+            await response.json();
+
+        const server =
+            result.server ||
+            result;
+
+        setText(
+            "server-name",
+            server.name,
+            "Server"
+        );
+
+    }
+    catch (error) {
+
+        console.error(
+            "Failed to load server:",
+            error
+        );
+
+    }
+
+}
+
+
+
+/* =========================================================
+   LOAD MEMBER SUMMARY
+========================================================= */
+
+async function loadMemberSummary() {
+
+    try {
+
+        const response =
+            await fetch(
+                `/api/servers/${guildId}/members/summary`,
+                {
+                    cache: "no-store"
+                }
+            );
+
+        if (!response.ok) {
+
+            throw new Error(
+                `HTTP ${response.status}`
+            );
+
+        }
+
+        const result =
+            await response.json();
+
+        const summary =
+            result.summary ||
+            {};
+
+        setText(
+            "total-members",
+            summary.total,
+            "0"
+        );
+
+        setText(
+            "online-members",
+            summary.online,
+            "0"
+        );
+
+        setText(
+            "human-members",
+            summary.humans,
+            "0"
+        );
+
+        setText(
+            "bot-members",
+            summary.bots,
+            "0"
+        );
+
+    }
+    catch (error) {
+
+        console.error(
+            "Failed to load member summary:",
+            error
+        );
+
+    }
+
+}
+
+
+
+/* =========================================================
+   LOAD MEMBERS
+========================================================= */
+
+async function loadMembers() {
+
+    const body =
+        document.getElementById(
+            "members-table-body"
+        );
+
+    try {
+
+        body.innerHTML = `
+            <tr>
+                <td
+                    colspan="5"
+                    class="members-loading"
+                >
+                    Loading members...
+                </td>
+            </tr>
+        `;
+
+
+        const response =
+            await fetch(
+                `/api/servers/${guildId}/members`,
+                {
+                    cache: "no-store"
+                }
+            );
+
+
+        if (!response.ok) {
+
+            const error =
+                await response.json()
+                .catch(
+                    () => ({})
+                );
+
+            throw new Error(
+                error.error ||
+                `HTTP ${response.status}`
+            );
+
+        }
+
+
+        const result =
+            await response.json();
+
+
+        allMembers =
+            result.members ||
+            [];
+
+
+        filteredMembers =
+            [...allMembers];
+
+
+        setText(
+            "member-count-label",
+            `${allMembers.length.toLocaleString()} members`
+        );
+
+
+        renderMembers();
+
+    }
+    catch (error) {
+
+        console.error(
+            "Failed to load members:",
+            error
+        );
+
+
+        body.innerHTML = `
+            <tr>
+                <td
+                    colspan="5"
+                    class="members-error"
+                >
+                    Failed to load members:
+                    ${escapeHtml(error.message)}
+                </td>
+            </tr>
+        `;
+
+    }
+
+}
+
+
+
+/* =========================================================
+   FILTER
+========================================================= */
+
+function applyMemberFilters() {
+
+    const search =
+        (
+            document.getElementById(
+                "member-search"
+            )?.value ||
+            ""
+        )
+        .trim()
+        .toLowerCase();
+
+
+    const filter =
+        document.getElementById(
+            "member-filter"
+        )?.value ||
+        "all";
+
+
+    filteredMembers =
+        allMembers.filter(
+            member => {
+
+                const name =
+                    (
+                        member.display_name ||
+                        member.username ||
+                        ""
+                    )
+                    .toLowerCase();
+
+
+                const username =
+                    (
+                        member.username ||
+                        ""
+                    )
+                    .toLowerCase();
+
+
+                const id =
+                    String(
+                        member.id ||
+                        ""
+                    );
+
+
+                const matchesSearch =
+                    !search ||
+                    name.includes(search) ||
+                    username.includes(search) ||
+                    id.includes(search);
+
+
+                if (!matchesSearch) {
+                    return false;
+                }
+
+
+                if (
+                    filter === "humans"
+                ) {
+
+                    return !member.bot;
+
+                }
+
+
+                if (
+                    filter === "bots"
+                ) {
+
+                    return member.bot;
+
+                }
+
+
+                if (
+                    filter === "online"
+                ) {
+
+                    return (
+                        member.status !== "offline" &&
+                        member.status !== "bot"
+                    );
+
+                }
+
+
+                if (
+                    filter === "offline"
+                ) {
+
+                    return (
+                        member.status === "offline"
+                    );
+
+                }
+
+
+                if (
+                    filter === "admin"
+                ) {
+
+                    return (
+                        member.administrator === true
+                    );
+
+                }
+
+
+                return true;
+
+            }
+        );
+
+
+    renderMembers();
+
+}
+
+
+
+/* =========================================================
+   RENDER MEMBERS
+========================================================= */
+
+function renderMembers() {
+
+    const body =
+        document.getElementById(
+            "members-table-body"
+        );
+
+
+    const empty =
+        document.getElementById(
+            "members-empty"
+        );
+
+
+    if (!filteredMembers.length) {
+
+        body.innerHTML = "";
+
+        empty.style.display =
+            "flex";
+
+        return;
+
+    }
+
+
+    empty.style.display =
+        "none";
+
+
+    body.innerHTML =
+        filteredMembers
+            .map(
+                member => {
+
+                    const status =
+                        String(
+                            member.status ||
+                            "offline"
+                        )
+                        .toLowerCase();
+
+
+                    let statusLabel =
+                        status;
+
+
+                    if (
+                        member.bot
+                    ) {
+
+                        statusLabel =
+                            "bot";
+
+                    }
+
+
+                    const statusClass =
+                        member.bot
+                            ? "bot"
+                            : status === "online"
+                                ? "online"
+                                : status === "idle"
+                                    ? "idle"
+                                    : status === "dnd"
+                                        ? "dnd"
+                                        : "offline";
+
+
+                    const avatar =
+                        member.avatar ||
+                        "";
+
+
+                    const avatarHtml =
+                        avatar
+                            ? `
+                                <img
+                                    src="${escapeHtml(avatar)}"
+                                    class="member-avatar"
+                                    alt=""
+                                >
+                            `
+                            : `
+                                <div class="member-avatar-fallback">
+                                    ${(member.display_name || member.username || "?")
+                                        .charAt(0)
+                                        .toUpperCase()}
+                                </div>
+                            `;
+
+
+                    const roleNames =
+                        Array.isArray(
+                            member.roles
+                        )
+                            ? member.roles
+                                .slice(0, 3)
+                                .map(
+                                    role =>
+                                        `<span class="member-role">
+                                            ${escapeHtml(role.name)}
+                                        </span>`
+                                )
+                                .join("")
+                            : "";
+
+
+                    const extraRoles =
+                        Math.max(
+                            0,
+                            Number(
+                                member.role_count ||
+                                0
+                            ) - 3
+                        );
+
+
+                    return `
+
+                        <tr
+                            class="member-row"
+                            onclick="openMemberModal('${member.id}')"
+                        >
+
+                            <td>
+
+                                <div class="member-identity">
+
+                                    ${avatarHtml}
+
+                                    <div>
+
+                                        <strong>
+                                            ${escapeHtml(
+                                                member.display_name ||
+                                                member.username ||
+                                                "Unknown"
+                                            )}
+                                        </strong>
+
+                                        <small>
+                                            @${escapeHtml(
+                                                member.username ||
+                                                "unknown"
+                                            )}
+
+                                            ${
+                                                member.bot
+                                                    ? " • BOT"
+                                                    : ""
+                                            }
+                                        </small>
+
+                                    </div>
+
+                                </div>
+
+                            </td>
+
+
+                            <td>
+
+                                <span
+                                    class="member-status ${statusClass}"
+                                >
+
+                                    <span
+                                        class="member-status-dot"
+                                    ></span>
+
+                                    ${escapeHtml(
+                                        statusLabel
+                                    )}
+
+                                </span>
+
+                            </td>
+
+
+                            <td>
+
+                                <div class="member-roles">
+
+                                    ${roleNames}
+
+                                    ${
+                                        extraRoles > 0
+                                            ? `
+                                                <span class="member-role more">
+                                                    +${extraRoles}
+                                                </span>
+                                            `
+                                            : ""
+                                    }
+
+                                </div>
+
+                            </td>
+
+
+                            <td>
+
+                                <span class="member-joined">
+
+                                    ${formatDate(
+                                        member.joined_at
+                                    )}
+
+                                </span>
+
+                            </td>
+
+
+                            <td>
+
+                                <button
+                                    class="member-view-button"
+                                    onclick="event.stopPropagation(); openMemberModal('${member.id}')"
+                                >
+                                    View
+                                </button>
+
+                            </td>
+
+                        </tr>
+
+                    `;
+
+                }
+            )
+            .join("");
+
+
+    setText(
+        "member-count-label",
+        `${filteredMembers.length.toLocaleString()} of ${allMembers.length.toLocaleString()} members`
+    );
+
+}
+
+
+
+/* =========================================================
+   MEMBER DETAILS
+========================================================= */
+
+async function openMemberModal(
+    userId
+) {
+
+    const modal =
+        document.getElementById(
+            "member-modal"
+        );
+
+
+    const content =
+        document.getElementById(
+            "member-modal-content"
+        );
+
+
+    modal.style.display =
+        "flex";
+
+    document.body.classList.add(
+        "modal-open"
+    );
+    content.innerHTML = `
+        <div class="member-modal-loading">
+            Loading member...
+        </div>
+    `;
+
+
+    try {
+
+        const response =
+            await fetch(
+                `/api/servers/${guildId}/members/${userId}/details`,
+                {
+                    cache: "no-store"
+                }
+            );
+
+
+        const result =
+            await response.json();
+
+
+        if (!response.ok) {
+
+            throw new Error(
+                result.error ||
+                `HTTP ${response.status}`
+            );
+
+        }
+
+
+        const member =
+            result.member;
+
+
+        const avatar =
+            member.avatar;
+
+
+        const roles =
+            Array.isArray(
+                member.roles
+            )
+                ? member.roles
+                : [];
+
+
+        const permissions =
+            Array.isArray(
+                member.permissions
+            )
+                ? member.permissions
+                : [];
+
+
+        content.innerHTML = `
+
+            <div class="member-profile">
+
+                ${
+                    avatar
+                        ? `
+                            <img
+                                src="${escapeHtml(avatar)}"
+                                class="member-profile-avatar"
+                                alt=""
+                            >
+                        `
+                        : `
+                            <div class="member-profile-avatar-fallback">
+                                ${escapeHtml(
+                                    (
+                                        member.display_name ||
+                                        member.username ||
+                                        "?"
+                                    )
+                                    .charAt(0)
+                                    .toUpperCase()
+                                )}
+                            </div>
+                        `
+                }
+
+
+                <div>
+
+                    <h2>
+                        ${escapeHtml(
+                            member.display_name ||
+                            member.username
+                        )}
+                    </h2>
+
+                    <p>
+                        @${escapeHtml(
+                            member.username
+                        )}
+                    </p>
+
+                    <span
+                        class="member-status ${member.bot ? "bot" : member.status}"
+                    >
+                        ${member.bot ? "Bot" : member.status}
+                    </span>
+
+                </div>
+
+            </div>
+
+
+
+            <div class="member-detail-grid">
+
+                <div>
+
+                    <span>
+                        User ID
+                    </span>
+
+                    <strong>
+                        ${escapeHtml(member.id)}
+                    </strong>
+
+                </div>
+
+
+                <div>
+
+                    <span>
+                        Joined
+                    </span>
+
+                    <strong>
+                        ${formatDate(member.joined_at)}
+                    </strong>
+
+                </div>
+
+
+                <div>
+
+                    <span>
+                        Account Created
+                    </span>
+
+                    <strong>
+                        ${formatDate(member.created_at)}
+                    </strong>
+
+                </div>
+
+
+                <div>
+
+                    <span>
+                        Top Role
+                    </span>
+
+                    <strong>
+                        ${escapeHtml(
+                            member.top_role?.name ||
+                            "None"
+                        )}
+                    </strong>
+
+                </div>
+
+            </div>
+
+
+
+            <div class="member-modal-section">
+
+                <h3>
+                    Roles
+                </h3>
+
+
+                <div class="member-modal-tags">
+
+                    ${
+                        roles.length
+                            ? roles
+                                .map(
+                                    role =>
+                                        `<span class="member-role">
+                                            ${escapeHtml(role.name)}
+                                        </span>`
+                                )
+                                .join("")
+                            : `
+                                <span class="member-muted">
+                                    No roles
+                                </span>
+                            `
+                    }
+
+                </div>
+
+            </div>
+
+
+
+            <div class="member-modal-section">
+
+                <h3>
+                    Permissions
+                </h3>
+
+
+                <div class="member-modal-tags">
+
+                    ${
+                        permissions.length
+                            ? permissions
+                                .slice(0, 20)
+                                .map(
+                                    permission =>
+                                        `<span class="permission-tag">
+                                            ${escapeHtml(
+                                                String(permission)
+                                                    .replaceAll(
+                                                        "_",
+                                                        " "
+                                                    )
+                                            )}
+                                        </span>`
+                                )
+                                .join("")
+                            : `
+                                <span class="member-muted">
+                                    No special permissions
+                                </span>
+                            `
+                    }
+
+                </div>
+
+            </div>
+
+
+
+            <div class="member-modal-actions">
+
+                ${
+                    member.administrator ||
+                    member.moderate_members
+                        ? `
+                            <button
+                                class="member-action danger"
+                                onclick="timeoutMember('${member.id}')"
+                            >
+                                Timeout
+                            </button>
+                        `
+                        : ""
+                }
+
+                ${
+                    member.kick_members
+                        ? `
+                            <button
+                                class="member-action warning"
+                                onclick="kickMember('${member.id}')"
+                            >
+                                Kick
+                            </button>
+                        `
+                        : ""
+                }
+
+                ${
+                    member.ban_members
+                        ? `
+                            <button
+                                class="member-action danger"
+                                onclick="banMember('${member.id}')"
+                            >
+                                Ban
+                            </button>
+                        `
+                        : ""
+                }
+
+            </div>
+
+        `;
+
+    }
+    catch (error) {
+
+        console.error(
+            "Failed to load member:",
+            error
+        );
+
+
+        content.innerHTML = `
+
+            <div class="members-error">
+
+                Failed to load member details.
+
+                <br><br>
+
+                ${escapeHtml(
+                    error.message
+                )}
+
+            </div>
+
+        `;
+
+    }
+
+}
+
+
+
+/* =========================================================
+   CLOSE MODAL
+========================================================= */
+
+function closeMemberModal() {
+
+    const modal =
+        document.getElementById(
+            "member-modal"
+        );
+
+
+    if (!modal) {
+
+        return;
+
+    }
+
+
+    modal.style.display =
+        "none";
+
+
+    document.body.classList.remove(
+        "modal-open"
+    );
+
+}
+
+/* =========================================================
+   MEMBER MODAL CONTROLS
+========================================================= */
+
+function setupMemberModal() {
+
+    const modal =
+        document.getElementById(
+            "member-modal"
+        );
+
+
+    const closeButton =
+        document.getElementById(
+            "member-modal-close"
+        );
+
+
+    const backdrop =
+        document.getElementById(
+            "member-modal-backdrop"
+        );
+
+
+    if (!modal) {
+
+        return;
+
+    }
+
+
+    if (closeButton) {
+
+        closeButton.addEventListener(
+            "click",
+            event => {
+
+                event.preventDefault();
+                event.stopPropagation();
+
+                closeMemberModal();
+
+            }
+        );
+
+    }
+
+
+    if (backdrop) {
+
+        backdrop.addEventListener(
+            "click",
+            event => {
+
+                event.preventDefault();
+                event.stopPropagation();
+
+                closeMemberModal();
+
+            }
+        );
+
+    }
+
+
+    document.addEventListener(
+        "keydown",
+        event => {
+
+            if (
+                event.key === "Escape" &&
+                modal.style.display !== "none"
+            ) {
+
+                closeMemberModal();
+
+            }
+
+        }
+    );
+
+}
+
+
+document.addEventListener(
+    "DOMContentLoaded",
+    setupMemberModal
+);
+
+
+
+/* =========================================================
+   MODERATION
+========================================================= */
+
+async function timeoutMember(
+    userId
+) {
+
+    const minutes =
+        prompt(
+            "Timeout duration in minutes:",
+            "10"
+        );
+
+
+    if (!minutes) {
+        return;
+    }
+
+
+    await moderationAction(
+        `/api/servers/${guildId}/members/${userId}/timeout`,
+        {
+            duration: Number(minutes)
+        }
+    );
+
+}
+
+
+
+async function kickMember(
+    userId
+) {
+
+    if (
+        !confirm(
+            "Are you sure you want to kick this member?"
+        )
+    ) {
+        return;
+    }
+
+
+    await moderationAction(
+        `/api/servers/${guildId}/members/${userId}/kick`,
+        {}
+    );
+
+}
+
+
+
+async function banMember(
+    userId
+) {
+
+    if (
+        !confirm(
+            "Are you sure you want to ban this member?"
+        )
+    ) {
+        return;
+    }
+
+
+    await moderationAction(
+        `/api/servers/${guildId}/members/${userId}/ban`,
+        {}
+    );
+
+}
+
+
+
+async function moderationAction(
+    url,
+    payload
+) {
+
+    try {
+
+        const response =
+            await fetch(
+                url,
+                {
+                    method: "POST",
+
+                    headers: {
+                        "Content-Type":
+                            "application/json"
+                    },
+
+                    body:
+                        JSON.stringify(
+                            payload
+                        )
+                }
+            );
+
+
+        const result =
+            await response.json();
+
+
+        if (!response.ok) {
+
+            throw new Error(
+                result.error ||
+                `HTTP ${response.status}`
+            );
+
+        }
+
+
+        alert(
+            "Action completed successfully."
+        );
+
+
+        closeMemberModal();
+
+        await loadMemberSummary();
+
+        await loadMembers();
+
+    }
+    catch (error) {
+
+        alert(
+            `Action failed: ${error.message}`
+        );
+
+    }
+
+}
+
+
+
+/* =========================================================
+   SEARCH EVENTS
+========================================================= */
+
+document
+    .getElementById(
+        "member-search"
+    )
+    ?.addEventListener(
+        "input",
+        applyMemberFilters
+    );
+
+
+document
+    .getElementById(
+        "member-filter"
+    )
+    ?.addEventListener(
+        "change",
+        applyMemberFilters
+    );
+
+
+
+/* =========================================================
+   START
+========================================================= */
+
+async function initializeMembersPage() {
+
+    await loadServerInfo();
+
+    await loadMemberSummary();
+
+    await loadMembers();
+
+}
+
+
+initializeMembersPage();
+
+</script>
+
+
+</body>
+
+</html>
