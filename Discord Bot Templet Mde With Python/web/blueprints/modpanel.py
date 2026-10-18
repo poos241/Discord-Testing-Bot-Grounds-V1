@@ -75,19 +75,13 @@ def _watch_cog():
 def _xp_for(guild_id, user_id):
     """Return (xp, level) from the level system, or (0, 1)."""
     try:
-        from cogs.Level_system import get_xp, get_level
-        xp = get_xp(str(guild_id), str(user_id)) or 0
-        level = get_level(str(guild_id), str(user_id)) or 1
-        return xp, level
-    except Exception:
-        pass
-    try:
-        bot = discord_state.bot
-        cog = bot.get_cog("LevelSystem") if bot else None
-        if cog and hasattr(cog, "get_xp"):
-            xp = cog.get_xp(str(guild_id), str(user_id)) or 0
-            level = cog.get_level(str(guild_id), str(user_id)) or 1
-            return xp, level
+        from data.DB.Storage.storage import get_levels
+        db = run_coro_threadsafe(
+            get_levels(str(guild_id))
+        ).result(timeout=10)
+        udata = db.get(str(user_id))
+        if udata:
+            return udata.get("xp", 0) or 0, udata.get("level", 1) or 1
     except Exception:
         pass
     return 0, 1
@@ -128,13 +122,14 @@ def get_modpanel(guild_id, user_id):
     wc = _watch_cog()
     if wc:
         try:
-            if hasattr(wc, "_is_watched"):
+            if hasattr(wc, "_guild_data"):
+                gdata = wc._guild_data(guild_id)
+                rec = gdata.get("users", {}).get(str(user_id))
+                if rec:
+                    watched = True
+                    watch_info = rec
+            elif hasattr(wc, "_is_watched"):
                 watched = bool(wc._is_watched(str(guild_id), str(user_id)))
-            if watched and hasattr(wc, "watch_info"):
-                try:
-                    watch_info = wc.watch_info(str(guild_id), str(user_id))
-                except Exception:
-                    pass
         except Exception:
             pass
 
@@ -367,16 +362,14 @@ def modpanel_xp(guild_id, user_id):
     if amount == 0:
         return jsonify({"success": False, "error": "Amount cannot be zero."}), 400
 
+    guild, member = _get_member(guild_id, user_id)
+    if guild is None:
+        return jsonify({"success": False, "error": "Discord server not found."}), 404
+    display = member.display_name if member else str(user_id)
+
     try:
         from cogs.Level_system import award_xp
-        if amount > 0:
-            award_xp(str(guild_id), str(user_id), amount)
-        else:
-            # Remove XP — use award with negative if supported, else adjust directly
-            try:
-                award_xp(str(guild_id), str(user_id), amount)
-            except Exception:
-                pass
+        award_xp(guild, int(user_id), display, amount, apply_event=False)
     except Exception as e:
         return jsonify({"success": False, "error": f"XP update failed: {e}"}), 500
 
@@ -637,9 +630,11 @@ def modpanel_wipe(guild_id, user_id):
     # Reset XP — best effort
     try:
         from cogs.Level_system import award_xp
+        guild, member = _get_member(guild_id, user_id)
         xp, _ = _xp_for(guild_id, user_id)
-        if xp > 0:
-            award_xp(str(guild_id), str(user_id), -xp)
+        if xp > 0 and guild:
+            display = member.display_name if member else str(user_id)
+            award_xp(guild, int(user_id), display, -xp, apply_event=False)
     except Exception:
         pass
 
