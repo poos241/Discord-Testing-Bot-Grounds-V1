@@ -99,7 +99,7 @@ class _EventStore:
                 continue
             b = int(ts // 3600) * 3600
             buckets[b] = buckets.get(b, 0) + 1
-        return [{"t": b, "n": n} for b, n in sorted(buckets.items())]
+        return [{"timestamp": b, "count": n} for b, n in sorted(buckets.items())]
 
     def guild_category_trend(self, guild_id, hours=24):
         cutoff = time.time() - hours * 3600
