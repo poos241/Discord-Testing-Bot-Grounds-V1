@@ -271,7 +271,6 @@ def servers():
     "/servers/<int:guild_id>/channels"
 )
 @require_guild_access
-@require_guild_manage
 def get_server_channels(
     guild_id
 ):
