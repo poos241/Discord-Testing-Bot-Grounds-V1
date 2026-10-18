@@ -57,7 +57,6 @@ def get_guild(guild_id):
     "/api/servers/<int:guild_id>/search"
 )
 @require_guild_access
-@require_guild_manage
 def server_search(guild_id):
 
     guild, error = get_guild(
@@ -332,7 +331,6 @@ def server_search(guild_id):
     "/api/servers/<int:guild_id>/permissions"
 )
 @require_guild_access
-@require_guild_manage
 def server_permissions(guild_id):
 
     guild, error = get_guild(
@@ -472,7 +470,6 @@ def server_permissions(guild_id):
     "/api/servers/<int:guild_id>/activity"
 )
 @require_guild_access
-@require_guild_manage
 def server_activity(guild_id):
 
     guild, error = get_guild(
@@ -587,7 +584,6 @@ def server_activity(guild_id):
     "/api/servers/<int:guild_id>/members/top"
 )
 @require_guild_access
-@require_guild_manage
 def top_members(guild_id):
 
     guild, error = get_guild(
