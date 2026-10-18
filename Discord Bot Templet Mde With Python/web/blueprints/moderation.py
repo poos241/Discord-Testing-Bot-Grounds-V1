@@ -6,6 +6,8 @@ asyncio loop. Every route requires login + Manage Server on the guild.
 """
 
 from flask import Blueprint, request, jsonify, abort
+import secrets
+from web.blueprints.auth import get_csrf_token
 
 from web.services.discord_state import discord_state, run_coro_threadsafe
 from web.services.moderation_service import ModerationService, ModerationError
@@ -42,12 +44,28 @@ def _fail(e):
     return jsonify({"success": False, "error": str(e)}), code
 
 
+def _check_csrf():
+    """Validate the CSRF token on state-changing requests."""
+    supplied = (
+        request.headers.get("X-CSRF-Token")
+        or request.headers.get("X-CSRFToken")
+        or ""
+    ).strip()
+    expected = get_csrf_token()
+    if not supplied or not secrets.compare_digest(supplied, expected):
+        return jsonify({"success": False, "error": "Invalid CSRF token."}), 403
+    return None
+
+
 @moderation_api.post(
     "/<int:guild_id>/members/<int:user_id>/timeout"
 )
 @require_guild_access
 @require_guild_manage
 def timeout_member(guild_id, user_id):
+    denied = _check_csrf()
+    if denied:
+        return denied
     data = request.get_json(silent=True) or {}
     try:
         duration = int(data.get("duration", 600))
@@ -71,6 +89,9 @@ def timeout_member(guild_id, user_id):
 @require_guild_access
 @require_guild_manage
 def remove_timeout_member(guild_id, user_id):
+    denied = _check_csrf()
+    if denied:
+        return denied
     data = request.get_json(silent=True) or {}
     reason = data.get("reason")
     service = _service()
@@ -89,6 +110,9 @@ def remove_timeout_member(guild_id, user_id):
 @require_guild_access
 @require_guild_manage
 def kick_member(guild_id, user_id):
+    denied = _check_csrf()
+    if denied:
+        return denied
     data = request.get_json(silent=True) or {}
     reason = data.get("reason")
     service = _service()
@@ -107,6 +131,9 @@ def kick_member(guild_id, user_id):
 @require_guild_access
 @require_guild_manage
 def ban_member(guild_id, user_id):
+    denied = _check_csrf()
+    if denied:
+        return denied
     data = request.get_json(silent=True) or {}
     reason = data.get("reason")
     try:
@@ -130,6 +157,9 @@ def ban_member(guild_id, user_id):
 @require_guild_access
 @require_guild_manage
 def unban_member(guild_id, user_id):
+    denied = _check_csrf()
+    if denied:
+        return denied
     data = request.get_json(silent=True) or {}
     reason = data.get("reason")
     service = _service()
