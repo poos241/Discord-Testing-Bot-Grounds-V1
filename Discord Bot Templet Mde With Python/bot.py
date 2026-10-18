@@ -86,7 +86,7 @@ async def on_ready():
             import threading
             from web.app import create_app
             web_app = create_app(client)
-            web_host = os.getenv("WEB_HOST", "127.0.0.1")
+            web_host = os.getenv("WEB_HOST", "0.0.0.0")
             web_port = int(os.getenv("WEB_PORT", "5000"))
             threading.Thread(
                 target=web_app.run,
