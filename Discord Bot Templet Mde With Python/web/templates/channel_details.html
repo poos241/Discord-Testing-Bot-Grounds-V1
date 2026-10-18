@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+    <meta charset="UTF-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+
+    <title>
+        Channel Details - Kush Bush
+    </title>
+
+    <link
+        rel="stylesheet"
+        href="{{ url_for(
+            'static',
+            filename='css/dashboard.css'
+        ) }}"
+    >
+
+</head>
+
+
+<body>
+
+<div
+    style="
+        min-height:100vh;
+        background:#0b0e13;
+        color:#ffffff;
+        padding:30px;
+    "
+>
+
+    <a
+        href="/servers/{{ guild_id }}/channels"
+        style="
+            color:#9da5ff;
+            text-decoration:none;
+            font-size:13px;
+        "
+    >
+        ← Back to Channels
+    </a>
+
+
+    <div
+        id="channel-details"
+        style="
+            max-width:900px;
+            margin:30px auto;
+        "
+    >
+
+        <div
+            style="
+                padding:40px;
+                border:1px solid #242b36;
+                border-radius:16px;
+                background:#12171f;
+                text-align:center;
+                color:#788395;
+            "
+        >
+            Loading channel...
+        </div>
+
+    </div>
+
+</div>
+
+
+<script>
+
+window.GUILD_ID =
+    "{{ guild_id }}";
+
+window.CHANNEL_ID =
+    "{{ channel_id }}";
+
+</script>
+
+
+<script>
+
+document.addEventListener(
+    "DOMContentLoaded",
+    async () => {
+
+        const container =
+            document.getElementById(
+                "channel-details"
+            );
+
+
+        try {
+
+            const response =
+                await fetch(
+                    `/api/servers/${encodeURIComponent(
+                        window.GUILD_ID
+                    )}/channels/${encodeURIComponent(
+                        window.CHANNEL_ID
+                    )}`,
+                    {
+                        cache: "no-store",
+                        credentials: "same-origin"
+                    }
+                );
+
+
+            if (!response.ok) {
+
+                throw new Error(
+                    `HTTP ${response.status}`
+                );
+
+            }
+
+
+            const result =
+                await response.json();
+
+
+            if (
+                result.success === false
+            ) {
+
+                throw new Error(
+                    result.error ||
+                    "Unable to load channel."
+                );
+
+            }
+
+
+            const channel =
+                result.channel ||
+                result;
+
+
+            container.innerHTML = `
+
+                <div
+                    style="
+                        padding:28px;
+                        border:1px solid #242b36;
+                        border-radius:16px;
+                        background:#12171f;
+                    "
+                >
+
+                    <div
+                        style="
+                            font-size:12px;
+                            color:#8d79ff;
+                            font-weight:800;
+                            letter-spacing:.12em;
+                            margin-bottom:8px;
+                        "
+                    >
+                        CHANNEL
+                    </div>
+
+
+                    <h1
+                        style="
+                            margin:0 0 8px;
+                            font-size:28px;
+                        "
+                    >
+                        ${escapeHtml(
+                            channel.name ||
+                            "Unknown Channel"
+                        )}
+                    </h1>
+
+
+                    <div
+                        style="
+                            color:#707b8d;
+                            font-size:12px;
+                            margin-bottom:25px;
+                        "
+                    >
+                        ID:
+                        ${escapeHtml(
+                            channel.id ||
+                            window.CHANNEL_ID
+                        )}
+                    </div>
+
+
+                    <div
+                        style="
+                            display:grid;
+                            grid-template-columns:
+                                repeat(
+                                    2,
+                                    minmax(0,1fr)
+                                );
+                            gap:12px;
+                        "
+                    >
+
+                        ${detailCard(
+                            "Type",
+                            channel.type ||
+                            "Unknown"
+                        )}
+
+                        ${detailCard(
+                            "Category",
+                            channel.category ||
+                            "None"
+                        )}
+
+                        ${detailCard(
+                            "Position",
+                            channel.position ??
+                            "0"
+                        )}
+
+                        ${detailCard(
+                            "NSFW",
+                            channel.nsfw
+                                ? "Yes"
+                                : "No"
+                        )}
+
+                    </div>
+
+                </div>
+
+            `;
+
+        }
+
+        catch (error) {
+
+            console.error(
+                "[Channel Details]",
+                error
+            );
+
+
+            container.innerHTML = `
+
+                <div
+                    style="
+                        padding:35px;
+                        border:1px solid
+                            rgba(239,91,91,.25);
+                        border-radius:16px;
+                        background:
+                            rgba(239,91,91,.06);
+                        color:#f0a0a0;
+                    "
+                >
+
+                    Failed to load channel.
+
+                    <div
+                        style="
+                            margin-top:8px;
+                            font-size:12px;
+                        "
+                    >
+                        ${escapeHtml(
+                            error.message
+                        )}
+                    </div>
+
+                </div>
+
+            `;
+
+        }
+
+    }
+);
+
+
+function detailCard(
+    label,
+    value
+) {
+
+    return `
+
+        <div
+            style="
+                padding:16px;
+                border:1px solid #242b36;
+                border-radius:10px;
+                background:#0f141b;
+            "
+        >
+
+            <div
+                style="
+                    color:#707b8d;
+                    font-size:10px;
+                    text-transform:uppercase;
+                    letter-spacing:.08em;
+                "
+            >
+                ${escapeHtml(label)}
+            </div>
+
+            <strong
+                style="
+                    display:block;
+                    margin-top:6px;
+                    font-size:14px;
+                "
+            >
+                ${escapeHtml(value)}
+            </strong>
+
+        </div>
+
+    `;
+
+}
+
+
+function escapeHtml(
+    value
+) {
+
+    return String(
+        value ?? ""
+    )
+
+        .replaceAll(
+            "&",
+            "&amp;"
+        )
+
+        .replaceAll(
+            "<",
+            "&lt;"
+        )
+
+        .replaceAll(
+            ">",
+            "&gt;"
+        )
+
+        .replaceAll(
+            '"',
+            "&quot;"
+        )
+
+        .replaceAll(
+            "'",
+            "&#039;"
+        );
+
+}
+
+</script>
+
+<script src="{{ url_for('static', filename='js/server_context.js') }}"></script>
+
+</body>
+
+</html>
