@@ -46,6 +46,20 @@ class LoggerDatabase:
                     PRIMARY KEY (guild_id, event_key)
                 )
             """)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS events(
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    guild_id INTEGER NOT NULL,
+                    category TEXT NOT NULL,
+                    event_type TEXT,
+                    summary TEXT,
+                    created_at REAL NOT NULL
+                )
+            """)
+            cur.execute("""
+                CREATE INDEX IF NOT EXISTS idx_events_guild_time
+                ON events(guild_id, created_at DESC)
+            """)
             self._conn.commit()
 
     # ----- message cache -----
@@ -136,4 +150,57 @@ class LoggerDatabase:
 
 
 # Shared instance. Created lazily on first import; uses an absolute path.
+    # ----- event history (web dashboard) -----
+
+    def record_event(self, guild_id, category, event_type, summary):
+        """Append to the queryable event history (last 5000 per guild kept)."""
+        import time
+        with self._lock:
+            cur = self._conn.cursor()
+            cur.execute(
+                "INSERT INTO events(guild_id, category, event_type, summary, created_at)"
+                " VALUES(?,?,?,?,?)",
+                (guild_id, category, event_type, summary, time.time()),
+            )
+            cur.execute(
+                "DELETE FROM events WHERE guild_id=? AND id NOT IN"
+                " (SELECT id FROM events WHERE guild_id=? ORDER BY id DESC LIMIT 5000)",
+                (guild_id, guild_id),
+            )
+            self._conn.commit()
+
+    def _event_filter(self, guild_id, category=None, event_type=None, search=None):
+        q = "FROM events WHERE guild_id=?"
+        args = [guild_id]
+        if category:
+            q += " AND category=?"
+            args.append(category)
+        if event_type:
+            q += " AND event_type=?"
+            args.append(event_type)
+        if search:
+            q += " AND summary LIKE ?"
+            args.append(f"%{search}%")
+        return q, args
+
+    def query_events(self, guild_id, category=None, event_type=None, search=None,
+                     limit=50, offset=0):
+        """Event history newest-first. Used by the web dashboard."""
+        filt, args = self._event_filter(guild_id, category, event_type, search)
+        with self._lock:
+            cur = self._conn.cursor()
+            cur.execute(
+                f"SELECT id, guild_id, category, event_type, summary, created_at "
+                f"{filt} ORDER BY id DESC LIMIT ? OFFSET ?",
+                args + [limit, offset],
+            )
+            return [dict(r) for r in cur.fetchall()]
+
+    def count_events(self, guild_id, category=None, event_type=None, search=None):
+        filt, args = self._event_filter(guild_id, category, event_type, search)
+        with self._lock:
+            cur = self._conn.cursor()
+            cur.execute(f"SELECT COUNT(*) AS n {filt}", args)
+            return cur.fetchone()["n"]
+
 db = LoggerDatabase()
