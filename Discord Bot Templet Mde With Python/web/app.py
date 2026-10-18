@@ -35,6 +35,7 @@ from web.blueprints.statistics import statistics_api
 
 from web.blueprints.moderation import moderation_api
 from web.blueprints.modpanel import modpanel_api
+from web.blueprints.leaderboard import leaderboard_api
 
 from web.blueprints.events import events_api
 
@@ -134,6 +135,7 @@ def create_app(bot):
     
     app.register_blueprint(moderation_api)
     app.register_blueprint(modpanel_api)
+    app.register_blueprint(leaderboard_api)
            
     app.register_blueprint(events_api)
     
@@ -635,6 +637,48 @@ def create_app(bot):
         
         
         
+
+
+    # ========================================================
+    # LEADERBOARD PAGE
+    # ========================================================
+
+    @app.get(
+        "/servers/<int:guild_id>/leaderboard"
+    )
+    def leaderboard_page(
+        guild_id
+    ):
+
+        from web.blueprints.auth import (
+            user_can_manage_guild
+        )
+
+
+        if not session.get("user"):
+
+            return redirect(
+                url_for("auth.login")
+            )
+
+
+        if not user_can_manage_guild(
+            guild_id
+        ):
+
+            return render_template(
+                "auth/login.html",
+                error=(
+                    "You do not have permission "
+                    "to view this Discord server."
+                )
+            ), 403
+
+
+        return render_template(
+            "leaderboard.html",
+            guild_id=guild_id
+        )
 
 # ========================================================
 # EVENT DETAILS PAGE (moved from pages.py)
