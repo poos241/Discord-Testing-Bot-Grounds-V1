@@ -1,0 +1,2066 @@
+<!DOCTYPE html>
+
+<html lang="en">
+
+<head>
+
+    <meta charset="UTF-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+
+    <title>
+        Members | Kush Bush
+    </title>
+
+    <link
+        rel="stylesheet"
+        href="{{ url_for('static', filename='css/dashboard.css') }}"
+    >
+
+</head>
+
+
+<body>
+
+<div class="app">
+
+    <!-- ================================================= -->
+    <!-- SIDEBAR -->
+    <!-- ================================================= -->
+
+    <aside class="sidebar">
+
+        <div class="brand">
+
+            <div class="brand-icon bot-brand-icon">
+
+                <img
+                    id="bot-avatar"
+                    src=""
+                    alt="Bot"
+                    style="display:none;"
+                >
+
+                <span id="bot-avatar-fallback">
+                    KB
+                </span>
+
+            </div>
+
+            <div>
+
+                <div class="brand-title">
+                    Kush Bush
+                </div>
+
+                <div class="brand-subtitle">
+                    Discord Dashboard
+                </div>
+
+            </div>
+
+        </div>
+
+
+        <div class="sidebar-section">
+
+            <div class="sidebar-label">
+                DASHBOARD
+            </div>
+
+            <a
+                href="/dashboard?guild_id={{ guild_id }}"
+                class="nav-item"
+            >
+                <span>▦</span>
+                Overview
+            </a>
+
+        </div>
+
+
+        <div class="sidebar-section">
+
+            <div class="sidebar-label">
+                SERVER
+            </div>
+
+            <a
+                href="/servers/{{ guild_id }}"
+                class="nav-item"
+            >
+                <span>◉</span>
+                Server
+            </a>
+
+            <a
+                href="/servers/{{ guild_id }}/members"
+                class="nav-item active"
+            >
+                <span>♙</span>
+                Members
+            </a>
+
+            <a
+                href="#"
+                class="nav-item nav-disabled"
+            >
+                <span>▤</span>
+                Channels
+            </a>
+
+            <a
+                href="#"
+                class="nav-item nav-disabled"
+            >
+                <span>◆</span>
+                Roles
+            </a>
+
+        </div>
+
+
+        <div class="sidebar-section">
+
+            <div class="sidebar-label">
+                LOGGING
+            </div>
+
+            <a
+                href="/servers/{{ guild_id }}/activity"
+                class="nav-item"
+            >
+                <span>◷</span>
+                Activity
+            </a>
+
+            <a
+                href="/servers/{{ guild_id }}/activity"
+                class="nav-item"
+            >
+                <span>⚡</span>
+                Events
+            </a>
+
+        </div>
+
+
+        <div class="sidebar-section">
+
+            <div class="sidebar-label">
+                MANAGEMENT
+            </div>
+
+            <a
+                href="#"
+                class="nav-item nav-disabled"
+            >
+                <span>⚔</span>
+                Moderation
+            </a>
+
+            <a
+                href="/servers/{{ guild_id }}/logging"
+                class="nav-item"
+            >
+                <span>⚙</span>
+                Settings
+            </a>
+
+        </div>
+
+
+        <div class="sidebar-bottom">
+
+            <div class="bot-status">
+
+                <span
+                    class="status-dot"
+                    id="status-dot"
+                ></span>
+
+                <div>
+
+                    <strong id="bot-status">
+                        Connecting...
+                    </strong>
+
+                    <small>
+                        Discord Bot
+                    </small>
+
+                </div>
+
+            </div>
+
+        </div>
+
+    </aside>
+
+
+    <!-- ================================================= -->
+    <!-- MAIN -->
+    <!-- ================================================= -->
+
+    <main class="main">
+
+        <header class="topbar">
+
+            <div>
+
+                <div class="page-title">
+                    Members
+                </div>
+
+                <div
+                    class="page-subtitle"
+                    id="server-name"
+                >
+                    Loading server...
+                </div>
+
+            </div>
+
+
+            <div class="topbar-actions">
+
+                <a
+                    href="/servers/{{ guild_id }}"
+                    class="icon-button"
+                    title="Back to server"
+                >
+                    ←
+                </a>
+
+                <button
+                    class="icon-button"
+                    id="refresh-members"
+                    title="Refresh members"
+                >
+                    ↻
+                </button>
+
+            </div>
+
+        </header>
+
+
+        <section class="content">
+
+            <!-- ================================================= -->
+            <!-- SERVER HEADER -->
+            <!-- ================================================= -->
+
+            <div class="members-server-header">
+
+                <div class="members-server-icon">
+
+                    <img
+                        id="server-icon"
+                        src=""
+                        alt="Server"
+                        style="display:none;"
+                    >
+
+                    <span id="server-icon-fallback">
+                        --
+                    </span>
+
+                </div>
+
+
+                <div class="members-server-info">
+
+                    <h1 id="members-server-name">
+                        Loading...
+                    </h1>
+
+                    <div
+                        id="members-server-id"
+                        class="members-server-id"
+                    >
+                        Server ID: {{ guild_id }}
+                    </div>
+
+                </div>
+
+
+                <div class="members-summary">
+
+                    <div class="member-summary-item">
+
+                        <span>
+                            Total
+                        </span>
+
+                        <strong id="member-total">
+                            --
+                        </strong>
+
+                    </div>
+
+
+                    <div class="member-summary-item">
+
+                        <span>
+                            Humans
+                        </span>
+
+                        <strong id="member-humans">
+                            --
+                        </strong>
+
+                    </div>
+
+
+                    <div class="member-summary-item">
+
+                        <span>
+                            Bots
+                        </span>
+
+                        <strong id="member-bots">
+                            --
+                        </strong>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+
+            <!-- ================================================= -->
+            <!-- SEARCH -->
+            <!-- ================================================= -->
+
+            <div class="members-toolbar">
+
+                <div class="member-search">
+
+                    <span>
+                        🔎
+                    </span>
+
+                    <input
+                        id="member-search"
+                        type="text"
+                        placeholder="Search members..."
+                        autocomplete="off"
+                    >
+
+                </div>
+
+
+                <div class="member-filter">
+
+                    <select id="member-filter">
+
+                        <option value="all">
+                            All members
+                        </option>
+
+                        <option value="human">
+                            Humans
+                        </option>
+
+                        <option value="bot">
+                            Bots
+                        </option>
+
+                        <option value="online">
+                            Online
+                        </option>
+
+                    </select>
+
+                </div>
+
+            </div>
+
+
+            <!-- ================================================= -->
+            <!-- MEMBERS -->
+            <!-- ================================================= -->
+
+            <section class="panel members-panel">
+
+                <div class="panel-header">
+
+                    <div>
+
+                        <h2>
+                            Server Members
+                        </h2>
+
+                        <p id="member-results-label">
+                            Loading members...
+                        </p>
+
+                    </div>
+
+                </div>
+
+
+                <div
+                    id="members-list"
+                    class="members-list"
+                >
+
+                    <div class="members-loading">
+
+                        <div class="spinner"></div>
+
+                        <span>
+                            Loading members...
+                        </span>
+
+                    </div>
+
+                </div>
+
+            </section>
+
+        </section>
+
+    </main>
+
+</div>
+
+
+<!-- =========================================================
+     MEMBER DETAILS MODAL
+========================================================= -->
+
+<div
+    id="member-modal"
+    class="member-modal"
+    hidden
+>
+
+    <div
+        class="member-modal-backdrop"
+        id="member-modal-backdrop"
+    ></div>
+
+
+    <section
+        class="member-modal-panel"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="member-modal-name"
+    >
+
+        <button
+            type="button"
+            class="member-modal-close"
+            id="member-modal-close"
+        >
+            ×
+        </button>
+
+
+        <div class="member-modal-header">
+
+            <div
+                id="member-modal-avatar"
+                class="member-modal-avatar"
+            >
+                --
+            </div>
+
+
+            <div>
+
+                <div
+                    id="member-modal-name"
+                    class="member-modal-name"
+                >
+                    Member
+                </div>
+
+
+                <div
+                    id="member-modal-username"
+                    class="member-modal-username"
+                >
+                    @unknown
+                </div>
+
+
+                <div
+                    id="member-modal-status"
+                    class="member-modal-status"
+                >
+                    Offline
+                </div>
+
+            </div>
+
+        </div>
+
+
+        <div class="member-modal-grid">
+
+            <div class="member-detail-card">
+
+                <span>
+                    Member ID
+                </span>
+
+                <strong id="member-detail-id">
+                    --
+                </strong>
+
+            </div>
+
+
+            <div class="member-detail-card">
+
+                <span>
+                    Joined Server
+                </span>
+
+                <strong id="member-detail-joined">
+                    --
+                </strong>
+
+            </div>
+
+
+            <div class="member-detail-card">
+
+                <span>
+                    Account Created
+                </span>
+
+                <strong id="member-detail-created">
+                    --
+                </strong>
+
+            </div>
+
+
+            <div class="member-detail-card">
+
+                <span>
+                    Top Role
+                </span>
+
+                <strong id="member-detail-role">
+                    --
+                </strong>
+
+            </div>
+
+        </div>
+
+
+        <div class="member-modal-section">
+
+            <div class="member-modal-section-title">
+                Roles
+            </div>
+
+            <div
+                id="member-detail-roles"
+                class="member-role-list"
+            >
+                None
+            </div>
+
+        </div>
+
+
+        <div class="member-modal-section">
+
+            <div class="member-modal-section-title">
+                Permissions
+            </div>
+
+            <div
+                id="member-detail-permissions"
+                class="member-permission-list"
+            >
+                None
+            </div>
+
+        </div>
+
+
+        <div
+            id="member-detail-warning"
+            class="member-detail-warning"
+            style="display:none;"
+        ></div>
+
+    </section>
+
+</div>
+
+<script>
+
+const guildId =
+    "{{ guild_id }}";
+
+
+let allMembers = [];
+
+
+/* =========================================================
+   STATUS
+========================================================= */
+
+async function loadStatus() {
+
+    try {
+
+        const response =
+            await fetch(
+                "/api/status",
+                {
+                    cache: "no-store"
+                }
+            );
+
+        if (!response.ok) {
+
+            return;
+
+        }
+
+        const data =
+            await response.json();
+
+
+        const online =
+            data.online === true &&
+            data.discord_ready === true;
+
+
+        const status =
+            document.getElementById(
+                "bot-status"
+            );
+
+
+        const dot =
+            document.getElementById(
+                "status-dot"
+            );
+
+
+        if (status) {
+
+            status.textContent =
+                online
+                    ? "Online"
+                    : "Offline";
+
+        }
+
+
+        if (dot) {
+
+            dot.classList.toggle(
+                "online",
+                online
+            );
+
+        }
+
+
+        if (
+            data.bot &&
+            data.bot.avatar
+        ) {
+
+            const avatar =
+                document.getElementById(
+                    "bot-avatar"
+                );
+
+            const fallback =
+                document.getElementById(
+                    "bot-avatar-fallback"
+                );
+
+
+            avatar.src =
+                data.bot.avatar;
+
+
+            avatar.style.display =
+                "block";
+
+
+            if (fallback) {
+
+                fallback.style.display =
+                    "none";
+
+            }
+
+        }
+
+    }
+
+    catch (error) {
+
+        console.error(
+            "Status error:",
+            error
+        );
+
+    }
+
+}
+
+
+/* =========================================================
+   SERVER
+========================================================= */
+
+async function loadServer() {
+
+    try {
+
+        const response =
+            await fetch(
+                `/api/servers/${guildId}`,
+                {
+                    cache: "no-store"
+                }
+            );
+
+
+        const result =
+            await response.json();
+
+
+        if (!response.ok) {
+
+            throw new Error(
+                result.error ||
+                "Unable to load server"
+            );
+
+        }
+
+
+        const server =
+            result.server ||
+            result;
+
+
+        const name =
+            server.name ||
+            "Unknown Server";
+
+
+        document.getElementById(
+            "server-name"
+        ).textContent =
+            name;
+
+
+        document.getElementById(
+            "members-server-name"
+        ).textContent =
+            name;
+
+
+        document.getElementById(
+            "members-server-id"
+        ).textContent =
+            `Server ID: ${
+                server.id ||
+                guildId
+            }`;
+
+
+        if (server.icon) {
+
+            const icon =
+                document.getElementById(
+                    "server-icon"
+                );
+
+
+            const fallback =
+                document.getElementById(
+                    "server-icon-fallback"
+                );
+
+
+            icon.src =
+                server.icon;
+
+
+            icon.style.display =
+                "block";
+
+
+            if (fallback) {
+
+                fallback.style.display =
+                    "none";
+
+            }
+
+        }
+
+    }
+
+    catch (error) {
+
+        console.error(
+            "Server error:",
+            error
+        );
+
+    }
+
+}
+
+
+function closeMemberDetails() {
+
+    const modal =
+        document.getElementById(
+            "member-modal"
+        );
+
+
+    if (!modal) {
+
+        return;
+
+    }
+
+
+    modal.hidden =
+        true;
+
+
+    document.body.classList.remove(
+        "modal-open"
+    );
+
+}
+
+
+/* =========================================================
+   MEMBER MODAL CONTROLS
+========================================================= */
+
+function setupMemberModal() {
+
+    const modal =
+        document.getElementById(
+            "member-modal"
+        );
+
+
+    const closeButton =
+        document.getElementById(
+            "member-modal-close"
+        );
+
+
+    const backdrop =
+        document.getElementById(
+            "member-modal-backdrop"
+        );
+
+
+    if (!modal) {
+
+        return;
+
+    }
+
+
+    if (closeButton) {
+
+        closeButton.addEventListener(
+            "click",
+            function(event) {
+
+                event.preventDefault();
+
+                event.stopPropagation();
+
+                closeMemberDetails();
+
+            }
+        );
+
+    }
+
+
+    if (backdrop) {
+
+        backdrop.addEventListener(
+            "click",
+            function(event) {
+
+                event.preventDefault();
+
+                event.stopPropagation();
+
+                closeMemberDetails();
+
+            }
+        );
+
+    }
+
+
+    document.addEventListener(
+        "keydown",
+        function(event) {
+
+            if (
+                event.key === "Escape" &&
+                !modal.hidden
+            ) {
+
+                closeMemberDetails();
+
+            }
+
+        }
+    );
+
+}
+
+
+document.addEventListener(
+    "DOMContentLoaded",
+    setupMemberModal
+);
+
+
+/* =========================================================
+   MEMBERS
+========================================================= */
+
+async function loadMembers() {
+
+    const container =
+        document.getElementById(
+            "members-list"
+        );
+
+
+    container.innerHTML = `
+
+        <div class="members-loading">
+
+            <div class="spinner"></div>
+
+            <span>
+                Loading members...
+            </span>
+
+        </div>
+
+    `;
+
+
+    try {
+
+        const response =
+            await fetch(
+                `/api/servers/${guildId}/members`,
+                {
+                    cache: "no-store"
+                }
+            );
+
+
+        const result =
+            await response.json();
+
+
+        if (!response.ok) {
+
+            throw new Error(
+                result.error ||
+                "Unable to load members"
+            );
+
+        }
+
+
+        allMembers =
+            result.members ||
+            [];
+
+
+        updateSummary(
+            allMembers
+        );
+
+
+        renderMembers(
+            allMembers
+        );
+
+    }
+
+    catch (error) {
+
+        console.error(
+            "Members error:",
+            error
+        );
+
+
+        container.innerHTML = `
+
+            <div class="members-empty">
+
+                <div class="members-empty-icon">
+                    ⚠️
+                </div>
+
+                <strong>
+                    Unable to load members
+                </strong>
+
+                <small>
+                    ${escapeHtml(
+                        error.message
+                    )}
+                </small>
+
+            </div>
+
+        `;
+
+    }
+
+}
+
+
+/* =========================================================
+   SUMMARY
+========================================================= */
+
+function updateSummary(
+    members
+) {
+
+    const humans =
+        members.filter(
+            member =>
+                !member.bot
+        );
+
+
+    const bots =
+        members.filter(
+            member =>
+                member.bot
+        );
+
+
+    document.getElementById(
+        "member-total"
+    ).textContent =
+        members.length;
+
+
+    document.getElementById(
+        "member-humans"
+    ).textContent =
+        humans.length;
+
+
+    document.getElementById(
+        "member-bots"
+    ).textContent =
+        bots.length;
+
+}
+
+
+/* =========================================================
+   RENDER
+========================================================= */
+
+function renderMembers(
+    members
+) {
+
+    const container =
+        document.getElementById(
+            "members-list"
+        );
+
+
+    const searchInput =
+        document.getElementById(
+            "member-search"
+        );
+
+
+    const filterInput =
+        document.getElementById(
+            "member-filter"
+        );
+
+
+    const query =
+        String(
+            searchInput.value || ""
+        )
+        .trim()
+        .toLowerCase();
+
+
+    const filter =
+        filterInput.value;
+
+
+    let filtered =
+        members.filter(
+            member => {
+
+                const displayName =
+                    String(
+                        member.display_name ||
+                        ""
+                    ).toLowerCase();
+
+
+                const username =
+                    String(
+                        member.username ||
+                        ""
+                    ).toLowerCase();
+
+
+                const nickname =
+                    String(
+                        member.nickname ||
+                        ""
+                    ).toLowerCase();
+
+
+                const id =
+                    String(
+                        member.id ||
+                        ""
+                    );
+
+
+                if (
+                    query &&
+                    !displayName.includes(query) &&
+                    !username.includes(query) &&
+                    !nickname.includes(query) &&
+                    !id.includes(query)
+                ) {
+
+                    return false;
+
+                }
+
+
+                if (
+                    filter === "human" &&
+                    member.bot
+                ) {
+
+                    return false;
+
+                }
+
+
+                if (
+                    filter === "bot" &&
+                    !member.bot
+                ) {
+
+                    return false;
+
+                }
+
+
+                if (
+                    filter === "online" &&
+                    ![
+                        "online",
+                        "idle",
+                        "dnd"
+                    ].includes(
+                        String(
+                            member.status ||
+                            ""
+                        ).toLowerCase()
+                    )
+                ) {
+
+                    return false;
+
+                }
+
+
+                return true;
+
+            }
+        );
+
+
+    document.getElementById(
+        "member-results-label"
+    ).textContent =
+        `${filtered.length} member${
+            filtered.length === 1
+                ? ""
+                : "s"
+        }`;
+
+
+    if (!filtered.length) {
+
+        container.innerHTML = `
+
+            <div class="members-empty">
+
+                <div class="members-empty-icon">
+                    ♙
+                </div>
+
+                <strong>
+                    No members found
+                </strong>
+
+                <small>
+                    Try changing your search or filter.
+                </small>
+
+            </div>
+
+        `;
+
+        return;
+
+    }
+
+
+    container.innerHTML =
+        filtered.map(
+            member => {
+
+                const name =
+                    member.display_name ||
+                    member.username ||
+                    "Unknown";
+
+
+                const username =
+                    member.username ||
+                    "unknown";
+
+
+                const status =
+                    String(
+                        member.status ||
+                        "offline"
+                    ).toLowerCase();
+
+
+                const statusClass =
+                    status === "online"
+                        ? "online"
+                        : status === "idle"
+                            ? "idle"
+                            : status === "dnd"
+                                ? "dnd"
+                                : "offline";
+
+
+                const initials =
+                    name
+                        .substring(
+                            0,
+                            2
+                        )
+                        .toUpperCase();
+
+
+                const topRole =
+                    member.top_role &&
+                    member.top_role.name
+                        ? member.top_role.name
+                        : "No role";
+
+
+                const roleCount =
+                    Number(
+                        member.role_count || 0
+                    );
+
+
+                return `
+
+                    <button
+                        type="button"
+                        class="member-row member-row-button"
+                        data-member-id="${escapeHtml(
+                            member.id
+                        )}"
+                    >
+
+                        <div class="member-avatar">
+
+                            ${
+                                member.avatar
+
+                                    ? `
+
+                                        <img
+                                            src="${escapeHtml(
+                                                member.avatar
+                                            )}"
+                                            alt=""
+                                            loading="lazy"
+                                        >
+
+                                    `
+
+                                    : `
+
+                                        <span>
+                                            ${escapeHtml(
+                                                initials
+                                            )}
+                                        </span>
+
+                                    `
+                            }
+
+
+                            <span
+                                class="member-status ${statusClass}"
+                            ></span>
+
+                        </div>
+
+
+                        <div class="member-main">
+
+                            <div class="member-name">
+
+                                ${escapeHtml(
+                                    name
+                                )}
+
+                                ${
+                                    member.bot
+                                        ? `
+                                            <span class="bot-badge">
+                                                BOT
+                                            </span>
+                                        `
+                                        : ""
+                                }
+
+                            </div>
+
+
+                            <div class="member-username">
+
+                                @${escapeHtml(
+                                    username
+                                )}
+
+                                ${
+                                    member.nickname
+                                        ? `
+                                            · ${escapeHtml(
+                                                member.nickname
+                                            )}
+                                        `
+                                        : ""
+                                }
+
+                            </div>
+
+                        </div>
+
+
+                        <div class="member-role">
+
+                            <span
+                                class="member-role-chip"
+                            >
+                                ${escapeHtml(
+                                    topRole
+                                )}
+                            </span>
+
+                            ${
+                                roleCount > 1
+                                    ? `
+                                        <small>
+                                            +${roleCount - 1}
+                                        </small>
+                                    `
+                                    : ""
+                            }
+
+                        </div>
+
+
+                        <div class="member-status-label">
+
+                            <span
+                                class="member-status-text ${statusClass}"
+                            >
+                                ${escapeHtml(
+                                    status
+                                )}
+                            </span>
+
+                        </div>
+
+
+                        <div class="member-row-arrow">
+                            →
+                        </div>
+
+                    </button>
+
+                `;
+
+            }
+        ).join("");
+
+
+    container
+        .querySelectorAll(
+            ".member-row-button"
+        )
+        .forEach(
+            row => {
+
+                row.addEventListener(
+                    "click",
+                    () => {
+
+                        const memberId =
+                            row.dataset.memberId;
+
+
+                        openMemberDetails(
+                            memberId
+                        );
+
+                    }
+                );
+
+            }
+        );
+
+}
+
+/* =========================================================
+   MEMBER DETAILS
+========================================================= */
+
+async function openMemberDetails(
+    memberId
+) {
+
+    const modal =
+        document.getElementById(
+            "member-modal"
+        );
+
+
+    if (!modal) {
+
+        return;
+
+    }
+
+
+    modal.hidden =
+        false;
+
+
+    document.body.classList.add(
+        "modal-open"
+    );
+
+
+    document.getElementById(
+        "member-modal-name"
+    ).textContent =
+        "Loading member...";
+
+
+    try {
+
+        const response =
+            await fetch(
+                `/api/servers/${guildId}/members/${memberId}/details`,
+                {
+                    cache: "no-store"
+                }
+            );
+
+
+        const result =
+            await response.json();
+
+
+        if (!response.ok) {
+
+            throw new Error(
+                result.error ||
+                "Unable to load member."
+            );
+
+        }
+
+
+        const member =
+            result.member;
+
+
+        if (!member) {
+
+            throw new Error(
+                "Member data was not returned."
+            );
+
+        }
+
+
+        const name =
+            member.display_name ||
+            member.username ||
+            "Unknown";
+
+
+        const username =
+            member.username ||
+            "unknown";
+
+
+        document.getElementById(
+            "member-modal-name"
+        ).textContent =
+            name;
+
+
+        document.getElementById(
+            "member-modal-username"
+        ).textContent =
+            `@${username}`;
+
+
+        const status =
+            String(
+                member.status ||
+                "offline"
+            ).toLowerCase();
+
+
+        document.getElementById(
+            "member-modal-status"
+        ).textContent =
+            member.bot
+                ? "Bot"
+                : status;
+
+
+        const avatar =
+            document.getElementById(
+                "member-modal-avatar"
+            );
+
+
+        if (member.avatar) {
+
+            avatar.innerHTML = `
+
+                <img
+                    src="${escapeHtml(
+                        member.avatar
+                    )}"
+                    alt=""
+                >
+
+            `;
+
+        }
+
+        else {
+
+            avatar.textContent =
+                name
+                    .substring(
+                        0,
+                        2
+                    )
+                    .toUpperCase();
+
+        }
+
+
+        document.getElementById(
+            "member-detail-id"
+        ).textContent =
+            member.id ||
+            "--";
+
+
+        document.getElementById(
+            "member-detail-joined"
+        ).textContent =
+            formatMemberDate(
+                member.joined_at
+            );
+
+
+        document.getElementById(
+            "member-detail-created"
+        ).textContent =
+            formatMemberDate(
+                member.created_at
+            );
+
+
+        document.getElementById(
+            "member-detail-role"
+        ).textContent =
+            (
+                member.top_role &&
+                member.top_role.name
+            )
+            ||
+            "No role";
+
+
+        renderMemberRoles(
+            member.roles || []
+        );
+
+
+        renderMemberPermissions(
+            member.permissions || []
+        );
+
+
+        const warning =
+            document.getElementById(
+                "member-detail-warning"
+            );
+
+
+        if (
+            member.timed_out ||
+            member.timeout_until
+        ) {
+
+            warning.style.display =
+                "block";
+
+
+            warning.textContent =
+                `Timed out until ${
+                    formatMemberDate(
+                        member.timeout_until
+                    )
+                }`;
+
+        }
+
+        else {
+
+            warning.style.display =
+                "none";
+
+        }
+
+    }
+
+    catch (error) {
+
+        console.error(
+            "Member details error:",
+            error
+        );
+
+
+        document.getElementById(
+            "member-modal-name"
+        ).textContent =
+            "Unable to load member";
+
+
+        document.getElementById(
+            "member-detail-permissions"
+        ).textContent =
+            error.message;
+
+    }
+
+}
+
+
+function closeMemberDetails() {
+
+    const modal =
+        document.getElementById(
+            "member-modal"
+        );
+
+
+    if (!modal) {
+
+        return;
+
+    }
+
+
+    modal.hidden =
+        true;
+
+
+    document.body.classList.remove(
+        "modal-open"
+    );
+
+}
+
+
+function formatMemberDate(
+    value
+) {
+
+    if (!value) {
+
+        return "--";
+
+    }
+
+
+    const date =
+        new Date(
+            value
+        );
+
+
+    if (
+        Number.isNaN(
+            date.getTime()
+        )
+    ) {
+
+        return "--";
+
+    }
+
+
+    return date.toLocaleDateString(
+        undefined,
+        {
+            year:
+                "numeric",
+
+            month:
+                "short",
+
+            day:
+                "numeric"
+        }
+    );
+
+}
+
+
+function renderMemberRoles(
+    roles
+) {
+
+    const container =
+        document.getElementById(
+            "member-detail-roles"
+        );
+
+
+    if (
+        !Array.isArray(roles) ||
+        !roles.length
+    ) {
+
+        container.innerHTML =
+            `<span class="member-detail-empty">
+                No roles
+            </span>`;
+
+        return;
+
+    }
+
+
+    container.innerHTML =
+        roles
+            .slice()
+            .sort(
+                (
+                    a,
+                    b
+                ) =>
+                    Number(
+                        b.position || 0
+                    )
+                    -
+                    Number(
+                        a.position || 0
+                    )
+            )
+            .map(
+                role => `
+
+                    <span
+                        class="member-detail-role"
+                        style="
+                            --role-color:
+                            ${escapeHtml(
+                                role.color || "#7c5cff"
+                            )};
+                        "
+                    >
+                        ${escapeHtml(
+                            role.name
+                        )}
+                    </span>
+
+                `
+            )
+            .join("");
+
+}
+
+
+function renderMemberPermissions(
+    permissions
+) {
+
+    const container =
+        document.getElementById(
+            "member-detail-permissions"
+        );
+
+
+    if (
+        !Array.isArray(permissions) ||
+        !permissions.length
+    ) {
+
+        container.innerHTML =
+            `<span class="member-detail-empty">
+                No special permissions
+            </span>`;
+
+        return;
+
+    }
+
+
+    const important =
+        [
+
+            "administrator",
+
+            "manage_guild",
+
+            "manage_channels",
+
+            "manage_roles",
+
+            "kick_members",
+
+            "ban_members",
+
+            "moderate_members",
+
+            "manage_messages",
+
+            "manage_webhooks"
+
+        ];
+
+
+    const filtered =
+        permissions.filter(
+            permission =>
+                important.includes(
+                    String(
+                        permission
+                    ).toLowerCase()
+                )
+        );
+
+
+    const display =
+        filtered.length
+            ? filtered
+            : permissions.slice(
+                0,
+                12
+            );
+
+
+    container.innerHTML =
+        display
+            .map(
+                permission => `
+
+                    <span class="member-permission">
+
+                        ✓
+
+                        ${escapeHtml(
+                            formatPermissionName(
+                                permission
+                            )
+                        )}
+
+                    </span>
+
+                `
+            )
+            .join("");
+
+}
+
+
+function formatPermissionName(
+    value
+) {
+
+    return String(
+        value || ""
+    )
+        .replace(
+            /_/g,
+            " "
+        )
+        .replace(
+            /\b\w/g,
+            letter =>
+                letter.toUpperCase()
+        );
+
+}
+/* =========================================================
+   ESCAPE
+========================================================= */
+
+function escapeHtml(
+    value
+) {
+
+    return String(
+        value ?? ""
+    )
+        .replace(
+            /&/g,
+            "&amp;"
+        )
+        .replace(
+            /</g,
+            "&lt;"
+        )
+        .replace(
+            />/g,
+            "&gt;"
+        )
+        .replace(
+            /"/g,
+            "&quot;"
+        )
+        .replace(
+            /'/g,
+            "&#039;"
+        );
+
+}
+
+
+/* =========================================================
+   EVENTS
+========================================================= */
+
+document.getElementById(
+    "member-search"
+).addEventListener(
+    "input",
+    () => {
+
+        renderMembers(
+            allMembers
+        );
+
+    }
+);
+
+
+document.getElementById(
+    "member-filter"
+).addEventListener(
+    "change",
+    () => {
+
+        renderMembers(
+            allMembers
+        );
+
+    }
+);
+
+
+document.getElementById(
+    "refresh-members"
+).addEventListener(
+    "click",
+    () => {
+
+        loadMembers();
+
+    }
+);
+
+
+/* =========================================================
+   START
+========================================================= */
+
+Promise.all(
+    [
+        loadStatus(),
+        loadServer(),
+        loadMembers()
+    ]
+);
+
+</script>
+
+<script src="{{ url_for('static', filename='js/server_context.js') }}"></script>
+
+</body>
+
+</html>
