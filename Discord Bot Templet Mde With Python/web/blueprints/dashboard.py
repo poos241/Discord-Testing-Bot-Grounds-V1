@@ -30,7 +30,6 @@ def get_bot():
     "/api/servers/<int:guild_id>/dashboard"
 )
 @require_guild_access
-@require_guild_manage
 def server_dashboard(
     guild_id
 ):
@@ -120,11 +119,6 @@ def server_dashboard(
         }), 500
 
 
-    return jsonify({
-
-        "success": True,
-
-        "dashboard":
-            dashboard
-
-    })
+    response = {"success": True}
+    response.update(dashboard)
+    return jsonify(response)
