@@ -1,0 +1,542 @@
+{% extends "base.html" %}
+
+{% block body %}
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+
+    <div>
+
+        <h2>
+            Event Explorer
+        </h2>
+
+        <div class="text-secondary">
+
+            Browse and search logger events
+
+        </div>
+
+    </div>
+
+    <a
+        href="/servers/{{ guild_id }}"
+        class="btn btn-outline-secondary"
+    >
+        Back to Server
+    </a>
+
+</div>
+
+
+<div class="card shadow-sm mb-4">
+
+    <div class="card-body">
+
+        <div class="row g-3">
+
+            <div class="col-md-6">
+
+                <label class="form-label">
+                    Search
+                </label>
+
+                <input
+                    id="event-search"
+                    type="text"
+                    class="form-control"
+                    placeholder="Search events..."
+                >
+
+            </div>
+
+
+            <div class="col-md-3">
+
+                <label class="form-label">
+                    Category
+                </label>
+
+                <select
+                    id="event-category"
+                    class="form-select"
+                >
+
+                    <option value="">
+                        All Categories
+                    </option>
+
+                    <option value="messages">
+                        Messages
+                    </option>
+
+                    <option value="members">
+                        Members
+                    </option>
+
+                    <option value="voice">
+                        Voice
+                    </option>
+
+                    <option value="roles">
+                        Roles
+                    </option>
+
+                    <option value="server">
+                        Server
+                    </option>
+
+                </select>
+
+            </div>
+
+
+            <div class="col-md-3 d-flex align-items-end">
+
+                <button
+                    id="search-button"
+                    class="btn btn-primary w-100"
+                >
+                    Search
+                </button>
+
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+
+<div
+    id="events-container"
+    class="mb-4"
+>
+
+    <div class="text-secondary">
+        Loading events...
+    </div>
+
+</div>
+
+
+<div
+    id="pagination"
+    class="d-flex justify-content-center gap-2 mb-5"
+></div>
+
+
+<script>
+
+const guildId =
+    "{{ guild_id }}";
+
+let currentPage = 1;
+
+
+async function loadEvents(
+    page = 1
+) {
+
+    currentPage = page;
+
+
+    const search =
+        document.getElementById(
+            "event-search"
+        ).value.trim();
+
+
+    const category =
+        document.getElementById(
+            "event-category"
+        ).value;
+
+
+    const params =
+        new URLSearchParams();
+
+
+    params.set(
+        "page",
+        page
+    );
+
+
+    params.set(
+        "limit",
+        25
+    );
+
+
+    if (search) {
+
+        params.set(
+            "search",
+            search
+        );
+
+    }
+
+
+    if (category) {
+
+        params.set(
+            "category",
+            category
+        );
+
+    }
+
+
+    const container =
+        document.getElementById(
+            "events-container"
+        );
+
+
+    try {
+
+        const response =
+            await fetch(
+                `/api/servers/${guildId}/events?${params}`,
+                {
+                    cache: "no-store"
+                }
+            );
+
+
+        if (!response.ok) {
+
+            throw new Error(
+                `HTTP ${response.status}`
+            );
+
+        }
+
+
+        const result =
+            await response.json();
+
+
+        renderEvents(
+            result.events || []
+        );
+
+
+        renderPagination(
+            result.pagination
+        );
+
+    }
+    catch (error) {
+
+        console.error(
+            "Failed to load events:",
+            error
+        );
+
+
+        container.innerHTML = `
+
+            <div class="alert alert-danger">
+
+                Failed to load events.
+
+            </div>
+
+        `;
+
+    }
+
+}
+
+
+function renderEvents(
+    events
+) {
+
+    const container =
+        document.getElementById(
+            "events-container"
+        );
+
+
+    if (!events.length) {
+
+        container.innerHTML = `
+
+            <div class="alert alert-secondary">
+
+                No events found.
+
+            </div>
+
+        `;
+
+        return;
+
+    }
+
+
+    container.innerHTML =
+        events.map(event => `
+
+            <div class="card shadow-sm mb-3">
+
+                <div class="card-body">
+
+                    <div class="d-flex justify-content-between">
+
+                        <div>
+
+                            <span class="badge bg-primary">
+
+                                ${escapeHtml(
+                                    event.category
+                                )}
+
+                            </span>
+
+
+                            <span class="badge bg-secondary">
+
+                                ${escapeHtml(
+                                    event.event
+                                )}
+
+                            </span>
+
+                        </div>
+
+
+                        <small class="text-secondary">
+
+                            Event #${event.id}
+
+                        </small>
+
+                    </div>
+
+
+                    <hr>
+
+
+                    <div class="row">
+
+                        <div class="col-md-6">
+
+                            <strong>
+                                Action
+                            </strong>
+
+                            <div class="text-secondary">
+
+                                ${escapeHtml(
+                                    event.action || "N/A"
+                                )}
+
+                            </div>
+
+                        </div>
+
+
+                        <div class="col-md-6">
+
+                            <strong>
+                                Time
+                            </strong>
+
+                            <div class="text-secondary">
+
+                                ${escapeHtml(
+                                    event.timestamp || "N/A"
+                                )}
+
+                            </div>
+
+                        </div>
+
+                    </div>
+
+
+                    <div class="mt-3">
+
+                        <a
+                            href="/servers/${guildId}/events/${event.id}"
+                            class="btn btn-sm btn-outline-primary"
+                        >
+                            View Details
+                        </a>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+        `).join("");
+
+}
+
+
+function renderPagination(
+    pagination
+) {
+
+    const container =
+        document.getElementById(
+            "pagination"
+        );
+
+
+    if (
+        !pagination ||
+        pagination.pages <= 1
+    ) {
+
+        container.innerHTML = "";
+
+        return;
+
+    }
+
+
+    let html = "";
+
+
+    if (
+        pagination.page > 1
+    ) {
+
+        html += `
+
+            <button
+                class="btn btn-outline-secondary"
+                onclick="loadEvents(${pagination.page - 1})"
+            >
+                Previous
+            </button>
+
+        `;
+
+    }
+
+
+    html += `
+
+        <span class="btn btn-secondary">
+
+            Page
+            ${pagination.page}
+            of
+            ${pagination.pages}
+
+        </span>
+
+    `;
+
+
+    if (
+        pagination.page <
+        pagination.pages
+    ) {
+
+        html += `
+
+            <button
+                class="btn btn-outline-secondary"
+                onclick="loadEvents(${pagination.page + 1})"
+            >
+                Next
+            </button>
+
+        `;
+
+    }
+
+
+    container.innerHTML =
+        html;
+
+}
+
+
+document.getElementById(
+    "search-button"
+).addEventListener(
+    "click",
+    () => loadEvents(1)
+);
+
+
+document.getElementById(
+    "event-search"
+).addEventListener(
+    "keydown",
+    event => {
+
+        if (
+            event.key === "Enter"
+        ) {
+
+            loadEvents(1);
+
+        }
+
+    }
+);
+
+
+document.getElementById(
+    "event-category"
+).addEventListener(
+    "change",
+    () => loadEvents(1)
+);
+
+
+function escapeHtml(
+    value
+) {
+
+    return String(value)
+
+        .replaceAll(
+            "&",
+            "&amp;"
+        )
+
+        .replaceAll(
+            "<",
+            "&lt;"
+        )
+
+        .replaceAll(
+            ">",
+            "&gt;"
+        )
+
+        .replaceAll(
+            '"',
+            "&quot;"
+        )
+
+        .replaceAll(
+            "'",
+            "&#039;"
+        );
+
+}
+
+
+loadEvents();
+
+setInterval(
+    () => loadEvents(currentPage),
+    20000
+);
+
+</script>
+
+{% endblock %}
