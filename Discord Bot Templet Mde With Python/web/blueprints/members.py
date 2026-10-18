@@ -178,9 +178,10 @@ def get_members():
             len(members),
 
         "members":
-            service.serialize_members(
-                members
-            )
+            [
+                service.serialize_member(m)
+                for m in members
+            ]
 
     })
 
@@ -384,9 +385,10 @@ def get_server_members(guild_id):
             query or None,
 
         "members":
-            service.serialize_members(
-                members
-            )
+            [
+                service.serialize_member(m)
+                for m in members
+            ]
 
     })
     
@@ -537,8 +539,9 @@ def search_server_members(guild_id):
             len(members),
 
         "members":
-            service.serialize_members(
-                members
-            )
+            [
+                service.serialize_member(m)
+                for m in members
+            ]
 
     })
