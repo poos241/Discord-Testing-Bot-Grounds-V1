@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+
+<html lang="en">
+
+<head>
+
+    <meta charset="UTF-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+
+    <title>Activity | Kush Bush</title>
+
+    <link
+        rel="stylesheet"
+        href="{{ url_for('static', filename='css/dashboard.css') }}"
+    >
+
+</head>
+
+
+<body>
+
+<div class="app">
+
+    <aside class="sidebar">
+
+        <div class="brand">
+
+            <div class="brand-icon">
+                KB
+            </div>
+
+            <div>
+
+                <div class="brand-title">
+                    Kush Bush
+                </div>
+
+                <div class="brand-subtitle">
+                    Discord Dashboard
+                </div>
+
+            </div>
+
+        </div>
+
+
+        <div class="sidebar-section">
+
+            <div class="sidebar-label">
+                LOGGING
+            </div>
+
+            <a
+                href="/servers/{{ guild_id }}"
+                class="nav-item"
+            >
+                <span>◉</span>
+                Server
+            </a>
+
+            <a
+                href="#"
+                class="nav-item active"
+            >
+                <span>◷</span>
+                Activity
+            </a>
+
+            <a
+                href="/servers/{{ guild_id }}/events"
+                class="nav-item"
+            >
+                <span>⚡</span>
+                Events
+            </a>
+
+        </div>
+
+    </aside>
+
+
+    <main class="main">
+
+        <header class="topbar">
+
+            <div>
+
+                <div class="page-title">
+                    Activity
+                </div>
+
+                <div class="page-subtitle">
+                    Server event history
+                </div>
+
+            </div>
+
+        </header>
+
+
+        <section class="content">
+
+            <section class="panel">
+
+                <div class="panel-header">
+
+                    <div>
+
+                        <h2>
+                            Activity Log
+                        </h2>
+
+                        <p>
+                            Events recorded by the bot
+                        </p>
+
+                    </div>
+
+                </div>
+
+
+                <div
+                    id="activity-list"
+                    class="activity-list"
+                >
+
+                    <div class="loading">
+                        Loading...
+                    </div>
+
+                </div>
+
+            </section>
+
+        </section>
+
+    </main>
+
+</div>
+
+
+<script>
+
+const guildId =
+    "{{ guild_id }}";
+
+
+async function loadActivity() {
+
+    const container =
+        document.getElementById(
+            "activity-list"
+        );
+
+
+    try {
+
+        const response =
+            await fetch(
+                `/api/servers/${guildId}/activity?limit=100`
+            );
+
+
+        const result =
+            await response.json();
+
+
+        const events =
+            result.events || [];
+
+
+        container.innerHTML =
+            "";
+
+
+        if (!events.length) {
+
+            container.innerHTML =
+                `<div class="loading">
+                    No events recorded.
+                </div>`;
+
+            return;
+
+        }
+
+
+        for (
+            const event
+            of events
+        ) {
+
+            const row =
+                document.createElement(
+                    "div"
+                );
+
+
+            row.className =
+                "activity";
+
+
+            row.innerHTML = `
+
+                <div class="activity-header">
+
+                    <div class="activity-type">
+                        ${escapeHtml(
+                            event.event_type ||
+                            event.type ||
+                            "Unknown"
+                        )}
+                    </div>
+
+                    <div class="activity-time">
+                        ${formatDate(
+                            event.timestamp
+                        )}
+                    </div>
+
+                </div>
+
+                <div class="activity-category">
+                    ${escapeHtml(
+                        event.category ||
+                        "system"
+                    )}
+                </div>
+
+            `;
+
+
+            container.appendChild(
+                row
+            );
+
+        }
+
+    }
+
+    catch (error) {
+
+        console.error(
+            error
+        );
+
+        container.innerHTML =
+            `<div class="loading">
+                Failed to load activity.
+            </div>`;
+
+    }
+
+}
+
+
+function formatDate(
+    value
+) {
+
+    if (!value) {
+        return "--";
+    }
+
+
+    const date =
+        new Date(
+            value
+        );
+
+
+    return date.toLocaleString();
+
+}
+
+
+function escapeHtml(
+    value
+) {
+
+    return String(
+        value ?? ""
+    )
+
+        .replace(
+            /&/g,
+            "&amp;"
+        )
+
+        .replace(
+            /</g,
+            "&lt;"
+        )
+
+        .replace(
+            />/g,
+            "&gt;"
+        )
+
+        .replace(
+            /"/g,
+            "&quot;"
+        )
+
+        .replace(
+            /'/g,
+            "&#039;"
+        );
+
+}
+
+
+loadActivity();
+
+</script>
+
+</body>
+
+</html>
