@@ -1,0 +1,378 @@
+{% extends "base.html" %}
+
+{% block title %}
+    Roles - Kush Bush
+{% endblock %}
+
+{% block head %}
+
+<link
+    rel="stylesheet"
+    href="{{ url_for('static', filename='css/roles.css') }}"
+>
+
+{% endblock %}
+
+
+{% block body %}
+
+<div
+    class="roles-page"
+    id="roles-page"
+    data-guild-id="{{ guild_id }}"
+>
+
+
+    <!-- ================================================= -->
+    <!-- HEADER -->
+    <!-- ================================================= -->
+
+    <div class="roles-header">
+
+        <div>
+
+            <div class="roles-eyebrow">
+                SERVER MANAGEMENT
+            </div>
+
+            <h1>
+                Roles
+            </h1>
+
+            <p>
+                View roles, permissions, hierarchy,
+                and members assigned to each role.
+            </p>
+
+        </div>
+
+
+        <button
+            type="button"
+            id="refresh-roles"
+            class="roles-refresh-button"
+        >
+            ↻ Refresh
+        </button>
+
+    </div>
+
+
+    <!-- ================================================= -->
+    <!-- SERVER HEADER -->
+    <!-- ================================================= -->
+
+    <section class="roles-server-card">
+
+        <div
+            id="roles-server-avatar"
+            class="roles-server-avatar"
+        >
+            #
+        </div>
+
+
+        <div>
+
+            <div
+                id="roles-server-name"
+                class="roles-server-name"
+            >
+                Loading server...
+            </div>
+
+            <div
+                id="roles-server-id"
+                class="roles-server-id"
+            >
+                --
+            </div>
+
+        </div>
+
+
+        <div class="roles-header-stat">
+
+            <span>
+                ROLES
+            </span>
+
+            <strong
+                id="roles-total"
+            >
+                --
+            </strong>
+
+        </div>
+
+    </section>
+
+
+    <!-- ================================================= -->
+    <!-- TOOLBAR -->
+    <!-- ================================================= -->
+
+    <section class="roles-toolbar">
+
+        <div class="roles-search">
+
+            <span>
+                🔎
+            </span>
+
+            <input
+                id="role-search"
+                type="search"
+                placeholder="Search roles..."
+                autocomplete="off"
+            >
+
+        </div>
+
+
+        <select
+            id="role-filter"
+            class="roles-filter"
+        >
+
+            <option value="all">
+                All roles
+            </option>
+
+            <option value="custom">
+                Custom roles
+            </option>
+
+            <option value="managed">
+                Managed roles
+            </option>
+
+            <option value="admin">
+                Administrator
+            </option>
+
+            <option value="mentionable">
+                Mentionable
+            </option>
+
+        </select>
+
+
+        <div
+            id="roles-visible-count"
+            class="roles-visible-count"
+        >
+            --
+        </div>
+
+    </section>
+
+
+    <!-- ================================================= -->
+    <!-- ROLE LIST -->
+    <!-- ================================================= -->
+
+    <section class="roles-panel">
+
+        <div class="roles-panel-header">
+
+            <div>
+
+                <strong>
+                    Server Roles
+                </strong>
+
+                <span>
+                    Highest roles appear first
+                </span>
+
+            </div>
+
+        </div>
+
+
+        <div
+            id="roles-list"
+            class="roles-list"
+        >
+
+            <div class="roles-loading">
+
+                <div class="roles-spinner"></div>
+
+                <span>
+                    Loading roles...
+                </span>
+
+            </div>
+
+        </div>
+
+    </section>
+
+</div>
+
+
+<!-- ===================================================== -->
+<!-- ROLE MODAL -->
+<!-- ===================================================== -->
+
+<div
+    id="role-modal"
+    class="role-modal"
+    hidden
+>
+
+    <div
+        id="role-modal-backdrop"
+        class="role-modal-backdrop"
+    ></div>
+
+
+    <div
+        class="role-modal-panel"
+        role="dialog"
+        aria-modal="true"
+    >
+
+        <button
+            type="button"
+            id="role-modal-close"
+            class="role-modal-close"
+            aria-label="Close"
+        >
+            ×
+        </button>
+
+
+        <div class="role-modal-header">
+
+            <div
+                id="role-modal-color"
+                class="role-modal-color"
+            ></div>
+
+
+            <div>
+
+                <h2
+                    id="role-modal-name"
+                >
+                    Role
+                </h2>
+
+                <div
+                    id="role-modal-id"
+                    class="role-modal-id"
+                >
+                    --
+                </div>
+
+            </div>
+
+        </div>
+
+
+        <div class="role-modal-stats">
+
+            <div>
+
+                <span>
+                    POSITION
+                </span>
+
+                <strong
+                    id="role-modal-position"
+                >
+                    --
+                </strong>
+
+            </div>
+
+
+            <div>
+
+                <span>
+                    MEMBERS
+                </span>
+
+                <strong
+                    id="role-modal-members"
+                >
+                    --
+                </strong>
+
+            </div>
+
+
+            <div>
+
+                <span>
+                    PERMISSIONS
+                </span>
+
+                <strong
+                    id="role-modal-permission-count"
+                >
+                    --
+                </strong>
+
+            </div>
+
+        </div>
+
+
+        <div class="role-modal-section">
+
+            <h3>
+                Role Settings
+            </h3>
+
+            <div
+                id="role-modal-settings"
+                class="role-settings-grid"
+            ></div>
+
+        </div>
+
+
+        <div class="role-modal-section">
+
+            <h3>
+                Permissions
+            </h3>
+
+            <div
+                id="role-modal-permissions"
+                class="role-permission-list"
+            ></div>
+
+        </div>
+
+
+        <div class="role-modal-section">
+
+            <h3>
+                Members
+            </h3>
+
+            <div
+                id="role-modal-member-list"
+                class="role-member-list"
+            ></div>
+
+        </div>
+
+    </div>
+
+</div>
+
+
+{% endblock %}
+
+
+{% block scripts %}
+
+<script src="{{ url_for('static', filename='js/roles.js') }}"></script>
+
+{% endblock %}
