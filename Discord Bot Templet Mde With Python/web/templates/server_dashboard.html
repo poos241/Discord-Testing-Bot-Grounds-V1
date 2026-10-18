@@ -1,0 +1,1400 @@
+{% extends "base.html" %}
+
+{% block body %}
+<style>
+    .stat-line {
+        display: flex;
+        justify-content: space-between;
+        padding: 0.5rem 0;
+        border-bottom: 1px solid rgba(255,255,255,0.05);
+    }
+    .stat-line:last-child {
+        border-bottom: none;
+    }
+</style>
+
+
+<div class="dashboard-search">
+
+    <input
+        id="serverSearch"
+        type="text"
+        placeholder="Search members, channels, or roles..."
+        autocomplete="off"
+    >
+
+    <div
+        id="searchResults"
+        class="search-results"
+    ></div>
+
+</div>
+
+
+<div
+    id="connectionStatus"
+    class="connection-status"
+>
+
+    <span
+        id="connectionDot"
+        class="connection-dot"
+    ></span>
+
+    <span id="connectionText">
+        Connecting...
+    </span>
+
+</div>
+
+<div class="card shadow-sm mb-4">
+
+    <div class="card-body">
+
+        <div class="d-flex align-items-center justify-content-between">
+
+            <div class="d-flex align-items-center gap-3">
+
+                <div
+                    id="server-avatar"
+                    class="server-avatar"
+                >
+                    --
+                </div>
+
+                <div>
+
+                    <h3
+                        id="server-name"
+                        class="mb-1"
+                    >
+                        Loading server...
+                    </h3>
+
+                    <div
+                        id="server-subtitle"
+                        class="text-secondary"
+                    >
+                        Loading...
+                    </div>
+
+                    <small
+                        id="server-id"
+                        class="text-secondary"
+                    >
+                        --
+                    </small>
+
+                </div>
+
+            </div>
+
+
+            <div class="text-end">
+
+                <div
+                    id="connectionStatus"
+                    class="connection-status"
+                >
+
+                    <span
+                        id="connectionDot"
+                        class="connection-dot"
+                    ></span>
+
+                    <span
+                        id="connectionText"
+                    >
+                        Connecting...
+                    </span>
+
+                </div>
+
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+
+<div class="container-fluid py-4">
+    <div id="dashboard">
+        <div class="text-center py-5">
+            <div class="spinner-border" role="status"></div>
+            <div class="mt-3">Loading server...</div>
+        </div>
+    </div>
+</div>
+
+
+<div class="row g-3 mb-4">
+
+    <div class="col-md-3">
+
+        <div class="card h-100 shadow-sm">
+
+            <div class="card-body">
+
+                <small class="text-secondary">
+                    Bot Status
+                </small>
+
+                <h4
+                    id="bot-status"
+                    class="mt-2"
+                >
+                    Loading...
+                </h4>
+
+            </div>
+
+        </div>
+
+    </div>
+
+
+    <div class="col-md-3">
+
+        <div class="card h-100 shadow-sm">
+
+            <div class="card-body">
+
+                <small class="text-secondary">
+                    Members
+                </small>
+
+                <h4
+                    id="member-count"
+                    class="mt-2"
+                >
+                    0
+                </h4>
+
+            </div>
+
+        </div>
+
+    </div>
+
+
+    <div class="col-md-3">
+
+        <div class="card h-100 shadow-sm">
+
+            <div class="card-body">
+
+                <small class="text-secondary">
+                    Channels
+                </small>
+
+                <h4
+                    id="channel-count"
+                    class="mt-2"
+                >
+                    0
+                </h4>
+
+            </div>
+
+        </div>
+
+    </div>
+
+
+    <div class="col-md-3">
+
+        <div class="card h-100 shadow-sm">
+
+            <div class="card-body">
+
+                <small class="text-secondary">
+                    Logged Events
+                </small>
+
+                <h4
+                    id="event-count"
+                    class="mt-2"
+                >
+                    0
+                </h4>
+
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+
+<div class="card shadow-sm mb-4">
+
+    <div class="card-header">
+
+        <h5 class="mb-0">
+            Logger Status
+        </h5>
+
+    </div>
+
+    <div class="card-body">
+
+        <div
+            id="logger-status"
+            class="row g-3"
+        >
+
+            Loading...
+
+        </div>
+
+    </div>
+
+</div>
+
+
+<script>
+
+function loggerBadge(
+    name,
+    channel
+) {
+
+    const enabled =
+        channel !== null &&
+        channel !== undefined &&
+        channel !== "";
+
+    return `
+
+        <div class="col-md-4">
+
+            <div class="border rounded p-3">
+
+                <div class="d-flex justify-content-between">
+
+                    <strong>
+                        ${name}
+                    </strong>
+
+                    <span class="badge ${
+                        enabled
+                            ? "bg-success"
+                            : "bg-secondary"
+                    }">
+
+                        ${
+                            enabled
+                                ? "Enabled"
+                                : "Disabled"
+                        }
+
+                    </span>
+
+                </div>
+
+                <small class="text-secondary">
+
+                    ${
+                        enabled
+                            ? `Channel: ${channel}`
+                            : "No channel configured"
+                    }
+
+                </small>
+
+            </div>
+
+        </div>
+
+    `;
+}
+
+
+function renderLoggerStatus(
+    logging
+) {
+
+    const container =
+        document.getElementById(
+            "logger-status"
+        );
+
+
+    container.innerHTML = `
+
+        ${loggerBadge(
+            "Messages",
+            logging.message
+        )}
+
+        ${loggerBadge(
+            "Members",
+            logging.member
+        )}
+
+        ${loggerBadge(
+            "Voice",
+            logging.voice
+        )}
+
+        ${loggerBadge(
+            "Roles",
+            logging.role
+        )}
+
+        ${loggerBadge(
+            "Server",
+            logging.server
+        )}
+
+    `;
+}
+
+</script>
+
+<div class="card-header">
+
+    <div class="d-flex justify-content-between align-items-center">
+
+        <div>
+
+            <h5 class="mb-0">
+                Recent Activity
+            </h5>
+
+            <div
+                id="last-updated"
+                class="mt-1"
+            >
+                Waiting for update...
+            </div>
+
+        </div>
+
+
+        <div class="d-flex gap-2">
+
+            <button
+                type="button"
+                class="btn btn-sm btn-outline-secondary"
+                onclick="refreshDashboard()"
+            >
+                ↻ Refresh
+            </button>
+
+
+            <a
+                href="/servers/{{ guild_id }}/events"
+                class="btn btn-sm btn-outline-primary"
+            >
+                View All
+            </a>
+
+        </div>
+
+    </div>
+
+</div>
+
+
+    <div
+        id="recent-events"
+        class="list-group list-group-flush"
+    >
+
+        <div class="p-4 text-secondary">
+            Loading activity...
+        </div>
+
+    </div>
+
+</div>
+
+<script>
+
+function renderRecentEvents(
+    events
+) {
+
+    const container =
+        document.getElementById(
+            "recent-events"
+        );
+
+
+    if (!events.length) {
+
+        container.innerHTML = `
+
+            <div class="p-4 text-secondary">
+
+                No recent events.
+
+            </div>
+
+        `;
+
+        return;
+
+    }
+
+
+    container.innerHTML =
+        events.map(event => {
+
+            const data =
+                event.data || {};
+
+
+            return `
+
+                <div class="list-group-item">
+
+                    <div class="d-flex justify-content-between">
+
+                        <div>
+
+                            <span class="badge bg-primary">
+
+                                ${escapeHtml(
+                                    event.category
+                                )}
+
+                            </span>
+
+                            <strong class="ms-2">
+
+                                ${escapeHtml(
+                                    event.event
+                                )}
+
+                            </strong>
+
+                        </div>
+
+
+                        <small class="text-secondary">
+
+                            #${event.id}
+
+                        </small>
+
+                    </div>
+
+
+                    <div class="mt-2 text-secondary">
+
+                        ${escapeHtml(
+                            JSON.stringify(data)
+                        )}
+
+                    </div>
+
+                </div>
+
+            `;
+
+        }).join("");
+
+}
+
+</script>
+
+<script>
+
+window.GUILD_ID =
+    "{{ guild_id }}";
+
+const guildId =
+    window.GUILD_ID;
+
+</script>
+
+// Automatically trigger dashboard loading when webpage mounts
+document.addEventListener("DOMContentLoaded", loadDashboard);
+
+async function loadDashboard() {
+    const dashboard = document.getElementById("dashboard");
+
+    try {
+        const response = await fetch(`/api/servers/${guildId}/dashboard`, {
+            cache: "no-store"
+        });
+
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+
+        const result = await response.json();
+        renderDashboard(result);
+    }
+    catch (error) {
+        console.error("Dashboard error:", error);
+        dashboard.innerHTML = `
+            <div class="alert alert-danger">
+                <h5>Unable to load dashboard</h5>
+                <div>${escapeHtml(error.message)}</div>
+            </div>
+        `;
+    }
+}
+
+function renderDashboard(data) {
+    const eventStats = data.event_statistics || {};
+    const recentEvents = data.recent_events || [];
+    const server = data.server || {};
+    const stats = data.statistics || {};
+    const channels = data.channels || [];
+
+    const icon = server.icon
+        ? `<img src="${escapeHtml(server.icon)}" width="80" height="80" class="rounded-circle me-3">`
+        : "";
+
+    // 1. Build out the overarching layout tree frame onto the primary dashboard node container
+    document.getElementById("dashboard").innerHTML = `
+        <div class="d-flex align-items-center mb-4">
+            ${icon}
+            <div>
+                <h1 class="mb-1">${escapeHtml(server.name || 'Discord Server')}</h1>
+                <div class="text-secondary">Server ID: ${escapeHtml(String(server.id || guildId))}</div>
+            </div>
+        </div>
+
+        <div class="row g-3 mb-4">
+            ${statCard("Members", stats.members || 0)}
+            ${statCard("Channels", stats.channels || 0)}
+            ${statCard("Text Channels", stats.text_channels || 0)}
+            ${statCard("Voice Channels", stats.voice_channels || 0)}
+            ${statCard("Roles", stats.roles || 0)}
+            ${statCard("Categories", stats.categories || 0)}
+        </div>
+
+        <div class="row g-4 mt-1 mb-4">
+            <div class="col-lg-8">
+                <div class="card shadow-sm h-100 bg-dark text-white">
+                    <div class="card-header border-secondary">
+                        <h5 class="mb-0">Recent Activity</h5>
+                    </div>
+                    <div class="list-group list-group-flush" id="recent-events">
+                        <div class="p-4 text-secondary">Loading activity...</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-lg-4">
+                <div class="card shadow-sm h-100 bg-dark text-white">
+                    <div class="card-header border-secondary">
+                        <h5 class="mb-0">Logger Statistics</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="stat-line"><span>Total Events</span><strong id="stat-total">0</strong></div>
+                        <div class="stat-line"><span>Messages Deleted</span><strong id="stat-deleted">0</strong></div>
+                        <div class="stat-line"><span>Messages Edited</span><strong id="stat-edited">0</strong></div>
+                        <div class="stat-line"><span>Member Events</span><strong id="stat-members">0</strong></div>
+                        <div class="stat-line"><span>Voice Events</span><strong id="stat-voice">0</strong></div>
+                        <div class="stat-line"><span>Role Events</span><strong id="stat-roles">0</strong></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row g-4">
+            <div class="col-lg-12">
+                <div class="card shadow-sm bg-dark text-white">
+                    <div class="card-header border-secondary">
+                        <h5 class="mb-0">Discord Channels</h5>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="table-responsive">
+                            <table class="table table-dark table-hover mb-0">
+                                <thead>
+                                    <tr>
+                                        <th>Name</th>
+                                        <th>Type</th>
+                                        <th>Category</th>
+                                        <th>ID</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${channels.length ? channels.map(renderChannelRow).join("") : '<tr><td colspan="4" class="text-center text-secondary py-4">No channels registered.</td></tr>'}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+
+
+    <div class="row g-3 mb-4">
+
+    <div class="col-md-3">
+
+        <div class="card h-100 shadow-sm">
+
+            <div class="card-body">
+
+                <small class="text-secondary">
+                    Bot Status
+                </small>
+
+                <h4
+                    id="bot-status"
+                    class="mt-2"
+                >
+                    Loading...
+                </h4>
+
+            </div>
+
+        </div>
+
+    </div>
+
+
+    <div class="col-md-3">
+
+        <div class="card h-100 shadow-sm">
+
+            <div class="card-body">
+
+                <small class="text-secondary">
+                    Members
+                </small>
+
+                <h4
+                    id="member-count"
+                    class="mt-2"
+                >
+                    0
+                </h4>
+
+            </div>
+
+        </div>
+
+    </div>
+
+
+    <div class="col-md-3">
+
+        <div class="card h-100 shadow-sm">
+
+            <div class="card-body">
+
+                <small class="text-secondary">
+                    Channels
+                </small>
+
+                <h4
+                    id="channel-count"
+                    class="mt-2"
+                >
+                    0
+                </h4>
+
+            </div>
+
+        </div>
+
+    </div>
+
+
+    <div class="col-md-3">
+
+        <div class="card h-100 shadow-sm">
+
+            <div class="card-body">
+
+                <small class="text-secondary">
+                    Logged Events
+                </small>
+
+                <h4
+                    id="event-count"
+                    class="mt-2"
+                >
+                    0
+                </h4>
+
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+    // 2. NOW update statistical values safely because the DOM selectors have been successfully attached to the document tree
+    document.getElementById("stat-total").textContent = eventStats.total_events || 0;
+    document.getElementById("stat-deleted").textContent = eventStats.message_deleted || 0;
+    document.getElementById("stat-edited").textContent = eventStats.message_edited || 0;
+    document.getElementById("stat-members").textContent = eventStats.member_events || 0;
+    document.getElementById("stat-voice").textContent = eventStats.voice_events || 0;
+    document.getElementById("stat-roles").textContent = eventStats.role_events || 0;
+
+    // 3. Process and loop out recent activity logs into the list rendering pipeline container 
+    const activityContainer = document.getElementById("recent-events");
+    if (recentEvents.length === 0) {
+        activityContainer.innerHTML = `<div class="p-4 text-center text-secondary">No recent events logged.</div>`;
+    } else {
+        activityContainer.innerHTML = recentEvents.map(renderEvent).join("");
+    }
+}
+
+// --- UTILITY HELPER CARD GENERATION COMPONENT PIPELINES ---
+
+function statCard(title, value) {
+    return `
+        <div class="col-6 col-sm-4 col-md-2">
+            <div class="card shadow-sm border-0 text-center bg-dark text-white py-3">
+                <div class="text-secondary small text-uppercase fw-bold">${escapeHtml(title)}</div>
+                <h3 class="mb-0 mt-1 font-monospace fw-bold text-info">${escapeHtml(String(value))}</h3>
+            </div>
+        </div>
+    `;
+}
+
+function renderChannelRow(ch) {
+    return `
+        <tr>
+            <td class="text-info fw-bold"># ${escapeHtml(ch.name || 'unknown')}</td>
+            <td><span class="badge bg-secondary">${escapeHtml(ch.type || 'text')}</span></td>
+            <td class="text-secondary">${escapeHtml(ch.category || 'None')}</td>
+            <td class="font-monospace small text-muted">${escapeHtml(String(ch.id))}</td>
+        </tr>
+    `;
+}
+
+function renderEvent(event) {
+
+    const cssClass =
+        eventClass(
+            event.event_type ||
+            event.event ||
+            event.type
+        );
+
+    const timestamp =
+        formatTimestamp(
+            event.timestamp
+        );
+
+    const eventType =
+        event.event_type ||
+        event.event ||
+        event.type ||
+        "System Event";
+
+    const category =
+        event.category ||
+        "system";
+
+    const message =
+        event.message ||
+        event.data?.message ||
+        event.data?.content ||
+        "No additional information.";
+
+    return `
+        <div class="event ${cssClass}">
+
+            <div class="event-header">
+
+                <strong>
+                    ${escapeHtml(eventType)}
+                </strong>
+
+                <span class="timestamp">
+                    ${escapeHtml(timestamp)}
+                </span>
+
+            </div>
+
+            <div class="event-category">
+                ${escapeHtml(category)}
+            </div>
+
+            <div class="event-message">
+                ${escapeHtml(message)}
+            </div>
+
+        </div>
+    `;
+}
+
+function escapeHtml(str) {
+    if (!str) return '';
+    return String(str)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+}
+
+async function refreshDashboard() {
+
+    await loadDashboard();
+
+}
+
+
+setInterval(
+    refreshDashboard,
+    20000
+);
+
+
+const searchInput =
+    document.getElementById(
+        "serverSearch"
+    );
+
+const searchResults =
+    document.getElementById(
+        "searchResults"
+    );
+
+
+let searchTimer = null;
+
+
+searchInput.addEventListener(
+    "input",
+    function () {
+
+        clearTimeout(
+            searchTimer
+        );
+
+
+        const query =
+            this.value.trim();
+
+
+        if (!query) {
+
+            searchResults.style.display =
+                "none";
+
+            return;
+        }
+
+
+        searchTimer =
+            setTimeout(
+                () => performSearch(query),
+                250
+            );
+    }
+);
+
+
+async function performSearch(query) {
+
+    try {
+
+        const response =
+            await fetch(
+                `/api/servers/${guildId}/search?q=${encodeURIComponent(query)}`
+            );
+
+
+        if (!response.ok) {
+
+            console.warn(
+                "Server search endpoint returned:",
+                response.status
+            );
+
+            searchResults.style.display =
+                "none";
+
+            return;
+        }
+
+
+        const data =
+            await response.json();
+
+
+        if (!data.success) {
+
+            searchResults.style.display =
+                "none";
+
+            return;
+        }
+
+
+        renderSearchResults(
+            data
+        );
+
+    }
+    catch (error) {
+
+        console.error(
+            "Search error:",
+            error
+        );
+
+        searchResults.style.display =
+            "none";
+    }
+}
+
+function renderSearchResults(data) {
+
+    const members =
+        data.members || [];
+
+    const channels =
+        data.channels || [];
+
+    const roles =
+        data.roles || [];
+
+    let html = "";
+}
+
+function openMember(
+    userId
+) {
+
+    window.location.href =
+        `/servers/${guildId}/members/${userId}`;
+}
+
+
+function openChannel(
+    channelId
+) {
+
+    window.location.href =
+        `/servers/${guildId}/channels/${channelId}`;
+}
+
+
+function openRole(
+    roleId
+) {
+
+    window.location.href =
+        `/servers/${guildId}/roles/${roleId}`;
+}
+
+
+function escapeHtml(
+    value
+) {
+
+    const div =
+        document.createElement(
+            "div"
+        );
+
+    div.textContent =
+        value ?? "";
+
+    return div.innerHTML;
+}
+
+
+document.addEventListener(
+    "click",
+    function (event) {
+
+        if (
+            !searchResults.contains(event.target)
+            &&
+            event.target !== searchInput
+        ) {
+
+            searchResults.style.display =
+                "none";
+        }
+    }
+);
+
+
+async function updateConnectionStatus() {
+
+    const dot =
+        document.getElementById(
+            "connectionDot"
+        );
+
+    const text =
+        document.getElementById(
+            "connectionText"
+        );
+
+
+    try {
+
+        const response =
+            await fetch(
+                "/api/status",
+                {
+                    cache: "no-store"
+                }
+            );
+
+
+        const data =
+            await response.json();
+
+
+        if (
+            data.discord_connected
+            &&
+            data.discord_ready
+        ) {
+
+            dot.className =
+                "connection-dot online";
+
+            text.textContent =
+                "Discord Connected";
+
+        }
+        else {
+
+            dot.className =
+                "connection-dot offline";
+
+            text.textContent =
+                "Discord Offline";
+        }
+
+    }
+    catch (error) {
+
+        dot.className =
+            "connection-dot offline";
+
+        text.textContent =
+            "Dashboard Offline";
+
+    }
+}
+
+
+updateConnectionStatus();
+
+
+setInterval(
+    updateConnectionStatus,
+    5000
+);
+
+
+function eventClass(
+    eventType
+) {
+
+    const type =
+        String(
+            eventType || ""
+        ).toLowerCase();
+
+
+    if (
+        type.includes("delete")
+        ||
+        type.includes("remove")
+        ||
+        type.includes("ban")
+    ) {
+
+        return "event-danger";
+    }
+
+
+    if (
+        type.includes("create")
+        ||
+        type.includes("add")
+        ||
+        type.includes("join")
+    ) {
+
+        return "event-success";
+    }
+
+
+    if (
+        type.includes("update")
+        ||
+        type.includes("edit")
+        ||
+        type.includes("change")
+    ) {
+
+        return "event-warning";
+    }
+
+
+    return "event-neutral";
+}
+
+
+async function loadDashboard() {
+
+    try {
+
+        const response =
+            await fetch(
+                `/api/servers/${guildId}/overview`,
+                {
+                    cache: "no-store"
+                }
+            );
+
+
+        if (!response.ok) {
+
+            throw new Error(
+                `HTTP ${response.status}`
+            );
+
+        }
+
+
+        const result =
+            await response.json();
+
+
+        const server =
+            result.server || {};
+
+
+        const bot =
+            result.bot || {};
+
+
+        document.getElementById(
+            "bot-status"
+        ).textContent =
+            bot.ready
+                ? "Online"
+                : "Offline";
+
+
+        document.getElementById(
+            "member-count"
+        ).textContent =
+            server.member_count ?? 0;
+
+
+        document.getElementById(
+            "channel-count"
+        ).textContent =
+            (
+                result.channels || []
+            ).length;
+
+
+        const stats =
+            result.event_statistics || {};
+
+
+        document.getElementById(
+            "event-count"
+        ).textContent =
+            stats.total ?? 0;
+
+
+        renderLoggerStatus(
+            result.logging || {}
+        );
+
+
+        renderRecentEvents(
+            result.recent_events || []
+        );
+
+    }
+    catch (error) {
+
+        console.error(
+            "Dashboard failed:",
+            error
+        );
+
+    }
+
+}
+
+function formatTimestamp(
+    timestamp
+) {
+
+    if (!timestamp) {
+        return "-";
+    }
+
+
+    const date =
+        new Date(timestamp);
+
+
+    return date.toLocaleString(
+        undefined,
+        {
+            month: "short",
+            day: "numeric",
+            hour: "numeric",
+            minute: "2-digit",
+            second: "2-digit"
+        }
+    );
+}
+
+function eventClass(eventType) {
+
+    const type =
+        String(
+            eventType || ""
+        ).toLowerCase();
+
+
+    if (
+        type.includes("delete") ||
+        type.includes("remove") ||
+        type.includes("ban")
+    ) {
+
+        return "event-danger";
+    }
+
+
+    if (
+        type.includes("create") ||
+        type.includes("add") ||
+        type.includes("join")
+    ) {
+
+        return "event-success";
+    }
+
+
+    if (
+        type.includes("update") ||
+        type.includes("edit") ||
+        type.includes("change")
+    ) {
+
+        return "event-warning";
+    }
+
+
+    return "event-neutral";
+}
+
+function escapeHtml(value) {
+
+    return String(value)
+
+        .replaceAll(
+            "&",
+            "&amp;"
+        )
+
+        .replaceAll(
+            "<",
+            "&lt;"
+        )
+
+        .replaceAll(
+            ">",
+            "&gt;"
+        )
+
+        .replaceAll(
+            '"',
+            "&quot;"
+        )
+
+        .replaceAll(
+            "'",
+            "&#039;"
+        );
+
+}
+
+
+loadDashboard();
+
+setInterval(
+    loadDashboard,
+    20000
+);
+
+
+
+</script>
+
+
+
+
+<a
+    href="/servers/{{ guild_id }}/dashboard"
+    class="btn btn-primary"
+>
+    Dashboard
+</a>
+
+<a
+    href="/servers/{{ guild_id }}/events"
+    class="btn btn-secondary"
+>
+    Event Explorer
+</a>
+
+<div class="sidebar-section">
+
+    <div class="sidebar-label">
+        LOGGING
+    </div>
+
+
+    <a
+        href="/servers/{{ guild_id }}/logger"
+        class="nav-item"
+    >
+        <span>▤</span>
+        Logger
+    </a>
+
+
+    <a
+        href="/servers/{{ guild_id }}/activity"
+        class="nav-item"
+    >
+        <span>◷</span>
+        Activity
+    </a>
+
+
+    <a
+        href="#"
+        class="nav-item"
+    >
+        <span>⚡</span>
+        Events
+    </a>
+
+</div>
+
+
+{% endblock %}
+
+{% block scripts %}
+{% endblock %}
