@@ -14,7 +14,6 @@ member_stats_api = Blueprint(
     "/api/servers/<int:guild_id>/members/stats"
 )
 @require_guild_access
-@require_guild_manage
 def member_stats(guild_id):
 
     bot = discord_state.bot
