@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+
+<html lang="en">
+
+<head>
+
+    <meta charset="utf-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1"
+    >
+
+    <meta
+        name="description"
+        content="Kush Bush Discord Bot Dashboard"
+    >
+    <link
+        rel="icon"
+        href="{{ url_for('static', filename='favicon.svg') }}"
+        type="image/svg+xml"
+    >
+    <title>
+        {% block title %}
+            Kush Bush Dashboard
+        {% endblock %}
+    </title>
+
+
+    <!-- Bootstrap -->
+
+    <link
+        href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet"
+    >
+
+
+    <!-- Application Styles -->
+
+    <link
+        rel="stylesheet"
+        href="{{ url_for('static', filename='css/app.css') }}"
+    >
+
+
+    {% block head %}{% endblock %}
+
+</head>
+
+
+<body>
+
+
+
+    <nav class="top-navbar">
+
+    <div class="brand-area">
+
+        <a
+            href="{{ url_for('dashboard') }}"
+            class="brand-link"
+        >
+
+            <div class="brand-icon global-bot-brand">
+
+                <img
+                    id="global-bot-avatar"
+                    src=""
+                    alt="Kush Bush Bot"
+                    style="display:none;"
+                >
+
+                <span id="global-bot-avatar-fallback">
+                    KB
+                </span>
+
+            </div>
+
+            <span>
+                Kush Bush
+            </span>
+
+        </a>
+
+    </div>
+
+
+    <div class="nav-links">
+
+        {% if session.get("user") %}
+
+        <a
+            href="{{ url_for('servers') }}"
+            class="nav-link-item"
+        >
+            Dashboard
+        </a>
+
+        <a
+            href="{{ url_for('servers') }}"
+            class="nav-link-item"
+        >
+            Servers
+        </a>
+
+        <a
+            href="{{ url_for('logger') }}"
+            class="nav-link-item"
+        >
+            Logger
+        </a>
+
+        {% endif %}
+
+    </div>
+
+
+    <div class="user-area">
+
+        {% if session.get("user") %}
+
+            {% set user = session.get("user") %}
+
+            {% if user.avatar %}
+
+                <img
+                    class="user-avatar"
+                    src="https://cdn.discordapp.com/avatars/{{ user.id }}/{{ user.avatar }}.png"
+                    alt="Discord Avatar"
+                >
+
+            {% else %}
+
+                <div class="user-avatar-placeholder">
+                    {{ (user.global_name or user.username or "U")[0] }}
+                </div>
+
+            {% endif %}
+
+
+            <span class="user-name">
+
+                {{ user.global_name or user.username }}
+
+            </span>
+
+
+            <a
+                href="{{ url_for('auth.logout') }}"
+                class="logout-button"
+            >
+                Logout
+            </a>
+
+        {% else %}
+
+            <a
+                href="{{ url_for('auth.login') }}"
+                class="login-button-small"
+            >
+                Login
+            </a>
+
+        {% endif %}
+
+    </div>
+
+</nav>
+
+    <div class="container-fluid px-3 px-lg-4 py-3">
+
+        {% block body %}
+
+        {% endblock %}
+
+    </div>
+
+
+    {% block scripts %}
+
+    {% endblock %}
+
+<script src="{{ url_for('static', filename='js/server_context.js') }}"></script>
+
+</body>
+
+</html>
+
+
+<script>
+
+async function loadGlobalBotAvatar() {
+
+    try {
+
+        const response =
+            await fetch(
+                "/api/status",
+                {
+                    cache: "no-store"
+                }
+            );
+
+        if (!response.ok) {
+
+            return;
+
+        }
+
+
+        const data =
+            await response.json();
+
+
+        const avatarUrl =
+            data.bot_avatar ||
+            (
+                data.bot &&
+                data.bot.avatar
+            );
+
+
+        if (!avatarUrl) {
+
+            return;
+
+        }
+
+
+        const avatar =
+            document.getElementById(
+                "global-bot-avatar"
+            );
+
+
+        const fallback =
+            document.getElementById(
+                "global-bot-avatar-fallback"
+            );
+
+
+        if (!avatar) {
+
+            return;
+
+        }
+
+
+        avatar.onload = function() {
+
+            avatar.style.display =
+                "block";
+
+
+            if (fallback) {
+
+                fallback.style.display =
+                    "none";
+
+            }
+
+        };
+
+
+        avatar.onerror = function() {
+
+            avatar.style.display =
+                "none";
+
+
+            if (fallback) {
+
+                fallback.style.display =
+                    "flex";
+
+            }
+
+        };
+
+
+        avatar.src =
+            avatarUrl;
+
+    }
+
+    catch (error) {
+
+        console.error(
+            "Unable to load bot avatar:",
+            error
+        );
+
+    }
+
+}
+
+
+document.addEventListener(
+    "DOMContentLoaded",
+    loadGlobalBotAvatar
+);
+
+</script>
