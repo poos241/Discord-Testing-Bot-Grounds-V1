@@ -14,7 +14,6 @@ server_overview_api = Blueprint(
     "/api/servers/<int:guild_id>/quick-overview"
 )
 @require_guild_access
-@require_guild_manage
 def quick_overview(guild_id):
 
     bot = discord_state.get_bot()
