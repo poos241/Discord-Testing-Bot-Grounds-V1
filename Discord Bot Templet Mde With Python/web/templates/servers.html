@@ -1,0 +1,949 @@
+{% extends "base.html" %}
+
+{% block title %}
+    Select Server - Kush Bush
+{% endblock %}
+
+{% block head %}
+
+<link
+    rel="stylesheet"
+    href="{{ url_for('static', filename='css/servers.css') }}"
+>
+
+{% endblock %}
+
+
+{% block body %}
+
+<div class="server-selection-page">
+
+    <!-- ================================================= -->
+    <!-- HEADER -->
+    <!-- ================================================= -->
+
+    <div class="server-selection-header">
+
+        <div>
+
+            <div class="server-selection-eyebrow">
+                KUSH BUSH DASHBOARD
+            </div>
+
+            <h1>
+                Select a Server
+            </h1>
+
+            <p>
+                Choose a Discord server to manage,
+                monitor, and view activity for.
+            </p>
+
+        </div>
+
+
+        <div class="server-selection-status">
+
+            <span class="status-dot"></span>
+
+            <span>
+                Discord Connected
+            </span>
+
+        </div>
+
+    </div>
+
+
+    <!-- ================================================= -->
+    <!-- SEARCH -->
+    <!-- ================================================= -->
+
+    <div class="server-selection-toolbar">
+
+        <div class="server-search-wrapper">
+
+            <span class="server-search-icon">
+                🔎
+            </span>
+
+            <input
+                id="server-search"
+                type="search"
+                placeholder="Search your servers..."
+                autocomplete="off"
+            >
+
+        </div>
+
+
+        <div
+            id="server-count"
+            class="server-count"
+        >
+            Loading...
+        </div>
+
+    </div>
+
+
+    <!-- ================================================= -->
+    <!-- SERVERS -->
+    <!-- ================================================= -->
+
+    <div
+        id="server-grid"
+        class="server-grid"
+    >
+
+        <div class="server-loading">
+
+            <div class="server-loading-spinner"></div>
+
+            <div>
+                Loading your servers...
+            </div>
+
+        </div>
+
+    </div>
+
+
+    <!-- ================================================= -->
+    <!-- EMPTY STATE -->
+    <!-- ================================================= -->
+
+    <div
+        id="server-empty"
+        class="server-empty"
+        style="display:none;"
+    >
+
+        <div class="server-empty-icon">
+            ◈
+        </div>
+
+        <h3>
+            No manageable servers
+        </h3>
+
+        <p>
+            We couldn't find any Discord servers
+            where you have permission to manage the server.
+        </p>
+
+    </div>
+
+
+</div>
+
+
+<script>
+
+/* =========================================================
+   SERVER SELECTION STATE
+========================================================= */
+
+let servers = [];
+
+const SERVER_STORAGE_KEY =
+    "kush_bush_selected_guild";
+
+
+/* =========================================================
+   SAVED SERVER
+========================================================= */
+
+function getSavedGuildId() {
+
+    try {
+
+        return localStorage.getItem(
+            SERVER_STORAGE_KEY
+        );
+
+    }
+    catch (error) {
+
+        console.warn(
+            "Could not read saved server:",
+            error
+        );
+
+        return null;
+
+    }
+
+}
+
+
+function saveGuildId(
+    guildId
+) {
+
+    if (!guildId) {
+
+        return;
+
+    }
+
+
+    try {
+
+        localStorage.setItem(
+            SERVER_STORAGE_KEY,
+            String(guildId)
+        );
+
+    }
+    catch (error) {
+
+        console.warn(
+            "Could not save selected server:",
+            error
+        );
+
+    }
+
+}
+
+
+function clearSavedGuildId() {
+
+    try {
+
+        localStorage.removeItem(
+            SERVER_STORAGE_KEY
+        );
+
+    }
+    catch (error) {
+
+        console.warn(
+            "Could not clear saved server:",
+            error
+        );
+
+    }
+
+}
+
+
+/* =========================================================
+   CURRENT SERVER
+========================================================= */
+
+function getServerId(
+    server
+) {
+
+    return String(
+        server?.id ||
+        server?.guild_id ||
+        ""
+    );
+
+}
+
+
+function getSavedServer() {
+
+    const savedId =
+        getSavedGuildId();
+
+
+    if (!savedId) {
+
+        return null;
+
+    }
+
+
+    return servers.find(
+        server =>
+            getServerId(server) ===
+            String(savedId)
+    ) || null;
+
+}
+
+
+/* =========================================================
+   SERVER CARD CLICK
+========================================================= */
+
+function openServer(
+    guildId
+) {
+
+    const id =
+        String(guildId || "");
+
+
+    if (!id) {
+
+        return;
+
+    }
+
+
+    saveGuildId(id);
+
+
+    window.location.href =
+        `/servers/${encodeURIComponent(id)}/dashboard`;
+
+}
+
+
+/* =========================================================
+   HELPERS
+========================================================= */
+
+function escapeHtml(value) {
+
+    return String(value ?? "")
+
+        .replaceAll(
+            "&",
+            "&amp;"
+        )
+
+        .replaceAll(
+            "<",
+            "&lt;"
+        )
+
+        .replaceAll(
+            ">",
+            "&gt;"
+        )
+
+        .replaceAll(
+            '"',
+            "&quot;"
+        )
+
+        .replaceAll(
+            "'",
+            "&#039;"
+        );
+
+}
+
+
+function getInitials(name) {
+
+    const value =
+        String(
+            name || "Server"
+        ).trim();
+
+    if (!value) {
+
+        return "??";
+
+    }
+
+    const parts =
+        value.split(/\s+/);
+
+    if (parts.length >= 2) {
+
+        return (
+            parts[0][0] +
+            parts[1][0]
+        ).toUpperCase();
+
+    }
+
+    return value
+        .substring(0, 2)
+        .toUpperCase();
+
+}
+
+
+/* =========================================================
+   SERVER CARD
+========================================================= */
+
+function createServerCard(server) {
+
+    const id =
+        String(
+            server.id ||
+            server.guild_id ||
+            ""
+        );
+
+
+    if (!id) {
+
+        return "";
+
+    }
+
+
+    const name =
+        String(
+            server.name ||
+            "Unknown Server"
+        );
+
+
+    const memberCount =
+        Number(
+            server.member_count || 0
+        ).toLocaleString();
+
+
+    const channelCount =
+        Number(
+            server.channel_count || 0
+        ).toLocaleString();
+
+
+    const roleCount =
+        Number(
+            server.role_count || 0
+        ).toLocaleString();
+
+
+    const categoryCount =
+        Number(
+            server.category_count || 0
+        ).toLocaleString();
+
+
+    const isAdmin =
+        server.is_admin === true;
+
+
+    const isOwner =
+        server.owner === true;
+
+
+    const canManage =
+        server.can_manage === true;
+
+
+    /*
+     * We still remember the last server,
+     * but we do NOT visually mark the entire
+     * card as selected.
+     */
+    const recent =
+        getSavedGuildId() === id;
+
+
+    /* =====================================================
+       SERVER AVATAR
+    ===================================================== */
+
+    let avatarHtml = "";
+
+
+    if (server.icon) {
+
+        avatarHtml = `
+
+            <img
+                class="server-avatar-image"
+                src="${escapeHtml(server.icon)}"
+                alt="${escapeHtml(name)}"
+                loading="lazy"
+                referrerpolicy="no-referrer"
+                onerror="
+                    this.style.display='none';
+                    this.nextElementSibling.style.display='flex';
+                "
+            >
+
+            <span
+                class="server-avatar-fallback"
+                style="display:none;"
+            >
+                ${escapeHtml(
+                    getInitials(name)
+                )}
+            </span>
+
+        `;
+
+    }
+
+    else {
+
+        avatarHtml = `
+
+            <span
+                class="server-avatar-fallback"
+            >
+                ${escapeHtml(
+                    getInitials(name)
+                )}
+            </span>
+
+        `;
+
+    }
+
+
+    /* =====================================================
+       PERMISSION
+    ===================================================== */
+
+    let permissionLabel =
+        "Manage Server";
+
+
+    if (isOwner) {
+
+        permissionLabel =
+            "Server Owner";
+
+    }
+
+    else if (isAdmin) {
+
+        permissionLabel =
+            "Administrator";
+
+    }
+
+    else if (canManage) {
+
+        permissionLabel =
+            "Manage Server";
+
+    }
+
+
+    /* =====================================================
+       RECENT BADGE
+    ===================================================== */
+
+    const recentBadge =
+        recent
+            ? `
+                <span
+                    class="server-recent-badge"
+                >
+                    Recent
+                </span>
+            `
+            : "";
+
+
+    /* =====================================================
+       CARD
+    ===================================================== */
+
+    return `
+
+        <a
+            class="server-card"
+            href="/servers/${encodeURIComponent(id)}/dashboard"
+            data-guild-id="${escapeHtml(id)}"
+            aria-label="Open ${escapeHtml(name)} dashboard"
+        >
+
+            <div class="server-card-top">
+
+                <div class="server-avatar">
+
+                    ${avatarHtml}
+
+                </div>
+
+
+                <div class="server-card-top-right">
+
+                    ${recentBadge}
+
+                    <span
+                        class="server-card-arrow"
+                        aria-hidden="true"
+                    >
+                        →
+                    </span>
+
+                </div>
+
+            </div>
+
+
+            <div class="server-card-name">
+
+                ${escapeHtml(name)}
+
+            </div>
+
+
+            <div class="server-card-id">
+
+                ${escapeHtml(id)}
+
+            </div>
+
+
+            <div class="server-permission-badge">
+
+                <span
+                    class="permission-dot"
+                    aria-hidden="true"
+                ></span>
+
+                ${escapeHtml(
+                    permissionLabel
+                )}
+
+            </div>
+
+
+            <div class="server-card-stats">
+
+                <div class="server-stat">
+
+                    <span class="server-stat-value">
+                        ${memberCount}
+                    </span>
+
+                    <span class="server-stat-label">
+                        Members
+                    </span>
+
+                </div>
+
+
+                <div class="server-stat">
+
+                    <span class="server-stat-value">
+                        ${channelCount}
+                    </span>
+
+                    <span class="server-stat-label">
+                        Channels
+                    </span>
+
+                </div>
+
+
+                <div class="server-stat">
+
+                    <span class="server-stat-value">
+                        ${roleCount}
+                    </span>
+
+                    <span class="server-stat-label">
+                        Roles
+                    </span>
+
+                </div>
+
+            </div>
+
+
+            <div class="server-card-extra">
+
+                <span>
+                    ${categoryCount} categories
+                </span>
+
+                <span>
+                    Open dashboard
+                </span>
+
+            </div>
+
+
+            <div class="server-card-footer">
+
+                <span>
+                    Manage ${escapeHtml(name)}
+                </span>
+
+                <span>
+                    →
+                </span>
+
+            </div>
+
+        </a>
+
+    `;
+
+}
+
+/* =========================================================
+   RENDER
+========================================================= */
+
+function renderServers(
+    searchTerm = ""
+) {
+
+    const grid =
+        document.getElementById(
+            "server-grid"
+        );
+
+    const empty =
+        document.getElementById(
+            "server-empty"
+        );
+
+
+    const search =
+        String(
+            searchTerm || ""
+        )
+        .trim()
+        .toLowerCase();
+
+
+    const filtered =
+        servers.filter(
+            server => {
+
+                const name =
+                    String(
+                        server.name || ""
+                    )
+                    .toLowerCase();
+
+                const id =
+                    String(
+                        server.id ||
+                        server.guild_id ||
+                        ""
+                    );
+
+                
+                return (
+                    !search ||
+                    name.includes(search) ||
+                    id.includes(search)
+                );
+
+            }
+        );
+
+
+    if (!filtered.length) {
+
+        grid.innerHTML = "";
+
+        empty.style.display =
+            "block";
+
+        return;
+
+    }
+
+
+    empty.style.display =
+        "none";
+
+
+    grid.innerHTML =
+        filtered
+            .map(
+                createServerCard
+            )
+            .join("");
+
+}
+
+
+/* =========================================================
+   LOAD SERVERS
+========================================================= */
+
+async function loadServers() {
+
+    const grid =
+        document.getElementById(
+            "server-grid"
+        );
+
+    const count =
+        document.getElementById(
+            "server-count"
+        );
+
+
+    try {
+
+        const response =
+            await fetch(
+                "/api/servers",
+                {
+                    cache: "no-store",
+                    credentials: "same-origin"
+                }
+            );
+
+
+        const result =
+            await response.json();
+
+
+        if (!response.ok) {
+
+            throw new Error(
+                result.error ||
+                `HTTP ${response.status}`
+            );
+
+        }
+
+
+        servers =
+            Array.isArray(
+                result.servers
+            )
+                ? result.servers
+                : [];
+
+
+        count.textContent =
+            `${servers.length} server${
+                servers.length === 1
+                    ? ""
+                    : "s"
+            }`;
+
+
+        if (!servers.length) {
+
+            grid.innerHTML = "";
+
+            document.getElementById(
+                "server-empty"
+            ).style.display =
+                "block";
+
+            return;
+
+        }
+
+
+        renderServers();
+
+    }
+
+    catch (error) {
+
+        console.error(
+            "Server selection failed:",
+            error
+        );
+
+
+        grid.innerHTML = `
+
+            <div class="server-load-error">
+
+                <div class="server-empty-icon">
+                    !
+                </div>
+
+                <h3>
+                    Failed to load servers
+                </h3>
+
+                <p>
+                    ${escapeHtml(
+                        error.message
+                    )}
+                </p>
+
+
+                <button
+                    type="button"
+                    class="server-retry-button"
+                    onclick="loadServers()"
+                >
+                    Try Again
+                </button>
+
+            </div>
+
+        `;
+
+    }
+
+}
+
+
+/* =========================================================
+   SEARCH
+========================================================= */
+
+document
+    .getElementById(
+        "server-search"
+    )
+    .addEventListener(
+        "input",
+        event => {
+
+            renderServers(
+                event.target.value
+            );
+
+        }
+    );
+
+
+document
+    .getElementById("server-grid")
+    .addEventListener(
+        "click",
+        event => {
+
+            const card =
+                event.target.closest(
+                    ".server-card[data-guild-id]"
+                );
+
+
+            if (!card) {
+
+                return;
+
+            }
+
+
+            const guildId =
+                card.dataset.guildId;
+
+
+            if (!guildId) {
+
+                return;
+
+            }
+
+
+            saveGuildId(
+                guildId
+            );
+
+        }
+    );
+
+/* =========================================================
+   START
+========================================================= */
+
+document.addEventListener(
+    "DOMContentLoaded",
+    loadServers
+);
+
+</script>
+
+{% endblock %}
