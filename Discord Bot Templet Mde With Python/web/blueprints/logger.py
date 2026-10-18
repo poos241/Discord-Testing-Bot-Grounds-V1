@@ -131,3 +131,61 @@ def logger_export(guild_id):
         mimetype="text/csv; charset=utf-8",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+# ============================================================
+# EVENT TOGGLES
+#
+# GET /api/servers/<guild_id>/logger/toggles
+# POST /api/servers/<guild_id>/logger/toggles  {event_key, enabled}
+# ============================================================
+
+@logger_api.get("/servers/<int:guild_id>/logger/toggles")
+@require_guild_access
+def logger_toggles(guild_id):
+    from web.services.logger_db import logger_db
+    from cogs.Logger.config import EVENT_GROUPS
+
+    groups = {}
+    for group_name, events in EVENT_GROUPS.items():
+        groups[group_name] = [
+            {
+                "key": ev,
+                "label": ev.replace("_", " ").title(),
+                "enabled": bool(logger_db.is_enabled(guild_id, ev)),
+            }
+            for ev in events
+        ]
+
+    return jsonify({"success": True, "groups": groups})
+
+
+@logger_api.post("/servers/<int:guild_id>/logger/toggles")
+@require_guild_access
+def logger_set_toggle(guild_id):
+    import secrets
+    from web.blueprints.auth import get_csrf_token
+    from web.services.logger_db import logger_db
+    from cogs.Logger.config import ALL_EVENTS
+
+    supplied = (
+        request.headers.get("X-CSRF-Token")
+        or request.headers.get("X-CSRFToken")
+        or ""
+    ).strip()
+    expected = get_csrf_token()
+    if not supplied or not secrets.compare_digest(supplied, expected):
+        return jsonify({"success": False, "error": "Invalid CSRF token."}), 403
+
+    data = request.get_json(silent=True) or {}
+    event_key = data.get("event_key")
+    enabled = bool(data.get("enabled", True))
+
+    if event_key not in ALL_EVENTS:
+        return jsonify({"success": False, "error": "Unknown event key."}), 400
+
+    # set_enabled lives on the real Logger db, not the adapter
+    from cogs.Logger.database import db as logger_real_db
+    logger_real_db.set_enabled(guild_id, event_key, enabled)
+
+    return jsonify({"success": True, "event_key": event_key, "enabled": enabled})
