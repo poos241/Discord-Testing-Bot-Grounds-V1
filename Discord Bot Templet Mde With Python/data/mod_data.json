@@ -13,6 +13,11 @@
                     "mod_id": 287282266261159937,
                     "mod_name": "poos241 (Purekush)",
                     "ts": 1792109160.6133468
+                },
+                {
+                    "reason": "this is a test to see if this will work or not",
+                    "moderator": "Web dashboard",
+                    "timestamp": "2026-10-18T15:56:23.056699+00:00"
                 }
             ],
             "notes": [
@@ -21,6 +26,16 @@
                     "mod_id": 287282266261159937,
                     "mod_name": "poos241 (Purekush)",
                     "ts": 1792071759.619103
+                }
+            ],
+            "cases": [
+                {
+                    "action": "warn",
+                    "reason": "this is a test to see if this will work or not",
+                    "mod_id": null,
+                    "mod_name": "Web dashboard",
+                    "ts": 1792338983.0582018,
+                    "extra": {}
                 }
             ]
         }
