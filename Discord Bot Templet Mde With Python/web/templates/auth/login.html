@@ -1,0 +1,427 @@
+{% extends "base.html" %}
+
+{% block title %}
+    Login - Kush Bush Dashboard
+{% endblock %}
+
+
+{% block head %}
+
+<link
+    rel="stylesheet"
+    href="{{ url_for('static', filename='css/auth.css') }}"
+>
+
+{% endblock %}
+
+
+{% block body %}
+
+<div class="auth-shell">
+
+    <div class="auth-background-glow auth-glow-one"></div>
+    <div class="auth-background-glow auth-glow-two"></div>
+
+
+    <div class="auth-card">
+
+        <div class="auth-card-top">
+
+            <div class="auth-brand">
+
+                <div class="auth-logo">
+
+                    <div class="auth-logo-icon auth-bot-icon">
+
+                        <img
+                            id="auth-bot-avatar"
+                            src=""
+                            alt="Kush Bush Bot"
+                            style="display:none;"
+                        >
+
+                        <span id="auth-bot-avatar-fallback">
+                            KB
+                        </span>
+
+                    </div>
+
+                </div>
+
+
+                <div>
+
+                    <div class="auth-brand-name">
+                        Kush Bush
+                    </div>
+
+                    <div class="auth-brand-label">
+                        Discord Management
+                    </div>
+
+                </div>
+
+            </div>
+
+
+            <div class="auth-secure-badge">
+
+                <span class="auth-secure-dot"></span>
+
+                Secure
+
+            </div>
+
+        </div>
+
+
+        <div class="auth-hero">
+
+            <div class="auth-bot-avatar">
+
+                <img
+                    id="login-bot-avatar"
+                    src=""
+                    alt="Kush Bush Bot"
+                    style="display:none;"
+                >
+
+                <span
+                    id="login-bot-fallback"
+                >
+                    KB
+                </span>
+
+            </div>
+
+
+            <div class="auth-eyebrow">
+                KUSH BUSH DASHBOARD
+            </div>
+
+
+            <h1>
+                Welcome back.
+            </h1>
+
+
+            <p class="auth-subtitle">
+
+                Manage your Discord servers,
+                inspect activity, monitor members,
+                and configure logging from one dashboard.
+
+            </p>
+
+        </div>
+
+
+        {% if error %}
+
+        <div class="auth-error">
+
+            <div class="auth-error-icon">
+                !
+            </div>
+
+            <div>
+
+                <strong>
+                    Login failed
+                </strong>
+
+                <p>
+                    {{ error }}
+                </p>
+
+            </div>
+
+        </div>
+
+        {% endif %}
+
+
+        <a
+            href="{{ url_for('auth.login') }}"
+            class="discord-login-button"
+        >
+
+            <span class="discord-icon">
+
+                <svg
+                    viewBox="0 0 24 24"
+                    aria-hidden="true"
+                >
+                    <path
+                        fill="currentColor"
+                        d="M19.54 5.34A16.9 16.9 0 0 0 15.42 4l-.5 1.02a15.6 15.6 0 0 0-5.84 0L8.58 4a16.9 16.9 0 0 0-4.12 1.34C1.85 9.27 1.15 13.1 1.5 16.87a16.9 16.9 0 0 0 5.05 2.58l1.23-1.68c-.68-.25-1.33-.57-1.94-.95l.47-.36c3.73 1.74 8.1 1.74 11.83 0l.48.36c-.62.38-1.27.7-1.95.95l1.23 1.68a16.9 16.9 0 0 0 5.05-2.58c.41-4.4-.7-8.2-3.41-11.53ZM8.5 15.06c-1.1 0-2.01-1.02-2.01-2.27s.88-2.28 2.01-2.28c1.13 0 2.03 1.02 2.01 2.28 0 1.25-.89 2.27-2.01 2.27Zm7 0c-1.1 0-2.01-1.02-2.01-2.27s.88-2.28 2.01-2.28c1.13 0 2.03 1.02 2.01 2.28 0 1.25-.89 2.27-2.01 2.27Z"
+                    />
+                </svg>
+
+            </span>
+
+
+            <span>
+                Continue with Discord
+            </span>
+
+
+            <span class="login-arrow">
+                →
+            </span>
+
+        </a>
+
+
+        <div class="auth-permissions">
+
+            <div class="auth-permission">
+
+                <span>✓</span>
+
+                Server management
+
+            </div>
+
+
+            <div class="auth-permission">
+
+                <span>✓</span>
+
+                Activity monitoring
+
+            </div>
+
+
+            <div class="auth-permission">
+
+                <span>✓</span>
+
+                Logging & analytics
+
+            </div>
+
+        </div>
+
+
+        <div class="auth-footer">
+
+            <div>
+                Discord OAuth2 authentication
+            </div>
+
+            <div>
+                Your Discord password is never shared with this application.
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+
+<script>
+
+document.addEventListener(
+    "DOMContentLoaded",
+    async () => {
+
+        try {
+
+            const response =
+                await fetch(
+                    "/api/status",
+                    {
+                        cache: "no-store"
+                    }
+                );
+
+
+            if (!response.ok) {
+
+                return;
+
+            }
+
+
+            const data =
+                await response.json();
+
+
+            const avatar =
+                data.bot_avatar ||
+                (
+                    data.bot &&
+                    data.bot.avatar
+                );
+
+
+            if (!avatar) {
+
+                return;
+
+            }
+
+
+            const image =
+                document.getElementById(
+                    "login-bot-avatar"
+                );
+
+
+            const fallback =
+                document.getElementById(
+                    "login-bot-fallback"
+                );
+
+
+            image.src =
+                avatar;
+
+
+            image.style.display =
+                "block";
+
+
+            if (fallback) {
+
+                fallback.style.display =
+                    "none";
+
+            }
+
+        }
+
+        catch (error) {
+
+            console.warn(
+                "Unable to load bot avatar:",
+                error
+            );
+
+        }
+
+    }
+);
+
+</script>
+
+
+<script>
+
+async function loadAuthBotAvatar() {
+
+    try {
+
+        const response =
+            await fetch(
+                "/api/status",
+                {
+                    cache: "no-store"
+                }
+            );
+
+
+        if (!response.ok) {
+
+            return;
+
+        }
+
+
+        const data =
+            await response.json();
+
+
+        const avatarUrl =
+            data.bot_avatar ||
+            (
+                data.bot &&
+                data.bot.avatar
+            );
+
+
+        if (!avatarUrl) {
+
+            return;
+
+        }
+
+
+        const avatar =
+            document.getElementById(
+                "auth-bot-avatar"
+            );
+
+
+        const fallback =
+            document.getElementById(
+                "auth-bot-avatar-fallback"
+            );
+
+
+        if (!avatar) {
+
+            return;
+
+        }
+
+
+        avatar.onload = function() {
+
+            avatar.style.display =
+                "block";
+
+
+            if (fallback) {
+
+                fallback.style.display =
+                    "none";
+
+            }
+
+        };
+
+
+        avatar.onerror = function() {
+
+            avatar.style.display =
+                "none";
+
+
+            if (fallback) {
+
+                fallback.style.display =
+                    "flex";
+
+            }
+
+        };
+
+
+        avatar.src =
+            avatarUrl;
+
+    }
+
+    catch (error) {
+
+        console.error(
+            "Auth bot avatar error:",
+            error
+        );
+
+    }
+
+}
+
+
+document.addEventListener(
+    "DOMContentLoaded",
+    loadAuthBotAvatar
+);
+
+</script>
+
+{% endblock %}
