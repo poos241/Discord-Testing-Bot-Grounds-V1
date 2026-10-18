@@ -38,7 +38,6 @@ def get_guild(guild_id):
     "/api/servers/<int:guild_id>/channels"
 )
 @require_guild_access
-@require_guild_manage
 def get_server_channels(guild_id):
 
     bot = get_bot()
@@ -159,7 +158,6 @@ def get_server_channels(guild_id):
     "/api/servers/<int:guild_id>/channels/summary"
 )
 @require_guild_access
-@require_guild_manage
 def channel_summary(guild_id):
 
     bot = get_bot()
