@@ -1,0 +1,1780 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+    <meta charset="UTF-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+
+    <title>
+        Server Activity | Kush Bush
+    </title>
+
+
+    <style>
+
+        :root {
+
+            --bg:
+                #0b0f14;
+
+            --panel:
+                #111820;
+
+            --panel-hover:
+                #17212b;
+
+            --border:
+                #263341;
+
+            --text:
+                #f1f5f9;
+
+            --muted:
+                #8b98a7;
+
+            --accent:
+                #4c9aff;
+
+            --success:
+                #32d583;
+
+            --warning:
+                #fdb022;
+
+            --danger:
+                #f97066;
+
+        }
+
+
+        * {
+            box-sizing: border-box;
+        }
+
+
+        body {
+
+            margin: 0;
+
+            background:
+                var(--bg);
+
+            color:
+                var(--text);
+
+            font-family:
+                Inter,
+                system-ui,
+                -apple-system,
+                BlinkMacSystemFont,
+                "Segoe UI",
+                sans-serif;
+
+        }
+
+
+        button,
+        input,
+        select {
+
+            font: inherit;
+
+        }
+
+
+        .page {
+
+            max-width:
+                1500px;
+
+            margin:
+                0 auto;
+
+            padding:
+                28px;
+
+        }
+
+
+        /* =====================================================
+           HEADER
+        ===================================================== */
+
+        .header {
+
+            display:
+                flex;
+
+            justify-content:
+                space-between;
+
+            align-items:
+                center;
+
+            gap:
+                20px;
+
+            margin-bottom:
+                24px;
+
+        }
+
+
+        .title {
+
+            font-size:
+                30px;
+
+            font-weight:
+                700;
+
+        }
+
+
+        .subtitle {
+
+            margin-top:
+                5px;
+
+            color:
+                var(--muted);
+
+        }
+
+
+        .live-status {
+
+            display:
+                flex;
+
+            align-items:
+                center;
+
+            gap:
+                8px;
+
+            padding:
+                8px 13px;
+
+            border:
+                1px solid var(--border);
+
+            border-radius:
+                999px;
+
+            background:
+                var(--panel);
+
+            font-size:
+                13px;
+
+        }
+
+
+        .status-dot {
+
+            width:
+                9px;
+
+            height:
+                9px;
+
+            border-radius:
+                50%;
+
+            background:
+                var(--danger);
+
+        }
+
+
+        .status-dot.live {
+
+            background:
+                var(--success);
+
+            box-shadow:
+                0 0 10px
+                rgba(50,213,131,.65);
+
+        }
+
+
+        /* =====================================================
+           STAT CARDS
+        ===================================================== */
+
+        .stats {
+
+            display:
+                grid;
+
+            grid-template-columns:
+                repeat(4, 1fr);
+
+            gap:
+                14px;
+
+            margin-bottom:
+                20px;
+
+        }
+
+
+        .stat {
+
+            background:
+                var(--panel);
+
+            border:
+                1px solid var(--border);
+
+            border-radius:
+                12px;
+
+            padding:
+                18px;
+
+        }
+
+
+        .stat-label {
+
+            color:
+                var(--muted);
+
+            font-size:
+                12px;
+
+            text-transform:
+                uppercase;
+
+            letter-spacing:
+                .08em;
+
+        }
+
+
+        .stat-value {
+
+            margin-top:
+                7px;
+
+            font-size:
+                27px;
+
+            font-weight:
+                700;
+
+        }
+
+
+        /* =====================================================
+           FILTER BAR
+        ===================================================== */
+
+        .toolbar {
+
+            display:
+                flex;
+
+            flex-wrap:
+                wrap;
+
+            gap:
+                10px;
+
+            padding:
+                15px;
+
+            margin-bottom:
+                18px;
+
+            background:
+                var(--panel);
+
+            border:
+                1px solid var(--border);
+
+            border-radius:
+                12px;
+
+        }
+
+
+        .toolbar input,
+        .toolbar select {
+
+            min-width:
+                180px;
+
+            padding:
+                10px 12px;
+
+            border:
+                1px solid var(--border);
+
+            border-radius:
+                8px;
+
+            background:
+                #0d131a;
+
+            color:
+                var(--text);
+
+            outline:
+                none;
+
+        }
+
+
+        .toolbar input {
+
+            flex:
+                1;
+
+            min-width:
+                250px;
+
+        }
+
+
+        .toolbar input:focus,
+        .toolbar select:focus {
+
+            border-color:
+                var(--accent);
+
+        }
+
+
+        .button {
+
+            border:
+                1px solid var(--border);
+
+            border-radius:
+                8px;
+
+            padding:
+                10px 14px;
+
+            background:
+                #18222d;
+
+            color:
+                var(--text);
+
+            cursor:
+                pointer;
+
+        }
+
+
+        .button:hover {
+
+            background:
+                #22303d;
+
+        }
+
+
+        .button.primary {
+
+            background:
+                var(--accent);
+
+            border-color:
+                var(--accent);
+
+            color:
+                white;
+
+        }
+
+
+        /* =====================================================
+           EVENT LIST
+        ===================================================== */
+
+        .feed {
+
+            display:
+                flex;
+
+            flex-direction:
+                column;
+
+            gap:
+                10px;
+
+        }
+
+
+        .event {
+
+            background:
+                var(--panel);
+
+            border:
+                1px solid var(--border);
+
+            border-left:
+                4px solid var(--border);
+
+            border-radius:
+                10px;
+
+            overflow:
+                hidden;
+
+            transition:
+                .15s ease;
+
+        }
+
+
+        .event:hover {
+
+            background:
+                var(--panel-hover);
+
+            transform:
+                translateY(-1px);
+
+        }
+
+
+        .event-danger {
+
+            border-left-color:
+                var(--danger);
+
+        }
+
+
+        .event-success {
+
+            border-left-color:
+                var(--success);
+
+        }
+
+
+        .event-warning {
+
+            border-left-color:
+                var(--warning);
+
+        }
+
+
+        .event-neutral {
+
+            border-left-color:
+                var(--accent);
+
+        }
+
+
+        .event-main {
+
+            padding:
+                15px 17px;
+
+            cursor:
+                pointer;
+
+        }
+
+
+        .event-header {
+
+            display:
+                flex;
+
+            align-items:
+                center;
+
+            justify-content:
+                space-between;
+
+            gap:
+                15px;
+
+        }
+
+
+        .event-type {
+
+            font-weight:
+                650;
+
+            font-size:
+                15px;
+
+        }
+
+
+        .event-time {
+
+            color:
+                var(--muted);
+
+            font-size:
+                12px;
+
+            white-space:
+                nowrap;
+
+        }
+
+
+        .event-meta {
+
+            display:
+                flex;
+
+            flex-wrap:
+                wrap;
+
+            gap:
+                7px;
+
+            margin-top:
+                9px;
+
+        }
+
+
+        .badge {
+
+            display:
+                inline-flex;
+
+            align-items:
+                center;
+
+            padding:
+                4px 8px;
+
+            border-radius:
+                999px;
+
+            background:
+                #202b36;
+
+            color:
+                #cbd5e1;
+
+            font-size:
+                11px;
+
+        }
+
+
+        .badge.category {
+
+            color:
+                #8ec5ff;
+
+        }
+
+
+        .event-message {
+
+            margin-top:
+                10px;
+
+            color:
+                #c5ced8;
+
+            font-size:
+                13px;
+
+            line-height:
+                1.5;
+
+        }
+
+
+        .event-details {
+
+            display:
+                none;
+
+            border-top:
+                1px solid var(--border);
+
+            padding:
+                15px;
+
+            background:
+                #0d131a;
+
+        }
+
+
+        .event.expanded
+        .event-details {
+
+            display:
+                block;
+
+        }
+
+
+        .event-details pre {
+
+            margin:
+                0;
+
+            white-space:
+                pre-wrap;
+
+            word-break:
+                break-word;
+
+            color:
+                #cbd5e1;
+
+            font-size:
+                12px;
+
+            line-height:
+                1.5;
+
+        }
+
+
+        /* =====================================================
+           EMPTY / LOADING
+        ===================================================== */
+
+        .empty {
+
+            padding:
+                60px 20px;
+
+            text-align:
+                center;
+
+            color:
+                var(--muted);
+
+            background:
+                var(--panel);
+
+            border:
+                1px solid var(--border);
+
+            border-radius:
+                12px;
+
+        }
+
+
+        /* =====================================================
+           MOBILE
+        ===================================================== */
+
+        @media (max-width: 900px) {
+
+            .stats {
+
+                grid-template-columns:
+                    repeat(2, 1fr);
+
+            }
+
+
+            .header {
+
+                align-items:
+                    flex-start;
+
+                flex-direction:
+                    column;
+
+            }
+
+        }
+
+
+        @media (max-width: 600px) {
+
+            .page {
+
+                padding:
+                    15px;
+
+            }
+
+
+            .stats {
+
+                grid-template-columns:
+                    1fr;
+
+            }
+
+
+            .event-header {
+
+                align-items:
+                    flex-start;
+
+                flex-direction:
+                    column;
+
+            }
+
+        }
+
+    </style>
+
+</head>
+
+
+<body>
+
+
+<div class="page">
+
+
+    <!-- =====================================================
+         HEADER
+    ====================================================== -->
+
+    <header class="header">
+
+        <div>
+
+            <div
+                id="serverName"
+                class="title"
+            >
+                Server Activity
+            </div>
+
+            <div
+                id="serverSubtitle"
+                class="subtitle"
+            >
+                Loading server activity...
+            </div>
+
+        </div>
+
+
+        <div class="live-status">
+
+            <span
+                id="statusDot"
+                class="status-dot"
+            ></span>
+
+            <span id="statusText">
+                Connecting
+            </span>
+
+        </div>
+
+    </header>
+
+
+
+    <!-- =====================================================
+         STATS
+    ====================================================== -->
+
+    <section class="stats">
+
+
+        <div class="stat">
+
+            <div class="stat-label">
+                Total Events
+            </div>
+
+            <div
+                id="totalEvents"
+                class="stat-value"
+            >
+                0
+            </div>
+
+        </div>
+
+
+        <div class="stat">
+
+            <div class="stat-label">
+                Visible Events
+            </div>
+
+            <div
+                id="visibleEvents"
+                class="stat-value"
+            >
+                0
+            </div>
+
+        </div>
+
+
+        <div class="stat">
+
+            <div class="stat-label">
+                Last Event
+            </div>
+
+            <div
+                id="lastEvent"
+                class="stat-value"
+            >
+                --
+            </div>
+
+        </div>
+
+
+        <div class="stat">
+
+            <div class="stat-label">
+                Refresh
+            </div>
+
+            <div
+                id="refreshTime"
+                class="stat-value"
+            >
+                --
+            </div>
+
+        </div>
+
+
+    </section>
+
+
+
+    <!-- =====================================================
+         TOOLBAR
+    ====================================================== -->
+
+    <section class="toolbar">
+
+
+        <input
+            id="eventSearch"
+            type="text"
+            placeholder="Search events..."
+        >
+
+
+        <select id="categoryFilter">
+
+            <option value="">
+                All categories
+            </option>
+
+            <option value="messages">
+                Messages
+            </option>
+
+            <option value="members">
+                Members
+            </option>
+
+            <option value="channels">
+                Channels
+            </option>
+
+            <option value="roles">
+                Roles
+            </option>
+
+            <option value="voice">
+                Voice
+            </option>
+
+            <option value="server">
+                Server
+            </option>
+
+        </select>
+
+
+        <input
+            id="typeFilter"
+            type="text"
+            placeholder="Event type..."
+        >
+
+
+        <button
+            id="refreshButton"
+            class="button primary"
+        >
+            Refresh
+        </button>
+
+
+        <button
+            id="pauseButton"
+            class="button"
+        >
+            Pause Live
+        </button>
+
+
+    </section>
+
+
+
+    <!-- =====================================================
+         FEED
+    ====================================================== -->
+
+    <section
+        id="eventFeed"
+        class="feed"
+    >
+
+        <div class="empty">
+            Loading events...
+        </div>
+
+    </section>
+
+
+</div>
+
+
+
+<script>
+
+const guildId =
+    "{{ guild_id }}";
+
+
+let allEvents = [];
+
+let livePaused = false;
+
+let refreshTimer = null;
+
+
+
+/* =========================================================
+   LOAD ACTIVITY
+========================================================= */
+
+async function loadActivity() {
+
+    if (livePaused) {
+
+        return;
+
+    }
+
+
+    setStatus(
+        "Loading",
+        false
+    );
+
+
+    try {
+
+        const response =
+            await fetch(
+                `/api/servers/${guildId}/activity?limit=500`,
+                {
+                    cache:
+                        "no-store"
+                }
+            );
+
+
+        if (!response.ok) {
+
+            throw new Error(
+                `HTTP ${response.status}`
+            );
+
+        }
+
+
+        const result =
+            await response.json();
+
+
+        allEvents =
+            Array.isArray(
+                result.events
+            )
+                ? result.events
+                : [];
+
+
+        document.getElementById(
+            "totalEvents"
+        ).textContent =
+            result.count ??
+            allEvents.length;
+
+
+        renderEvents();
+
+
+        document.getElementById(
+            "refreshTime"
+        ).textContent =
+            new Date().toLocaleTimeString();
+
+
+        setStatus(
+            "Live",
+            true
+        );
+
+    }
+
+    catch (error) {
+
+        console.error(
+            "Activity load error:",
+            error
+        );
+
+
+        setStatus(
+            "Error",
+            false
+        );
+
+
+        document.getElementById(
+            "eventFeed"
+        ).innerHTML = `
+
+            <div class="empty">
+
+                Failed to load activity.
+
+                <br>
+
+                <small>
+                    ${escapeHtml(error.message)}
+                </small>
+
+            </div>
+
+        `;
+
+    }
+
+}
+
+
+
+/* =========================================================
+   RENDER
+========================================================= */
+
+function renderEvents() {
+
+    const feed =
+        document.getElementById(
+            "eventFeed"
+        );
+
+
+    const search =
+        document.getElementById(
+            "eventSearch"
+        ).value
+            .trim()
+            .toLowerCase();
+
+
+    const category =
+        document.getElementById(
+            "categoryFilter"
+        ).value
+            .toLowerCase();
+
+
+    const typeFilter =
+        document.getElementById(
+            "typeFilter"
+        ).value
+            .trim()
+            .toLowerCase();
+
+
+    const filtered =
+        allEvents.filter(
+            event => {
+
+                const eventType =
+                    String(
+                        event.event_type ||
+                        event.event ||
+                        event.type ||
+                        ""
+                    ).toLowerCase();
+
+
+                const eventCategory =
+                    String(
+                        event.category ||
+                        ""
+                    ).toLowerCase();
+
+
+                const searchable =
+                    JSON.stringify(
+                        event
+                    ).toLowerCase();
+
+
+                if (
+                    search &&
+                    !searchable.includes(
+                        search
+                    )
+                ) {
+
+                    return false;
+
+                }
+
+
+                if (
+                    category &&
+                    eventCategory !== category
+                ) {
+
+                    return false;
+
+                }
+
+
+                if (
+                    typeFilter &&
+                    !eventType.includes(
+                        typeFilter
+                    )
+                ) {
+
+                    return false;
+
+                }
+
+
+                return true;
+
+            }
+        );
+
+
+    document.getElementById(
+        "visibleEvents"
+    ).textContent =
+        filtered.length;
+
+
+    if (!filtered.length) {
+
+        feed.innerHTML = `
+
+            <div class="empty">
+
+                No events match your filters.
+
+            </div>
+
+        `;
+
+        return;
+
+    }
+
+
+    feed.innerHTML =
+        filtered.map(
+            renderEvent
+        ).join("");
+
+
+    const newest =
+        filtered[0];
+
+
+    if (newest) {
+
+        document.getElementById(
+            "lastEvent"
+        ).textContent =
+            relativeTime(
+                newest.timestamp
+            );
+
+    }
+
+}
+
+
+
+/* =========================================================
+   EVENT RENDERER
+========================================================= */
+
+function renderEvent(
+    event,
+    index
+) {
+
+    const eventType =
+        event.event_type ||
+        event.event ||
+        event.type ||
+        "Unknown Event";
+
+
+    const category =
+        event.category ||
+        "system";
+
+
+    const timestamp =
+        event.timestamp ||
+        null;
+
+
+    const data =
+        event.data ||
+        {};
+
+
+    const message =
+        event.message ||
+        data.message ||
+        data.content ||
+        "";
+
+
+    const cssClass =
+        eventClass(
+            eventType
+        );
+
+
+    const eventJson =
+        JSON.stringify(
+            event,
+            null,
+            2
+        );
+
+
+    return `
+
+        <article
+            class="event ${cssClass}"
+        >
+
+            <div
+                class="event-main"
+                onclick="toggleEvent(this.parentElement)"
+            >
+
+                <div class="event-header">
+
+                    <div class="event-type">
+
+                        ${escapeHtml(
+                            eventType
+                        )}
+
+                    </div>
+
+
+                    <div class="event-time">
+
+                        ${escapeHtml(
+                            formatDate(timestamp)
+                        )}
+
+                    </div>
+
+                </div>
+
+
+                <div class="event-meta">
+
+                    <span class="badge category">
+
+                        ${escapeHtml(
+                            category
+                        )}
+
+                    </span>
+
+
+                    ${
+                        event.guild_id
+                            ? `
+                                <span class="badge">
+                                    Guild ${escapeHtml(
+                                        String(
+                                            event.guild_id
+                                        )
+                                    )}
+                                </span>
+                              `
+                            : ""
+                    }
+
+
+                    ${
+                        event.id !== undefined
+                            ? `
+                                <span class="badge">
+                                    #${escapeHtml(
+                                        String(
+                                            event.id
+                                        )
+                                    )}
+                                </span>
+                              `
+                            : ""
+                    }
+
+                </div>
+
+
+                ${
+                    message
+                        ? `
+                            <div class="event-message">
+
+                                ${escapeHtml(
+                                    String(
+                                        message
+                                    )
+                                )}
+
+                            </div>
+                          `
+                        : ""
+                }
+
+            </div>
+
+
+            <div class="event-details">
+
+                <pre>${escapeHtml(
+                    eventJson
+                )}</pre>
+
+            </div>
+
+        </article>
+
+    `;
+
+}
+
+
+
+/* =========================================================
+   EVENT CLASS
+========================================================= */
+
+function eventClass(
+    eventType
+) {
+
+    const type =
+        String(
+            eventType || ""
+        ).toLowerCase();
+
+
+    if (
+        type.includes("delete") ||
+        type.includes("remove") ||
+        type.includes("ban") ||
+        type.includes("kick") ||
+        type.includes("timeout")
+    ) {
+
+        return "event-danger";
+
+    }
+
+
+    if (
+        type.includes("create") ||
+        type.includes("add") ||
+        type.includes("join") ||
+        type.includes("unban") ||
+        type.includes("verify")
+    ) {
+
+        return "event-success";
+
+    }
+
+
+    if (
+        type.includes("update") ||
+        type.includes("edit") ||
+        type.includes("change") ||
+        type.includes("move")
+    ) {
+
+        return "event-warning";
+
+    }
+
+
+    return "event-neutral";
+
+}
+
+
+
+/* =========================================================
+   TOGGLE EVENT DETAILS
+========================================================= */
+
+function toggleEvent(
+    element
+) {
+
+    element.classList.toggle(
+        "expanded"
+    );
+
+}
+
+
+
+/* =========================================================
+   STATUS
+========================================================= */
+
+function setStatus(
+    text,
+    live
+) {
+
+    document.getElementById(
+        "statusText"
+    ).textContent =
+        text;
+
+
+    const dot =
+        document.getElementById(
+            "statusDot"
+        );
+
+
+    dot.classList.toggle(
+        "live",
+        live
+    );
+
+}
+
+
+
+/* =========================================================
+   DATE
+========================================================= */
+
+function formatDate(
+    value
+) {
+
+    if (!value) {
+
+        return "--";
+
+    }
+
+
+    const date =
+        new Date(
+            value
+        );
+
+
+    if (
+        Number.isNaN(
+            date.getTime()
+        )
+    ) {
+
+        return "--";
+
+    }
+
+
+    return date.toLocaleString();
+
+}
+
+
+
+/* =========================================================
+   RELATIVE TIME
+========================================================= */
+
+function relativeTime(
+    value
+) {
+
+    if (!value) {
+
+        return "--";
+
+    }
+
+
+    const date =
+        new Date(
+            value
+        );
+
+
+    if (
+        Number.isNaN(
+            date.getTime()
+        )
+    ) {
+
+        return "--";
+
+    }
+
+
+    const seconds =
+        Math.floor(
+            (
+                Date.now() -
+                date.getTime()
+            ) / 1000
+        );
+
+
+    if (seconds < 10) {
+
+        return "Just now";
+
+    }
+
+
+    if (seconds < 60) {
+
+        return `${seconds}s ago`;
+
+    }
+
+
+    const minutes =
+        Math.floor(
+            seconds / 60
+        );
+
+
+    if (minutes < 60) {
+
+        return `${minutes}m ago`;
+
+    }
+
+
+    const hours =
+        Math.floor(
+            minutes / 60
+        );
+
+
+    if (hours < 24) {
+
+        return `${hours}h ago`;
+
+    }
+
+
+    const days =
+        Math.floor(
+            hours / 24
+        );
+
+
+    return `${days}d ago`;
+
+}
+
+
+
+/* =========================================================
+   ESCAPE HTML
+========================================================= */
+
+function escapeHtml(
+    value
+) {
+
+    return String(
+        value ?? ""
+    )
+
+        .replace(
+            /&/g,
+            "&amp;"
+        )
+
+        .replace(
+            /</g,
+            "&lt;"
+        )
+
+        .replace(
+            />/g,
+            "&gt;"
+        )
+
+        .replace(
+            /"/g,
+            "&quot;"
+        )
+
+        .replace(
+            /'/g,
+            "&#039;"
+        );
+
+}
+
+
+
+/* =========================================================
+   FILTER EVENTS
+========================================================= */
+
+document.getElementById(
+    "eventSearch"
+).addEventListener(
+    "input",
+    renderEvents
+);
+
+
+document.getElementById(
+    "categoryFilter"
+).addEventListener(
+    "change",
+    renderEvents
+);
+
+
+document.getElementById(
+    "typeFilter"
+).addEventListener(
+    "input",
+    renderEvents
+);
+
+
+
+/* =========================================================
+   REFRESH
+========================================================= */
+
+document.getElementById(
+    "refreshButton"
+).addEventListener(
+    "click",
+    loadActivity
+);
+
+
+
+/* =========================================================
+   PAUSE
+========================================================= */
+
+document.getElementById(
+    "pauseButton"
+).addEventListener(
+    "click",
+    function () {
+
+        livePaused =
+            !livePaused;
+
+
+        this.textContent =
+            livePaused
+                ? "Resume Live"
+                : "Pause Live";
+
+
+        setStatus(
+            livePaused
+                ? "Paused"
+                : "Live",
+            !livePaused
+        );
+
+
+        if (
+            !livePaused
+        ) {
+
+            loadActivity();
+
+        }
+
+    }
+);
+
+
+
+/* =========================================================
+   AUTO REFRESH
+========================================================= */
+
+loadActivity();
+
+
+refreshTimer =
+    setInterval(
+        loadActivity,
+        5000
+    );
+
+</script>
+
+
+<script src="{{ url_for('static', filename='js/server_context.js') }}"></script>
+
+</body>
+
+</html>
