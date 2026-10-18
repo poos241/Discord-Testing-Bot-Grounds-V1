@@ -17,7 +17,6 @@ role_details_api = Blueprint(
     "/api/servers/<int:guild_id>/roles/<int:role_id>/details"
 )
 @require_guild_access
-@require_guild_manage
 def role_details(
     guild_id,
     role_id
