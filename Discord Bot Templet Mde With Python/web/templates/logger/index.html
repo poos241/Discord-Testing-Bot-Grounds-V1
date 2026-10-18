@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}Logger | Kush Bush{% endblock %}
+{% block body %}
+<div class="container-fluid py-2">
+  <div class="mb-4"><div class="text-uppercase small text-secondary" style="letter-spacing:.12em">LOGGER</div><h1 class="mt-1 mb-2">Choose a Server</h1><p class="text-secondary mb-0">Open the event history, analytics, or live logger for a server.</p></div>
+  <div id="logger-server-grid" class="row g-3"><div class="col-12 text-secondary">Loading servers…</div></div>
+</div>
+<script>
+const escLI=v=>String(v??"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#039;");
+(async()=>{try{const r=await fetch('/api/servers',{cache:'no-store',credentials:'same-origin'});const d=await r.json();if(!r.ok)throw new Error(d.error||'Unable to load servers.');const ss=d.servers||[];document.getElementById('logger-server-grid').innerHTML=ss.length?ss.map(s=>`<div class="col-md-6 col-xl-4"><div class="ui-card p-3 h-100"><div class="d-flex align-items-center gap-3 mb-3"><div style="width:52px;height:52px;border-radius:50%;overflow:hidden;background:rgba(255,255,255,.08);display:grid;place-items:center">${s.icon?`<img src="${escLI(s.icon)}" style="width:100%;height:100%;object-fit:cover">`:`${escLI((s.name||'S')[0])}`}</div><div><h2 class="h5 mb-1">${escLI(s.name)}</h2><div class="small text-secondary">${Number(s.member_count||0).toLocaleString()} members</div></div></div><div class="d-flex gap-2 flex-wrap"><a class="btn btn-primary btn-sm" href="/servers/${encodeURIComponent(s.id)}/logger">History</a><a class="btn btn-outline-light btn-sm" href="/servers/${encodeURIComponent(s.id)}/logger?view=live">Live</a><a class="btn btn-outline-light btn-sm" href="/servers/${encodeURIComponent(s.id)}/logger?view=analytics">Analytics</a></div></div></div>`).join(''):'<div class="col-12"><div class="ui-card p-4 text-secondary">No manageable servers found.</div></div>';}catch(e){document.getElementById('logger-server-grid').innerHTML=`<div class="col-12"><div class="alert alert-danger">${escLI(e.message)}</div></div>`;}})();
+</script>
+{% endblock %}
