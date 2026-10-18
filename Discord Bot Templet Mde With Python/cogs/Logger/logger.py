@@ -12,8 +12,18 @@ class Logger:
         """Send an embed to the guild's log channel for a category.
 
         Silently skips when no channel is configured, the channel is gone,
-        or the bot can't send there.
+        or the bot can't send there. Every event is also recorded to the
+        queryable event history used by the web dashboard.
         """
+        try:
+            db.record_event(
+                guild.id,
+                category,
+                event_type=getattr(embed, "title", None),
+                summary=getattr(embed, "description", None),
+            )
+        except Exception:
+            pass
         channel_id = db.get_log_channel(guild.id, category)
         if not channel_id:
             return
