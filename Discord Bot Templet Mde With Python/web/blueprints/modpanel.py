@@ -11,7 +11,8 @@ from flask import Blueprint, request, jsonify
 import secrets
 
 from web.services.discord_state import discord_state, run_coro_threadsafe
-from web.security.decorators import require_guild_access, get_csrf_token
+from web.security.decorators import require_guild_access
+from web.blueprints.auth import get_csrf_token
 
 
 modpanel_api = Blueprint(
