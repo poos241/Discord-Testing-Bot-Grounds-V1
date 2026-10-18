@@ -108,15 +108,39 @@ class ServerService:
         managed = [r for r in roles if r.managed]
         custom = [r for r in roles if not r.managed and r.name != '@everyone']
         admin_roles = [r for r in custom if r.permissions.administrator]
-        # TODO(webui): event bus not ported — event stats stubbed empty
-        event_count = 0
-        event_types = {}
-        last_event_at = None
+        # Real event data from the Logger events table.
+        try:
+            from web.services.logger_db import logger_db
+            event_count = logger_db.count_events(guild_id)
+            recent_events = logger_db.query_events(guild_id, limit=10)
+        except Exception:
+            event_count = 0
+            recent_events = []
         return {
             'server': self.serialize_guild(guild),
-            'members': {'count': int(getattr(guild, 'member_count', 0) or len(members)), 'total': len(members), 'humans': len(humans), 'bots': len(bots), 'online': online, 'idle': idle, 'dnd': dnd, 'offline': max(0, offline)},
-            'channels': {'count': len(channels), 'total': len(channels), 'categories': len(categories), 'text': len(text), 'voice': len(voice), 'stage': len(stage), 'forum': len(forum)},
-            'roles': {'count': len(roles), 'total': len(roles), 'custom': len(custom), 'managed': len(managed), 'administrator': len(admin_roles)},
-            'events': {'count': event_count, 'total': event_count, 'types': event_types, 'last_event_at': last_event_at},
+            'statistics': {
+                'members': len(members),
+                'humans': len(humans),
+                'bots': len(bots),
+                'online': online,
+                'idle': idle,
+                'dnd': dnd,
+                'offline': max(0, offline),
+                'channels': len(channels),
+                'text_channels': len(text),
+                'voice_channels': len(voice),
+                'categories': len(categories),
+                'roles': len(roles),
+            },
+            'channels': [
+                {
+                    'id': c.id,
+                    'name': c.name,
+                    'type': type(c).__name__,
+                }
+                for c in channels
+            ],
+            'recent_events': recent_events,
+            'event_statistics': {'total': event_count},
             'bot': {'ready': bool(self.bot.is_ready()), 'latency_ms': round(float(getattr(self.bot, 'latency', 0) or 0) * 1000, 2)},
         }
