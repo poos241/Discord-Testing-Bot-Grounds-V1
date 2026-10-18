@@ -1,0 +1,1504 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+    <meta charset="UTF-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+
+    <title>Kush Bush Dashboard</title>
+
+    <link
+        rel="stylesheet"
+        href="{{ url_for('static', filename='css/dashboard.css') }}"
+    >
+
+</head>
+
+
+<body>
+
+<div class="app">
+
+    <!-- ================================================= -->
+    <!-- SIDEBAR -->
+    <!-- ================================================= -->
+
+    <aside class="sidebar">
+
+        <div class="brand">
+
+            <div class="brand-icon bot-brand-icon">
+
+                <img
+                    id="bot-avatar"
+                    src=""
+                    alt="Kush Bush Bot"
+                    style="display:none;"
+                >
+
+                <span id="bot-avatar-fallback">
+                    KB
+                </span>
+
+            </div>
+
+            <div>
+
+                <div class="brand-title">
+                    Kush Bush
+                </div>
+
+                <div class="brand-subtitle">
+                    Discord Dashboard
+                </div>
+
+            </div>
+
+        </div>
+
+
+        <div class="sidebar-section">
+
+            <div class="sidebar-label">
+                DASHBOARD
+            </div>
+
+            <a
+                href="/servers/{{ guild_id }}/dashboard"
+                class="nav-item active"
+            >
+                <span>⌂</span>
+                Overview
+            </a>
+
+        </div>
+
+
+        <div class="sidebar-section">
+
+            <div class="sidebar-label">
+                SERVER
+            </div>
+
+            <a
+                href="/servers/{{ guild_id }}"
+                class="nav-item"
+            >
+                <span>◉</span>
+                Server
+            </a>
+
+            <a
+                href="/servers/{{ guild_id }}/members"
+                class="nav-item"
+                data-dashboard-link
+            >
+                <span>♙</span>
+                Members
+            </a>
+
+            <a
+                href="/servers/{{ guild_id }}/channels"
+                class="nav-item"
+                data-dashboard-link
+            >
+                <span>▤</span>
+                Channels
+            </a>
+
+            <a
+                href="/servers/{{ guild_id }}/roles"
+                class="nav-item"
+                id="nav-roles"
+            >
+                <span>◆</span>
+                Roles
+            </a>
+
+        </div>
+
+
+        <div class="sidebar-section">
+
+            <div class="sidebar-label">
+                LOGGING
+            </div>
+
+            <a
+                href="/servers/{{ guild_id }}/logger"
+                class="nav-item"
+                data-dashboard-link
+            >
+                <span>⚡</span>
+                Logger
+            </a>
+
+            <a
+                href="/servers/{{ guild_id }}/logging"
+                class="nav-item"
+                data-dashboard-link
+            >
+                <span>⚙</span>
+                Logger Settings
+            </a>
+
+            <a
+                href="/servers/{{ guild_id }}/logger?view=analytics"
+                class="nav-item"
+                data-dashboard-link
+            >
+                <span>◷</span>
+                Logger Analytics
+            </a>
+
+            <a
+                href="/servers/{{ guild_id }}/logger"
+                class="nav-item"
+                id="nav-events"
+            >
+                <span>≡</span>
+                Event History
+            </a>
+
+        </div>
+
+
+        <div class="sidebar-section">
+
+            <div class="sidebar-label">
+                MANAGEMENT
+            </div>
+
+            <a
+                href="#"
+                class="nav-item"
+                id="nav-moderation"
+            >
+                <span>⚔</span>
+                Moderation
+            </a>
+
+            <a
+                href="/servers/{{ guild_id }}/logging"
+                class="nav-item"
+                id="nav-settings"
+            >
+                <span>⚙</span>
+                Settings
+            </a>
+
+        </div>
+
+
+        <div class="sidebar-bottom">
+
+            <div class="bot-status">
+
+                <span
+                    class="status-dot"
+                    id="status-dot"
+                ></span>
+
+                <div>
+
+                    <strong id="bot-status">
+                        Connecting...
+                    </strong>
+
+                    <small>
+                        Discord Bot
+                    </small>
+
+                </div>
+
+            </div>
+
+        </div>
+
+    </aside>
+
+
+   
+
+
+        <!-- CONTENT -->
+
+        <section class="content">
+
+            <!-- ================================================= -->
+            <!-- STAT CARDS -->
+            <!-- ================================================= -->
+
+            <div class="stats-grid">
+
+                <div class="stat-card">
+
+                    <div class="stat-icon">
+                        👥
+                    </div>
+
+                    <div>
+
+                        <div class="stat-label">
+                            MEMBERS
+                        </div>
+
+                        <div
+                            class="stat-value"
+                            id="member-count"
+                        >
+                            --
+                        </div>
+
+                    </div>
+
+                </div>
+
+
+                <div class="stat-card">
+
+                    <div class="stat-icon">
+                        #
+                    </div>
+
+                    <div>
+
+                        <div class="stat-label">
+                            CHANNELS
+                        </div>
+
+                        <div
+                            class="stat-value"
+                            id="channel-count"
+                        >
+                            --
+                        </div>
+
+                    </div>
+
+                </div>
+
+
+                <div class="stat-card">
+
+                    <div class="stat-icon">
+                        ◆
+                    </div>
+
+                    <div>
+
+                        <div class="stat-label">
+                            ROLES
+                        </div>
+
+                        <div
+                            class="stat-value"
+                            id="role-count"
+                        >
+                            --
+                        </div>
+
+                    </div>
+
+                </div>
+
+
+                <div class="stat-card">
+
+                    <div class="stat-icon">
+                        ⚡
+                    </div>
+
+                    <div>
+
+                        <div class="stat-label">
+                            EVENTS
+                        </div>
+
+                        <div
+                            class="stat-value"
+                            id="event-count"
+                        >
+                            --
+                        </div>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+
+            <!-- ================================================= -->
+<!-- QUICK ACTIONS -->
+<!-- ================================================= -->
+
+<section class="quick-actions-section">
+
+    <div class="section-heading">
+
+        <div>
+
+            <h2>
+                Quick Actions
+            </h2>
+
+            <p>
+                Manage and inspect your Discord server
+            </p>
+
+        </div>
+
+    </div>
+
+
+    <div class="quick-actions-grid">
+
+        <a
+            href="#"
+            id="quick-server"
+            class="quick-action"
+        >
+
+            <div class="quick-action-icon">
+                ◉
+            </div>
+
+            <div class="quick-action-content">
+
+                <strong>
+                    Server
+                </strong>
+
+                <span>
+                    Server overview and information
+                </span>
+
+            </div>
+
+            <div class="quick-action-arrow">
+                →
+            </div>
+
+        </a>
+
+
+        <a
+            href="#"
+            id="quick-members"
+            class="quick-action"
+        >
+
+            <div class="quick-action-icon">
+                ♙
+            </div>
+
+            <div class="quick-action-content">
+
+                <strong>
+                    Members
+                </strong>
+
+                <span>
+                    View and manage members
+                </span>
+
+            </div>
+
+            <div class="quick-action-arrow">
+                →
+            </div>
+
+        </a>
+
+
+        <a
+            href="#"
+            id="quick-channels"
+            class="quick-action"
+        >
+
+            <div class="quick-action-icon">
+                ▤
+            </div>
+
+            <div class="quick-action-content">
+
+                <strong>
+                    Channels
+                </strong>
+
+                <span>
+                    Browse server channels
+                </span>
+
+            </div>
+
+            <div class="quick-action-arrow">
+                →
+            </div>
+
+        </a>
+
+
+        <a
+            href="#"
+            id="quick-activity"
+            class="quick-action"
+        >
+
+            <div class="quick-action-icon">
+                ◷
+            </div>
+
+            <div class="quick-action-content">
+
+                <strong>
+                    Activity
+                </strong>
+
+                <span>
+                    Inspect recent server activity
+                </span>
+
+            </div>
+
+            <div class="quick-action-arrow">
+                →
+            </div>
+
+        </a>
+
+
+        <a
+            href="#"
+            id="quick-logger"
+            class="quick-action"
+        >
+
+            <div class="quick-action-icon">
+                ⚡
+            </div>
+
+            <div class="quick-action-content">
+
+                <strong>
+                    Live Logger
+                </strong>
+
+                <span>
+                    Watch events as they happen
+                </span>
+
+            </div>
+
+            <div class="quick-action-arrow">
+                →
+            </div>
+
+        </a>
+
+
+        <a
+            href="#"
+            id="quick-settings"
+            class="quick-action"
+        >
+
+            <div class="quick-action-icon">
+                ⚙
+            </div>
+
+            <div class="quick-action-content">
+
+                <strong>
+                    Settings
+                </strong>
+
+                <span>
+                    Configure server logging
+                </span>
+
+            </div>
+
+            <div class="quick-action-arrow">
+                →
+            </div>
+
+        </a>
+
+    </div>
+
+</section>
+
+
+<!-- =====================================================
+     SERVER BREAKDOWN
+===================================================== -->
+
+<section class="dashboard-section">
+
+    <div class="section-header">
+
+        <div>
+
+            <h2>
+                Server Breakdown
+            </h2>
+
+            <p>
+                A quick look at your server.
+            </p>
+
+        </div>
+
+    </div>
+
+
+    <div class="stats-grid secondary-stats">
+
+
+        <div class="stat-card">
+
+            <div class="stat-card-icon">
+                👥
+            </div>
+
+            <div>
+
+                <span class="stat-label">
+                    Online Members
+                </span>
+
+                <strong
+                    id="online-members"
+                >
+                    0
+                </strong>
+
+            </div>
+
+        </div>
+
+
+        <div class="stat-card">
+
+            <div class="stat-card-icon">
+                👤
+            </div>
+
+            <div>
+
+                <span class="stat-label">
+                    Human Members
+                </span>
+
+                <strong
+                    id="human-members"
+                >
+                    0
+                </strong>
+
+            </div>
+
+        </div>
+
+
+        <div class="stat-card">
+
+            <div class="stat-card-icon">
+                🤖
+            </div>
+
+            <div>
+
+                <span class="stat-label">
+                    Bots
+                </span>
+
+                <strong
+                    id="bot-members"
+                >
+                    0
+                </strong>
+
+            </div>
+
+        </div>
+
+
+        <div class="stat-card">
+
+            <div class="stat-card-icon">
+                💬
+            </div>
+
+            <div>
+
+                <span class="stat-label">
+                    Text Channels
+                </span>
+
+                <strong
+                    id="text-channels"
+                >
+                    0
+                </strong>
+
+            </div>
+
+        </div>
+
+
+        <div class="stat-card">
+
+            <div class="stat-card-icon">
+                🔊
+            </div>
+
+            <div>
+
+                <span class="stat-label">
+                    Voice Channels
+                </span>
+
+                <strong
+                    id="voice-channels"
+                >
+                    0
+                </strong>
+
+            </div>
+
+        </div>
+
+
+        <div class="stat-card">
+
+            <div class="stat-card-icon">
+                📁
+            </div>
+
+            <div>
+
+                <span class="stat-label">
+                    Categories
+                </span>
+
+                <strong
+                    id="categories"
+                >
+                    0
+                </strong>
+
+            </div>
+
+        </div>
+
+
+    </div>
+
+</section>
+
+<!-- ================================================= -->
+<!-- SERVER HEALTH -->
+<!-- ================================================= -->
+
+<section class="dashboard-health panel">
+
+    <div class="panel-header">
+
+        <div>
+
+            <h2>
+                Server Health
+            </h2>
+
+            <p>
+                Current status of your Discord integration
+            </p>
+
+        </div>
+
+        <div class="health-live">
+
+            <span
+                class="health-live-dot"
+                id="health-live-dot"
+            ></span>
+
+            <span id="health-live-text">
+                Live
+            </span>
+
+        </div>
+
+    </div>
+
+
+    <div class="health-grid">
+
+        <div class="health-item">
+
+            <div class="health-item-icon">
+                🤖
+            </div>
+
+            <div class="health-item-content">
+
+                <span>
+                    Discord Bot
+                </span>
+
+                <strong id="health-bot">
+                    Checking...
+                </strong>
+
+            </div>
+
+        </div>
+
+
+        <div class="health-item">
+
+            <div class="health-item-icon">
+                📝
+            </div>
+
+            <div class="health-item-content">
+
+                <span>
+                    Logger
+                </span>
+
+                <strong id="health-logger">
+                    Checking...
+                </strong>
+
+            </div>
+
+        </div>
+
+
+        <div class="health-item">
+
+            <div class="health-item-icon">
+                👥
+            </div>
+
+            <div class="health-item-content">
+
+                <span>
+                    Members
+                </span>
+
+                <strong id="health-members">
+                    --
+                </strong>
+
+            </div>
+
+        </div>
+
+
+        <div class="health-item">
+
+            <div class="health-item-icon">
+                #️⃣
+            </div>
+
+            <div class="health-item-content">
+
+                <span>
+                    Channels
+                </span>
+
+                <strong id="health-channels">
+                    --
+                </strong>
+
+            </div>
+
+        </div>
+
+
+        <div class="health-item">
+
+            <div class="health-item-icon">
+                ⚡
+            </div>
+
+            <div class="health-item-content">
+
+                <span>
+                    Events
+                </span>
+
+                <strong id="health-events">
+                    --
+                </strong>
+
+            </div>
+
+        </div>
+
+
+        <div class="health-item">
+
+            <div class="health-item-icon">
+                🔄
+            </div>
+
+            <div class="health-item-content">
+
+                <span>
+                    Last Update
+                </span>
+
+                <strong id="health-updated">
+                    --
+                </strong>
+
+            </div>
+
+        </div>
+
+    </div>
+
+</section>
+
+
+<!-- ================================================= -->
+<!-- ACTIVITY FILTER -->
+<!-- ================================================= -->
+
+<section class="activity-controls panel">
+
+    <div>
+
+        <h2>
+            Activity Filters
+        </h2>
+
+        <p>
+            Filter the activity feed without leaving the dashboard.
+        </p>
+
+    </div>
+
+
+    <div class="activity-filter-row">
+
+        <button
+            class="activity-filter active"
+            data-filter="all"
+            onclick="filterActivity('all')"
+        >
+            All
+        </button>
+
+        <button
+            class="activity-filter"
+            data-filter="message"
+            onclick="filterActivity('message')"
+        >
+            Messages
+        </button>
+
+        <button
+            class="activity-filter"
+            data-filter="member"
+            onclick="filterActivity('member')"
+        >
+            Members
+        </button>
+
+        <button
+            class="activity-filter"
+            data-filter="channel"
+            onclick="filterActivity('channel')"
+        >
+            Channels
+        </button>
+
+        <button
+            class="activity-filter"
+            data-filter="role"
+            onclick="filterActivity('role')"
+        >
+            Roles
+        </button>
+
+        <button
+            class="activity-filter"
+            data-filter="moderation"
+            onclick="filterActivity('moderation')"
+        >
+            Moderation
+        </button>
+
+    </div>
+
+</section>
+
+            <!-- ================================================= -->
+            <!-- TWO COLUMN AREA -->
+            <!-- ================================================= -->
+
+            <div class="dashboard-grid">
+
+
+                <!-- ACTIVITY -->
+
+                <section class="panel activity-panel">
+
+                    <div class="panel-header">
+
+                        <div>
+
+                            <h2>
+                                Recent Activity
+                            </h2>
+
+                            <p>
+                                Latest events from your server
+                            </p>
+
+                        </div>
+
+                        <button
+                            class="text-button"
+                            onclick="loadActivity()"
+                        >
+                            Refresh
+                        </button>
+
+                    </div>
+
+
+                    <div
+                        id="activity-list"
+                        class="activity-list"
+                    >
+
+                        <div class="loading">
+                            Loading activity...
+                        </div>
+
+                    </div>
+
+                </section>
+
+
+                <!-- SERVER -->
+
+                <section class="panel">
+
+                    <div class="panel-header">
+
+                        <div>
+
+                            <h2>
+                                Server
+                            </h2>
+
+                            <p>
+                                Server information
+                            </p>
+
+                        </div>
+
+                    </div>
+
+
+                    <div class="server-profile">
+
+                        <div
+                            class="server-avatar"
+                            id="server-avatar"
+                        >
+                            ?
+                        </div>
+
+                        <div>
+
+                            <h3 id="server-name">
+                                Loading...
+                            </h3>
+
+                            <span
+                                class="server-id"
+                                id="server-id"
+                            >
+                                --
+                            </span>
+
+                        </div>
+
+                    </div>
+
+
+                    <div class="server-details">
+
+                        <div class="detail-row">
+
+                            <span>
+                                Owner
+                            </span>
+
+                            <strong id="server-owner">
+                                --
+                            </strong>
+
+                        </div>
+
+
+                        <div class="detail-row">
+
+                            <span>
+                                Created
+                            </span>
+
+                            <strong id="server-created">
+                                --
+                            </strong>
+
+                        </div>
+
+
+                        <div class="detail-row">
+
+                            <span>
+                                Members
+                            </span>
+
+                            <strong id="server-members">
+                                --
+                            </strong>
+
+                        </div>
+
+                    </div>
+
+                </section>
+
+            </div>
+
+
+            <!-- ================================================= -->
+            <!-- ANALYTICS -->
+            <!-- ================================================= -->
+
+            <section class="panel dashboard-analytics">
+
+                <div class="panel-header">
+
+                    <div>
+
+                        <h2>
+                            Server Analytics
+                        </h2>
+
+                        <p>
+                            Live statistics and activity for this server
+                        </p>
+
+                    </div>
+
+                    <div class="analytics-updated">
+
+                        Updated
+                        <span id="analytics-updated">
+                            --
+                        </span>
+
+                    </div>
+
+                </div>
+
+
+                <!-- ================================================= -->
+                <!-- MEMBER STATUS -->
+                <!-- ================================================= -->
+
+                <div class="analytics-section">
+
+                    <div class="analytics-section-title">
+
+                        Member Status
+
+                    </div>
+
+
+                    <div class="analytics-bars">
+
+                        <div class="analytics-bar-row">
+
+                            <div class="analytics-label">
+
+                                <span>
+                                    Online
+                                </span>
+
+                                <strong id="analytics-online">
+                                    0
+                                </strong>
+
+                            </div>
+
+                            <div class="analytics-track">
+
+                                <div
+                                    class="analytics-fill analytics-online"
+                                    id="analytics-online-bar"
+                                ></div>
+
+                            </div>
+
+                        </div>
+
+
+                        <div class="analytics-bar-row">
+
+                            <div class="analytics-label">
+
+                                <span>
+                                    Idle
+                                </span>
+
+                                <strong id="analytics-idle">
+                                    0
+                                </strong>
+
+                            </div>
+
+                            <div class="analytics-track">
+
+                                <div
+                                    class="analytics-fill analytics-idle"
+                                    id="analytics-idle-bar"
+                                ></div>
+
+                            </div>
+
+                        </div>
+
+
+                        <div class="analytics-bar-row">
+
+                            <div class="analytics-label">
+
+                                <span>
+                                    Do Not Disturb
+                                </span>
+
+                                <strong id="analytics-dnd">
+                                    0
+                                </strong>
+
+                            </div>
+
+                            <div class="analytics-track">
+
+                                <div
+                                    class="analytics-fill analytics-dnd"
+                                    id="analytics-dnd-bar"
+                                ></div>
+
+                            </div>
+
+                        </div>
+
+
+                        <div class="analytics-bar-row">
+
+                            <div class="analytics-label">
+
+                                <span>
+                                    Offline
+                                </span>
+
+                                <strong id="analytics-offline">
+                                    0
+                                </strong>
+
+                            </div>
+
+                            <div class="analytics-track">
+
+                                <div
+                                    class="analytics-fill analytics-offline"
+                                    id="analytics-offline-bar"
+                                ></div>
+
+                            </div>
+
+                        </div>
+
+                    </div>
+
+                </div>
+
+
+                <!-- ================================================= -->
+                <!-- RESOURCE BREAKDOWN -->
+                <!-- ================================================= -->
+
+                <div class="analytics-resource-grid">
+
+
+                    <div class="analytics-resource-card">
+
+                        <div class="analytics-resource-icon">
+                            👥
+                        </div>
+
+                        <div>
+
+                            <span>
+                                Humans
+                            </span>
+
+                            <strong id="analytics-humans">
+                                0
+                            </strong>
+
+                        </div>
+
+                    </div>
+
+
+                    <div class="analytics-resource-card">
+
+                        <div class="analytics-resource-icon">
+                            🤖
+                        </div>
+
+                        <div>
+
+                            <span>
+                                Bots
+                            </span>
+
+                            <strong id="analytics-bots">
+                                0
+                            </strong>
+
+                        </div>
+
+                    </div>
+
+
+                    <div class="analytics-resource-card">
+
+                        <div class="analytics-resource-icon">
+                            #
+                        </div>
+
+                        <div>
+
+                            <span>
+                                Text Channels
+                            </span>
+
+                            <strong id="analytics-text">
+                                0
+                            </strong>
+
+                        </div>
+
+                    </div>
+
+
+                    <div class="analytics-resource-card">
+
+                        <div class="analytics-resource-icon">
+                            🔊
+                        </div>
+
+                        <div>
+
+                            <span>
+                                Voice Channels
+                            </span>
+
+                            <strong id="analytics-voice">
+                                0
+                            </strong>
+
+                        </div>
+
+                    </div>
+
+
+                    <div class="analytics-resource-card">
+
+                        <div class="analytics-resource-icon">
+                            ◆
+                        </div>
+
+                        <div>
+
+                            <span>
+                                Roles
+                            </span>
+
+                            <strong id="analytics-roles">
+                                0
+                            </strong>
+
+                        </div>
+
+                    </div>
+
+
+                    <div class="analytics-resource-card">
+
+                        <div class="analytics-resource-icon">
+                            📁
+                        </div>
+
+                        <div>
+
+                            <span>
+                                Categories
+                            </span>
+
+                            <strong id="analytics-categories">
+                                0
+                            </strong>
+
+                        </div>
+
+                    </div>
+
+                </div>
+
+
+                <!-- ================================================= -->
+                <!-- EVENT WINDOW -->
+                <!-- ================================================= -->
+
+                <div class="analytics-event-grid">
+
+
+                    <div class="analytics-event-card">
+
+                        <span>
+                            Total Logged
+                        </span>
+
+                        <strong id="analytics-events-total">
+                            0
+                        </strong>
+
+                    </div>
+
+
+                    <div class="analytics-event-card">
+
+                        <span>
+                            Last Hour
+                        </span>
+
+                        <strong id="analytics-events-hour">
+                            0
+                        </strong>
+
+                    </div>
+
+
+                    <div class="analytics-event-card">
+
+                        <span>
+                            Last 24 Hours
+                        </span>
+
+                        <strong id="analytics-events-day">
+                            0
+                        </strong>
+
+                    </div>
+
+                </div>
+
+
+                <!-- ================================================= -->
+                <!-- 24 HOUR CHART -->
+                <!-- ================================================= -->
+
+                <div class="analytics-chart-section">
+
+                    <div class="analytics-section-title">
+
+                        Activity — Last 24 Hours
+
+                    </div>
+
+
+                    <div
+                        id="analytics-hourly"
+                        class="analytics-hourly"
+                    ></div>
+
+                </div>
+
+
+                <!-- ================================================= -->
+                <!-- TOP EVENTS -->
+                <!-- ================================================= -->
+
+                <div class="analytics-top-events">
+
+                    <div class="analytics-section-title">
+
+                        Most Common Events
+
+                    </div>
+
+
+                    <div
+                        id="analytics-top-events-list"
+                        class="analytics-top-events-list"
+                    >
+
+                        <div class="loading">
+                            Loading analytics...
+                        </div>
+
+                    </div>
+
+                </div>
+
+            </section>
+    </main>
+
+</div>
+
+
+<script>
+
+window.GUILD_ID =
+    "{{ guild_id }}";
+
+</script>
+
+
+<script
+    src="{{ url_for(
+        'static',
+        filename='js/dashboard.js'
+    )
+    }}"
+></script>
+
+<script src="{{ url_for('static', filename='js/server_context.js') }}"></script>
+
+</body>
+
+</html>
