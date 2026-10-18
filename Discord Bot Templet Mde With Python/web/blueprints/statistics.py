@@ -15,7 +15,6 @@ statistics_api = Blueprint(
     "/servers/<int:guild_id>/statistics"
 )
 @require_guild_access
-@require_guild_manage
 def server_statistics(guild_id):
 
     data = StatisticsService.get(
