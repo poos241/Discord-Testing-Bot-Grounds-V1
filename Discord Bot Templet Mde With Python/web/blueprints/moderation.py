@@ -9,6 +9,7 @@ from flask import Blueprint, request, jsonify, abort
 
 from web.services.discord_state import discord_state, run_coro_threadsafe
 from web.services.moderation_service import ModerationService, ModerationError
+from web.security.decorators import require_guild_access, require_guild_manage
 
 
 moderation_api = Blueprint(
