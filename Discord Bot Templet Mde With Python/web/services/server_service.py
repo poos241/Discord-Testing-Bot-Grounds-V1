@@ -116,8 +116,21 @@ class ServerService:
         except Exception:
             event_count = 0
             recent_events = []
+        member_count = int(getattr(guild, 'member_count', 0) or len(members))
         return {
             'server': self.serialize_guild(guild),
+            'members': {'count': member_count, 'total': len(members), 'humans': len(humans), 'bots': len(bots), 'online': online, 'idle': idle, 'dnd': dnd, 'offline': max(0, offline)},
+            'channels': {'count': len(channels), 'total': len(channels), 'categories': len(categories), 'text': len(text), 'voice': len(voice), 'stage': len(stage), 'forum': len(forum)},
+            'roles': {'count': len(roles), 'total': len(roles), 'custom': len(custom), 'managed': len(managed), 'administrator': len(admin_roles)},
+            'events': {'count': event_count, 'total': event_count},
+            'channel_list': [
+                {
+                    'id': c.id,
+                    'name': c.name,
+                    'type': type(c).__name__,
+                }
+                for c in channels
+            ],
             'statistics': {
                 'members': len(members),
                 'humans': len(humans),
@@ -132,14 +145,6 @@ class ServerService:
                 'categories': len(categories),
                 'roles': len(roles),
             },
-            'channels': [
-                {
-                    'id': c.id,
-                    'name': c.name,
-                    'type': type(c).__name__,
-                }
-                for c in channels
-            ],
             'recent_events': recent_events,
             'event_statistics': {'total': event_count},
             'bot': {'ready': bool(self.bot.is_ready()), 'latency_ms': round(float(getattr(self.bot, 'latency', 0) or 0) * 1000, 2)},
