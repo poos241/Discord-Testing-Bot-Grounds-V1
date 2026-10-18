@@ -1,0 +1,385 @@
+{% extends "base.html" %}
+
+{% block body %}
+
+<div class="container-fluid py-4">
+
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+
+        <div>
+            <h2 class="mb-1">
+                Event Details
+            </h2>
+
+            <div class="text-secondary">
+                Event #{{ event_id }}
+            </div>
+        </div>
+
+        <a
+            href="/servers/{{ guild_id }}/events"
+            class="btn btn-outline-secondary"
+        >
+            ← Back to Events
+        </a>
+
+    </div>
+
+
+    <!-- Event -->
+    <div
+        id="event-container"
+        class="card shadow-sm"
+    >
+
+        <div class="card-body">
+
+            <div class="text-secondary">
+                Loading event...
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+
+<script>
+
+const guildId = "{{ guild_id }}";
+const eventId = "{{ event_id }}";
+
+
+async function loadEvent() {
+
+    const container =
+        document.getElementById(
+            "event-container"
+        );
+
+
+    try {
+
+        const response =
+            await fetch(
+                `/api/servers/${guildId}/events/${eventId}`,
+                {
+                    cache: "no-store"
+                }
+            );
+
+
+        if (!response.ok) {
+
+            throw new Error(
+                `HTTP ${response.status}`
+            );
+
+        }
+
+
+        const event =
+            await response.json();
+
+
+        renderEvent(event);
+
+    }
+    catch (error) {
+
+        console.error(
+            "Failed to load event:",
+            error
+        );
+
+
+        container.innerHTML = `
+
+            <div class="card-body">
+
+                <div class="alert alert-danger mb-0">
+
+                    <strong>
+                        Failed to load event
+                    </strong>
+
+                    <div class="mt-1">
+
+                        ${escapeHtml(
+                            error.message
+                        )}
+
+                    </div>
+
+                </div>
+
+            </div>
+
+        `;
+
+    }
+
+}
+
+
+function renderEvent(event) {
+
+    const data =
+        event.data || {};
+
+
+    const category =
+        event.category || "unknown";
+
+
+    const eventName =
+        event.event || "unknown";
+
+
+    const action =
+        event.action || "None";
+
+
+    const timestamp =
+        event.timestamp || "Unknown";
+
+
+    const guildId =
+        event.guild_id || "{{ guild_id }}";
+
+
+    const databaseId =
+        event.id || "{{ event_id }}";
+
+
+    document.getElementById(
+        "event-container"
+    ).innerHTML = `
+
+        <div class="card-body">
+
+            <!-- Event Header -->
+
+            <div class="d-flex justify-content-between align-items-center">
+
+                <div>
+
+                    <span class="badge bg-primary me-1">
+
+                        ${escapeHtml(
+                            category
+                        )}
+
+                    </span>
+
+
+                    <span class="badge bg-secondary">
+
+                        ${escapeHtml(
+                            eventName
+                        )}
+
+                    </span>
+
+                </div>
+
+
+                <span class="text-secondary">
+
+                    Event #${escapeHtml(
+                        String(databaseId)
+                    )}
+
+                </span>
+
+            </div>
+
+
+            <hr>
+
+
+            <!-- Basic Information -->
+
+            <h5 class="mb-3">
+                Event Information
+            </h5>
+
+
+            <div class="row g-4">
+
+
+                <div class="col-md-6">
+
+                    <div class="text-secondary small">
+                        Guild ID
+                    </div>
+
+                    <div class="font-monospace">
+
+                        ${escapeHtml(
+                            String(guildId)
+                        )}
+
+                    </div>
+
+                </div>
+
+
+                <div class="col-md-6">
+
+                    <div class="text-secondary small">
+                        Event ID
+                    </div>
+
+                    <div class="font-monospace">
+
+                        ${escapeHtml(
+                            String(databaseId)
+                        )}
+
+                    </div>
+
+                </div>
+
+
+                <div class="col-md-6">
+
+                    <div class="text-secondary small">
+                        Category
+                    </div>
+
+                    <div>
+
+                        ${escapeHtml(
+                            category
+                        )}
+
+                    </div>
+
+                </div>
+
+
+                <div class="col-md-6">
+
+                    <div class="text-secondary small">
+                        Event
+                    </div>
+
+                    <div>
+
+                        ${escapeHtml(
+                            eventName
+                        )}
+
+                    </div>
+
+                </div>
+
+
+                <div class="col-md-6">
+
+                    <div class="text-secondary small">
+                        Action
+                    </div>
+
+                    <div>
+
+                        ${escapeHtml(
+                            action
+                        )}
+
+                    </div>
+
+                </div>
+
+
+                <div class="col-md-6">
+
+                    <div class="text-secondary small">
+                        Timestamp
+                    </div>
+
+                    <div>
+
+                        ${escapeHtml(
+                            timestamp
+                        )}
+
+                    </div>
+
+                </div>
+
+            </div>
+
+
+            <hr class="my-4">
+
+
+            <!-- Raw Event Data -->
+
+            <h5 class="mb-3">
+                Event Data
+            </h5>
+
+
+            <pre
+                class="bg-dark text-light border border-secondary rounded p-3"
+                style="
+                    white-space: pre-wrap;
+                    overflow-x: auto;
+                "
+            >${escapeHtml(
+                JSON.stringify(
+                    data,
+                    null,
+                    4
+                )
+            )}</pre>
+
+
+        </div>
+
+    `;
+
+}
+
+
+function escapeHtml(value) {
+
+    return String(value)
+
+        .replaceAll(
+            "&",
+            "&amp;"
+        )
+
+        .replaceAll(
+            "<",
+            "&lt;"
+        )
+
+        .replaceAll(
+            ">",
+            "&gt;"
+        )
+
+        .replaceAll(
+            '"',
+            "&quot;"
+        )
+
+        .replaceAll(
+            "'",
+            "&#039;"
+        );
+
+}
+
+
+loadEvent();
+
+</script>
+
+{% endblock %}
