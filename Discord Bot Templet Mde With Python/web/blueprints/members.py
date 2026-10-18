@@ -266,7 +266,6 @@ def get_member(user_id):
     "/servers/<int:guild_id>/members/<int:user_id>"
 )
 @require_guild_access
-@require_guild_manage
 def get_server_member(
     guild_id,
     user_id
@@ -331,7 +330,6 @@ def get_server_member(
     "/servers/<int:guild_id>/members"
 )
 @require_guild_access
-@require_guild_manage
 def get_server_members(guild_id):
 
     bot, error, status = check_bot()
@@ -402,7 +400,6 @@ def get_server_members(guild_id):
     "/servers/<int:guild_id>/members/summary"
 )
 @require_guild_access
-@require_guild_manage
 def member_summary(guild_id):
 
     service = get_service()
@@ -505,7 +502,6 @@ def member_summary(guild_id):
     "/servers/<int:guild_id>/members/search"
 )
 @require_guild_access
-@require_guild_manage
 def search_server_members(guild_id):
 
     query = request.args.get(
