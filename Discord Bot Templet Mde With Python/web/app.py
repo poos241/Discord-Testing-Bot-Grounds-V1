@@ -78,6 +78,12 @@ from web.services.discord_state import discord_state
 
 def create_app(bot):
 
+    # Windows registry maps .js to text/plain, which makes browsers refuse
+    # to execute our scripts. Force the correct MIME types.
+    import mimetypes
+    mimetypes.add_type("application/javascript", ".js")
+    mimetypes.add_type("text/css", ".css")
+
     app = Flask(
         __name__, template_folder="templates", static_folder="static")
 
