@@ -80,6 +80,24 @@ async def on_ready():
     # ✅ Start any background tasks
     client.loop.create_task(change_status())
 
+    # ✅ Start the web dashboard (Flask in a background thread)
+    if os.getenv("WEB_ENABLED", "true").lower() in ("1", "true", "yes"):
+        try:
+            import threading
+            from web.app import create_app
+            web_app = create_app(client)
+            web_host = os.getenv("WEB_HOST", "127.0.0.1")
+            web_port = int(os.getenv("WEB_PORT", "5000"))
+            threading.Thread(
+                target=web_app.run,
+                kwargs={"host": web_host, "port": web_port,
+                        "debug": False, "use_reloader": False},
+                daemon=True, name="web-ui",
+            ).start()
+            print(f"🌐 Web dashboard running at http://{web_host}:{web_port}")
+        except Exception as e:
+            print(f"⚠️ Web dashboard failed to start: {e!r}")
+
 
 if __name__ == "__main__":
     if not TOKEN:
