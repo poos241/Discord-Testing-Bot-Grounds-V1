@@ -14,7 +14,6 @@ member_details_api = Blueprint(
     "/api/servers/<int:guild_id>/members/<int:user_id>/details"
 )
 @require_guild_access
-@require_guild_manage
 def member_details(
     guild_id,
     user_id
