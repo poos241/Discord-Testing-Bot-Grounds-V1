@@ -20,7 +20,6 @@ event_stats_api = Blueprint(
     "/api/servers/<int:guild_id>/event-stats"
 )
 @require_guild_access
-@require_guild_manage
 def event_stats(
     guild_id
 ):
