@@ -1,0 +1,491 @@
+{% extends "base.html" %}
+
+{% block body %}
+
+<style>
+
+    .logger-header {
+        border-bottom: 1px solid #343a40;
+        padding-bottom: 20px;
+    }
+
+    .event-card {
+        background: #1e2329;
+        border: 1px solid #3a4149;
+        transition: border-color 0.2s, transform 0.2s;
+    }
+
+    .event-card:hover {
+        border-color: #6c757d;
+        transform: translateY(-1px);
+    }
+
+    .event-time {
+        color: #adb5bd;
+        font-size: 0.85rem;
+    }
+
+    .event-guild {
+        color: #ced4da;
+    }
+
+    .event-data {
+        background: #111418;
+        color: #e9ecef;
+        border: 1px solid #343a40;
+        font-size: 0.85rem;
+        max-height: 400px;
+        overflow: auto;
+    }
+
+    .event-divider {
+        border-color: #343a40;
+    }
+
+    .empty-state {
+        background: #1e2329;
+        border: 1px solid #343a40;
+        color: #adb5bd;
+    }
+
+    .logger-toolbar {
+        background: #1e2329;
+        border: 1px solid #343a40;
+    }
+
+    .logger-count {
+        color: #adb5bd;
+    }
+
+</style>
+
+
+<!-- HEADER -->
+
+<div class="logger-header mb-4">
+
+    <div class="d-flex justify-content-between align-items-center">
+
+        <div>
+
+            <h1 class="mb-1">
+                Discord Logger
+            </h1>
+
+            <p class="text-secondary mb-0">
+                Recent activity from your Discord bot
+            </p>
+
+        </div>
+
+
+        <div class="text-end">
+
+            <span
+                id="connectionStatus"
+                class="badge bg-secondary"
+            >
+                Connecting...
+            </span>
+
+        </div>
+
+    </div>
+
+</div>
+
+
+<!-- TOOLBAR -->
+
+<div class="card logger-toolbar mb-4">
+
+    <div class="card-body">
+
+        <div class="d-flex justify-content-between align-items-center">
+
+            <div>
+
+                <strong>
+                    Recent Events
+                </strong>
+
+                <div class="logger-count">
+                    <small id="eventCount">
+                        Loading...
+                    </small>
+                </div>
+
+            </div>
+
+
+            <button
+                id="refreshButton"
+                class="btn btn-outline-light btn-sm"
+                onclick="updateEvents()"
+            >
+
+                ↻ Refresh
+
+            </button>
+
+        </div>
+
+    </div>
+
+</div>
+
+
+<!-- EVENTS -->
+
+<div id="events">
+
+    <div class="alert empty-state">
+        Loading events...
+    </div>
+
+</div>
+
+
+<script>
+
+
+async function updateEvents() {
+
+    const status =
+        document.getElementById(
+            "connectionStatus"
+        );
+
+
+    const refreshButton =
+        document.getElementById(
+            "refreshButton"
+        );
+
+
+    const eventCount =
+        document.getElementById(
+            "eventCount"
+        );
+
+
+    try {
+
+        refreshButton.disabled = true;
+
+
+        const response =
+            await fetch(
+                "/api/events/history",
+                {
+                    cache: "no-store"
+                }
+            );
+
+
+        if (!response.ok) {
+
+            throw new Error(
+                `HTTP ${response.status}`
+            );
+
+        }
+
+
+        const result =
+            await response.json();
+
+
+        const events =
+            result.events || [];
+
+
+        console.log(
+            "Logger events:",
+            events
+        );
+
+
+        status.className =
+            "badge bg-success";
+
+
+        status.textContent =
+            "Connected";
+
+
+        eventCount.textContent =
+            `${events.length} event${
+                events.length === 1
+                    ? ""
+                    : "s"
+            }`;
+
+
+        const container =
+            document.getElementById(
+                "events"
+            );
+
+
+        if (events.length === 0) {
+
+            container.innerHTML = `
+
+                <div class="alert empty-state">
+
+                    No events have been recorded yet.
+
+                </div>
+
+            `;
+
+            return;
+
+        }
+
+
+        let html = "";
+
+
+        for (const event of events) {
+
+
+            const data =
+                event.data || {};
+
+
+            const eventName =
+                event.event ||
+                event.action ||
+                "Unknown Event";
+
+
+            const category =
+                event.category ||
+                "unknown";
+
+
+            const guildId =
+                event.guild_id ||
+                "unknown";
+
+
+            const timestamp =
+                event.timestamp ||
+                "Unknown time";
+
+
+            html += `
+
+                <div class="card event-card mb-3">
+
+                    <div class="card-body">
+
+
+                        <!-- EVENT HEADER -->
+
+                        <div class="d-flex justify-content-between align-items-start">
+
+
+                            <div>
+
+                                <span class="badge bg-primary me-1">
+
+                                    ${escapeHtml(
+                                        category
+                                    )}
+
+                                </span>
+
+
+                                <span class="badge bg-secondary">
+
+                                    ${escapeHtml(
+                                        eventName
+                                    )}
+
+                                </span>
+
+                            </div>
+
+
+                            <span class="event-time">
+
+                                ${escapeHtml(
+                                    timestamp
+                                )}
+
+                            </span>
+
+
+                        </div>
+
+
+                        <hr class="event-divider">
+
+
+                        <!-- GUILD -->
+
+                        <div class="event-guild mb-3">
+
+                            <strong>
+                                Guild:
+                            </strong>
+
+                            ${escapeHtml(
+                                String(
+                                    guildId
+                                )
+                            )}
+
+                        </div>
+
+
+                        <!-- DETAILS -->
+
+                        <details>
+
+                            <summary
+                                class="text-light"
+                                style="cursor:pointer;"
+                            >
+
+                                View event details
+
+                            </summary>
+
+
+                            <pre class="event-data rounded p-3 mt-3">${escapeHtml(
+                                JSON.stringify(
+                                    data,
+                                    null,
+                                    2
+                                )
+                            )}</pre>
+
+
+                        </details>
+
+
+                    </div>
+
+                </div>
+
+            `;
+
+        }
+
+
+        container.innerHTML =
+            html;
+
+    }
+
+
+    catch (error) {
+
+        console.error(
+            "Logger update failed:",
+            error
+        );
+
+
+        status.className =
+            "badge bg-danger";
+
+
+        status.textContent =
+            "Disconnected";
+
+
+        eventCount.textContent =
+            "Unable to load events";
+
+
+        document.getElementById(
+            "events"
+        ).innerHTML = `
+
+            <div class="alert alert-danger">
+
+                <strong>
+                    Unable to load logger events.
+                </strong>
+
+                <br>
+
+                <small>
+                    ${escapeHtml(
+                        error.message
+                    )}
+                </small>
+
+            </div>
+
+        `;
+
+    }
+
+
+    finally {
+
+        refreshButton.disabled =
+            false;
+
+    }
+
+}
+
+
+function escapeHtml(value) {
+
+    return String(value)
+
+        .replaceAll(
+            "&",
+            "&amp;"
+        )
+
+        .replaceAll(
+            "<",
+            "&lt;"
+        )
+
+        .replaceAll(
+            ">",
+            "&gt;"
+        )
+
+        .replaceAll(
+            '"',
+            "&quot;"
+        )
+
+        .replaceAll(
+            "'",
+            "&#039;"
+        );
+
+}
+
+
+/*
+ * Initial load
+ */
+
+updateEvents();
+
+
+/*
+ * Refresh every 20 seconds.
+ */
+
+setInterval(
+    updateEvents,
+    20000
+);
+
+</script>
+
+{% endblock %}
