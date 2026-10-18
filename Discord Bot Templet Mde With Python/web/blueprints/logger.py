@@ -43,7 +43,6 @@ def _filters():
 
 @logger_api.get("/servers/<int:guild_id>/logger/summary")
 @require_guild_access
-@require_guild_manage
 def logger_summary(guild_id):
     denied = _require_logger_access(guild_id)
     if denied:
@@ -61,7 +60,6 @@ def logger_summary(guild_id):
 
 @logger_api.get("/servers/<int:guild_id>/logger/options")
 @require_guild_access
-@require_guild_manage
 def logger_options(guild_id):
     denied = _require_logger_access(guild_id)
     if denied:
@@ -71,7 +69,6 @@ def logger_options(guild_id):
 
 @logger_api.get("/servers/<int:guild_id>/logger/trend")
 @require_guild_access
-@require_guild_manage
 def logger_trend(guild_id):
     denied = _require_logger_access(guild_id)
     if denied:
@@ -88,7 +85,6 @@ def logger_trend(guild_id):
 
 @logger_api.get("/servers/<int:guild_id>/logger/events")
 @require_guild_access
-@require_guild_manage
 def logger_events(guild_id):
     denied = _require_logger_access(guild_id)
     if denied:
@@ -101,7 +97,6 @@ def logger_events(guild_id):
 
 @logger_api.get("/servers/<int:guild_id>/logger/events/<int:event_id>")
 @require_guild_access
-@require_guild_manage
 def logger_event_detail(guild_id, event_id):
     denied = _require_logger_access(guild_id)
     if denied:
@@ -114,7 +109,6 @@ def logger_event_detail(guild_id, event_id):
 
 @logger_api.get("/servers/<int:guild_id>/logger/export")
 @require_guild_access
-@require_guild_manage
 def logger_export(guild_id):
     denied = _require_logger_access(guild_id)
     if denied:
