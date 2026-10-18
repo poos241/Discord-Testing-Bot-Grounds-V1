@@ -597,6 +597,69 @@
             style="display:none;"
         ></div>
 
+
+        <div class="member-modal-section" id="modpanel-section" style="display:none;">
+
+            <div class="member-modal-section-title">
+                Moderation Panel
+            </div>
+
+
+            <div class="member-modal-grid" style="margin-bottom:12px;">
+
+                <div class="member-detail-card">
+                    <span>Warns</span>
+                    <strong id="modpanel-warns">0</strong>
+                </div>
+
+                <div class="member-detail-card">
+                    <span>Notes</span>
+                    <strong id="modpanel-notes-count">0</strong>
+                </div>
+
+                <div class="member-detail-card">
+                    <span>Level / XP</span>
+                    <strong id="modpanel-xp">1 / 0</strong>
+                </div>
+
+                <div class="member-detail-card">
+                    <span>Watch</span>
+                    <strong id="modpanel-watch">No</strong>
+                </div>
+
+            </div>
+
+
+            <div class="modpanel-actions" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;">
+
+                <button type="button" class="btn btn-sm btn-warning" data-action="warn">Warn</button>
+                <button type="button" class="btn btn-sm btn-warning" data-action="timeout">Timeout</button>
+                <button type="button" class="btn btn-sm btn-warning" data-action="untimeout">Remove Timeout</button>
+                <button type="button" class="btn btn-sm btn-danger" data-action="kick">Kick</button>
+                <button type="button" class="btn btn-sm btn-danger" data-action="ban">Ban</button>
+                <button type="button" class="btn btn-sm btn-secondary" data-action="unban">Unban</button>
+                <button type="button" class="btn btn-sm btn-secondary" data-action="clear">Clear Msgs</button>
+                <button type="button" class="btn btn-sm btn-info" data-action="note">Add Note</button>
+                <button type="button" class="btn btn-sm btn-info" data-action="watch">Watch / Unwatch</button>
+                <button type="button" class="btn btn-sm btn-info" data-action="xp">Add / Remove XP</button>
+                <button type="button" class="btn btn-sm btn-secondary" data-action="rename">Rename</button>
+                <button type="button" class="btn btn-sm btn-danger" data-action="strip">Strip Roles</button>
+                <button type="button" class="btn btn-sm btn-danger" data-action="wipe">Wipe Data</button>
+
+            </div>
+
+
+            <div class="member-modal-section-title">Warns</div>
+            <div id="modpanel-warn-list" class="member-role-list" style="margin-bottom:12px;">None</div>
+
+            <div class="member-modal-section-title">Notes</div>
+            <div id="modpanel-note-list" class="member-role-list" style="margin-bottom:12px;">None</div>
+
+            <div class="member-modal-section-title">Case History</div>
+            <div id="modpanel-case-list" class="member-role-list">None</div>
+
+        </div>
+
     </section>
 
 </div>
@@ -1693,6 +1756,9 @@ async function openMemberDetails(
 
         }
 
+
+        await loadModPanel(memberId);
+
     }
 
     catch (error) {
@@ -1717,6 +1783,289 @@ async function openMemberDetails(
     }
 
 }
+
+
+/* =========================================================
+   MOD PANEL
+========================================================= */
+
+let modpanelMemberId = null;
+let modpanelData = null;
+
+
+async function getCsrfToken() {
+
+    const response = await fetch("/api/csrf", {cache: "no-store"});
+    const result = await response.json();
+    return result.csrf_token || "";
+
+}
+
+
+async function modpanelFetch(url, method, body) {
+
+    const token = await getCsrfToken();
+
+    const response = await fetch(url, {
+        method: method,
+        headers: {
+            "Content-Type": "application/json",
+            "X-CSRF-Token": token,
+        },
+        body: body ? JSON.stringify(body) : undefined,
+    });
+
+    const result = await response.json();
+
+    if (!response.ok || result.success === false) {
+        throw new Error(result.error || `HTTP ${response.status}`);
+    }
+
+    return result;
+
+}
+
+
+async function loadModPanel(memberId) {
+
+    modpanelMemberId = memberId;
+
+    const section = document.getElementById("modpanel-section");
+    section.style.display = "none";
+
+    try {
+
+        const response = await fetch(
+            `/api/servers/${guildId}/members/${memberId}/modpanel`,
+            {cache: "no-store"}
+        );
+
+        const result = await response.json();
+
+        if (!response.ok || !result.success) {
+            return;
+        }
+
+        modpanelData = result;
+        section.style.display = "block";
+
+        document.getElementById("modpanel-warns").textContent =
+            (result.warns || []).length;
+
+        document.getElementById("modpanel-notes-count").textContent =
+            (result.notes || []).length;
+
+        document.getElementById("modpanel-xp").textContent =
+            `${result.level || 1} / ${(result.xp || 0).toLocaleString()}`;
+
+        document.getElementById("modpanel-watch").textContent =
+            result.watched ? "Yes" : "No";
+
+        renderModpanelLists(result);
+
+    }
+    catch (error) {
+        console.error("Mod panel error:", error);
+    }
+
+}
+
+
+function renderModpanelLists(data) {
+
+    const warns = data.warns || [];
+    const notes = data.notes || [];
+    const cases = data.cases || [];
+
+    document.getElementById("modpanel-warn-list").innerHTML =
+        warns.length
+            ? warns.map((w, i) => `
+                <div style="padding:6px 0;border-bottom:1px solid rgba(255,255,255,.06);">
+                    <strong>#${i + 1}</strong> ${escapeHtml(w.reason || "")}
+                    <div style="font-size:.75rem;opacity:.6;">
+                        ${escapeHtml(w.moderator || "")} · ${escapeHtml(w.timestamp || "")}
+                    </div>
+                </div>`).join("")
+            : "None";
+
+    document.getElementById("modpanel-note-list").innerHTML =
+        notes.length
+            ? notes.map((n, i) => `
+                <div style="padding:6px 0;border-bottom:1px solid rgba(255,255,255,.06);">
+                    <strong>#${i + 1}</strong> ${escapeHtml(n.text || "")}
+                    <div style="font-size:.75rem;opacity:.6;">
+                        ${escapeHtml(n.moderator || "")} · ${escapeHtml(n.timestamp || "")}
+                        <button type="button" class="btn btn-sm btn-link text-danger"
+                            data-note-index="${i}" style="padding:0 6px;">delete</button>
+                    </div>
+                </div>`).join("")
+            : "None";
+
+    document.querySelectorAll("[data-note-index]").forEach(btn => {
+        btn.addEventListener("click", async (e) => {
+            e.stopPropagation();
+            const idx = parseInt(btn.dataset.noteIndex, 10);
+            if (!confirm("Delete this note?")) return;
+            try {
+                await modpanelFetch(
+                    `/api/servers/${guildId}/members/${modpanelMemberId}/notes/${idx}`,
+                    "DELETE"
+                );
+                await loadModPanel(modpanelMemberId);
+            } catch (err) { alert(err.message); }
+        });
+    });
+
+    const actionEmoji = {
+        warn: "⚠️", timeout: "⏱️", untimeout: "⏱️", kick: "👢",
+        ban: "🔨", unban: "🔓", clear: "🧹", wipe: "🗑️",
+        rename: "✏️", strip_roles: "🎭", watch: "👁️", unwatch: "👁️",
+        add_xp: "⭐", remove_xp: "⭐",
+    };
+
+    document.getElementById("modpanel-case-list").innerHTML =
+        cases.length
+            ? cases.map(c => `
+                <div style="padding:6px 0;border-bottom:1px solid rgba(255,255,255,.06);">
+                    ${actionEmoji[c.action] || "•"} <strong>${escapeHtml(c.action || "")}</strong>
+                    — ${escapeHtml(c.reason || "")}
+                    <div style="font-size:.75rem;opacity:.6;">
+                        ${escapeHtml(c.moderator || "")} · ${escapeHtml(c.timestamp || "")}
+                    </div>
+                </div>`).join("")
+            : "None";
+
+}
+
+
+function parseDuration(str) {
+    const m = String(str || "").trim().match(/^(\d+)\s*([mhd])$/i);
+    if (!m) return 0;
+    const n = parseInt(m[1], 10);
+    const unit = m[2].toLowerCase();
+    const mult = {m: 60, h: 3600, d: 86400}[unit] || 0;
+    const secs = n * mult;
+    return (secs > 0 && secs <= 2419200) ? secs : 0;  // max 28d
+}
+
+
+document.querySelectorAll("#modpanel-section [data-action]").forEach(btn => {
+
+    btn.addEventListener("click", async () => {
+
+        const action = btn.dataset.action;
+        const memberId = modpanelMemberId;
+        if (!memberId) return;
+
+        const base = `/api/servers/${guildId}/members/${memberId}`;
+
+        try {
+
+            if (action === "warn") {
+                const reason = prompt("Warn reason:");
+                if (reason === null) return;
+                await modpanelFetch(`${base}/warn`, "POST", {reason: reason || "No reason provided."});
+            }
+
+            else if (action === "timeout") {
+                const durationStr = prompt("Timeout duration (e.g. 10m, 1h, 1d, max 28d):", "10m");
+                if (durationStr === null) return;
+                const seconds = parseDuration(durationStr);
+                if (!seconds) { alert("Invalid duration format."); return; }
+                const reason = prompt("Reason (optional):") || "";
+                await modpanelFetch(`/api/servers/${guildId}/members/${memberId}/timeout`, "POST",
+                    {duration: seconds, reason: reason});
+            }
+
+            else if (action === "untimeout") {
+                if (!confirm("Remove timeout?")) return;
+                await modpanelFetch(`/api/servers/${guildId}/members/${memberId}/remove-timeout`, "POST", {});
+            }
+
+            else if (action === "kick") {
+                const reason = prompt("Kick reason:");
+                if (reason === null) return;
+                if (!confirm(`Kick this member?\nReason: ${reason || "none"}`)) return;
+                await modpanelFetch(`/api/servers/${guildId}/members/${memberId}/kick`, "POST",
+                    {reason: reason || "No reason provided."});
+            }
+
+            else if (action === "ban") {
+                const reason = prompt("Ban reason:");
+                if (reason === null) return;
+                const duration = (prompt("Duration (blank = permanent, e.g. 7d, 12h):", "") || "").trim();
+                if (!confirm(`Ban this member?\nReason: ${reason || "none"}\nDuration: ${duration || "permanent"}`)) return;
+                if (duration) {
+                    await modpanelFetch(`${base}/tempban`, "POST",
+                        {reason: reason || "No reason provided.", duration: duration});
+                } else {
+                    await modpanelFetch(`/api/servers/${guildId}/members/${memberId}/ban`, "POST",
+                        {reason: reason || "No reason provided."});
+                }
+            }
+
+            else if (action === "unban") {
+                if (!confirm("Unban this user?")) return;
+                await modpanelFetch(`/api/servers/${guildId}/members/${memberId}/unban`, "POST", {});
+            }
+
+            else if (action === "clear") {
+                const amount = prompt("Number of messages to clear (1-100):", "10");
+                if (amount === null) return;
+                if (!confirm(`Clear ${amount} messages from this user?`)) return;
+                await modpanelFetch(`${base}/clear`, "POST", {amount: parseInt(amount, 10) || 10});
+            }
+
+            else if (action === "note") {
+                const text = prompt("Note text:");
+                if (!text) return;
+                await modpanelFetch(`${base}/notes`, "POST", {text: text});
+            }
+
+            else if (action === "watch") {
+                const isWatched = modpanelData && modpanelData.watched;
+                if (isWatched) {
+                    if (!confirm("Remove from watch list?")) return;
+                    await modpanelFetch(`${base}/watch`, "DELETE");
+                } else {
+                    const reason = prompt("Watch reason:", "") || "";
+                    await modpanelFetch(`${base}/watch`, "POST", {reason: reason});
+                }
+            }
+
+            else if (action === "xp") {
+                const amount = prompt("XP amount (positive to add, negative to remove):", "100");
+                if (amount === null) return;
+                await modpanelFetch(`${base}/xp`, "POST", {amount: parseInt(amount, 10) || 0});
+            }
+
+            else if (action === "rename") {
+                const nickname = prompt("New nickname (blank to reset):", "") || "";
+                await modpanelFetch(`${base}/rename`, "POST", {nickname: nickname});
+            }
+
+            else if (action === "strip") {
+                if (!confirm("Remove ALL roles from this member?")) return;
+                if (!confirm("Are you sure? This cannot be undone.")) return;
+                await modpanelFetch(`${base}/strip-roles`, "POST", {});
+            }
+
+            else if (action === "wipe") {
+                if (!confirm("Wipe ALL mod data for this member (warns, notes, XP, watch)?")) return;
+                if (!confirm("Are you REALLY sure?")) return;
+                await modpanelFetch(`${base}/wipe`, "POST", {});
+            }
+
+            await loadModPanel(memberId);
+
+        }
+        catch (error) {
+            alert("Action failed: " + error.message);
+        }
+
+    });
+
+});
 
 
 function closeMemberDetails() {
