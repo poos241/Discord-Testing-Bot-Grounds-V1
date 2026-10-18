@@ -34,7 +34,6 @@ def get_guild(guild_id):
     "/api/servers/<int:guild_id>/channels/<int:channel_id>/details"
 )
 @require_guild_access
-@require_guild_manage
 def channel_details(
     guild_id,
     channel_id
