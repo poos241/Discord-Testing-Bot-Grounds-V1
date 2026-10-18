@@ -113,8 +113,9 @@ very first time.
 Discord Bot Templet Mde With Python/
 ├── bot.py                  # Entry point: loads token, intents, and cogs
 ├── config.py               # Server/user IDs, responses, permission checks, JSON helpers
-├── requirements.txt        # Python dependencies
-├── .env                    # Your bot token (you create this — never commit it)
+├── requirements.txt        # Python dependencies (incl. Flask for the web dashboard)
+├── .env                    # Your bot token + web dashboard secrets (you create this — never commit it)
+├── web/                    # Web dashboard (Flask, see section below)
 ├── cogs/
 │   ├── admin_cog.py        # Admin slash commands (see table below)
 │   ├── fun_cog.py          # Eat It or Yeet It party game (see section below)
@@ -299,6 +300,25 @@ Level-ups post a confetti celebration card (with your `/cardcolor` accent
 if you set one) alongside the announcement text — admins can customize
 that text with `/set_levelup_message` using `{user}`, `{name}`, and
 `{level}` placeholders (it falls back to the default message if unset).
+
+## 🌐 Web dashboard
+
+A Flask web dashboard runs alongside the bot (same process, background thread) at
+`http://127.0.0.1:5000` by default. Log in with Discord — only members with
+**Manage Server** / **Administrator** can use it, and every API route checks
+both login and guild permission.
+
+**Setup:** copy `.env.example` to `.env` and fill in `WEB_SECRET_KEY`,
+`DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, and `DISCORD_REDIRECT_URI`
+(the redirect URI must also be registered in the
+[Discord Developer Portal](https://discord.com/developers/applications) under
+OAuth2 → Redirects). Set `WEB_ENABLED=false` to run the bot without the dashboard.
+
+**What it covers:** server overview, member/role/channel browsers, moderation
+actions (timeout/kick/ban/unban — same safety checks as the `/userinfo` panel),
+and a searchable log-event history (the Logger records every event to a
+queryable table for this). Discord write actions from the dashboard are
+scheduled onto the bot's event loop, so they're safe from the web thread.
 
 ## Adding a new cog
 
