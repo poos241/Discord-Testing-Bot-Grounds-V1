@@ -1,0 +1,1259 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+    <meta charset="UTF-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+
+    <title>
+        Server | Kush Bush
+    </title>
+
+    <link
+        rel="stylesheet"
+        href="{{ url_for('static', filename='css/dashboard.css') }}"
+    >
+
+</head>
+
+
+<body>
+
+<div class="app">
+
+
+    <!-- =====================================================
+         SIDEBAR
+    ====================================================== -->
+
+    <aside class="sidebar">
+
+        <div class="brand">
+
+            <div class="brand-icon">
+                KB
+            </div>
+
+            <div>
+
+                <div class="brand-title">
+                    Kush Bush
+                </div>
+
+                <div class="brand-subtitle">
+                    Discord Dashboard
+                </div>
+
+            </div>
+
+        </div>
+
+
+        <div class="sidebar-section">
+
+            <div class="sidebar-label">
+                SERVER
+            </div>
+
+
+            <a
+                href="/servers/{{ guild_id }}/dashboard"
+                class="nav-item"
+            >
+                <span>▦</span>
+                Overview
+            </a>
+
+
+            <a
+                href="/servers"
+                class="dashboard-server-switch"
+            >
+                ⇆
+                Change Server
+            </a>
+
+            <a
+                href="#"
+                class="nav-item active"
+            >
+                <span>◉</span>
+                Server
+            </a>
+
+
+            <a
+                href="/servers/{{ guild_id }}/members"
+                class="nav-item"
+            >
+                <span>♙</span>
+                Members
+            </a>
+
+
+            <a
+                href="/servers/{{ guild_id }}/channels"
+                class="nav-item"
+            >
+                <span>▤</span>
+                Channels
+            </a>
+
+
+            <a
+                href="/servers/{{ guild_id }}/roles"
+                class="nav-item"
+            >
+                <span>◆</span>
+                Roles
+            </a>
+
+        </div>
+
+
+        <div class="sidebar-section">
+
+            <div class="sidebar-label">
+                LOGGING
+            </div>
+
+            <a
+                href="/servers/{{ guild_id }}/logger"
+                class="nav-item"
+            >
+                <span>▤</span>
+                Logger
+            </a>
+
+            <a
+                href="/servers/{{ guild_id }}/activity"
+                class="nav-item"
+            >
+                <span>◷</span>
+                Activity
+            </a>
+
+
+            <a
+                href="/servers/{{ guild_id }}/logger"
+                class="nav-item"
+            >
+                <span>⚡</span>
+                Events
+            </a>
+
+        </div>
+
+
+        <div class="sidebar-section">
+
+            <div class="sidebar-label">
+                MANAGEMENT
+            </div>
+
+
+            <a
+                href="#"
+                class="nav-item"
+            >
+                <span>⚔</span>
+                Moderation
+            </a>
+
+
+            <a
+                href="/servers/{{ guild_id }}/logging"
+                class="nav-item"
+            >
+                <span>⚙</span>
+                Settings
+            </a>
+
+        </div>
+
+
+        <div class="sidebar-bottom">
+
+            <div class="bot-status">
+
+                <span
+                    class="status-dot online"
+                ></span>
+
+                <div>
+
+                    <strong>
+                        Discord Connected
+                    </strong>
+
+                    <small>
+                        Bot online
+                    </small>
+
+                </div>
+
+            </div>
+
+        </div>
+
+    </aside>
+
+
+
+    <!-- =====================================================
+         MAIN
+    ====================================================== -->
+
+    <main class="main">
+
+
+        <!-- =================================================
+             TOP BAR
+        ================================================== -->
+
+        <header class="topbar">
+
+            <div>
+
+                <div class="page-title">
+                    Server
+                </div>
+
+                <div
+                    class="page-subtitle"
+                    id="server-name"
+                >
+                    Loading server...
+                </div>
+
+            </div>
+
+
+            <div class="topbar-actions">
+
+                <button
+                    class="icon-button"
+                    onclick="loadServer()"
+                    title="Refresh"
+                >
+                    ↻
+                </button>
+
+            </div>
+
+        </header>
+
+
+
+        <!-- =================================================
+             CONTENT
+        ================================================== -->
+
+        <section class="content server-page">
+
+
+            <!-- =============================================
+                 SERVER HERO
+            ============================================== -->
+
+            <section class="server-hero">
+
+                <div class="server-hero-background"></div>
+
+                <div class="server-hero-overlay"></div>
+
+
+                <div class="server-hero-content">
+
+                    <img
+                        id="server-icon"
+                        class="server-icon"
+                        src=""
+                        alt="Server Icon"
+                    >
+
+
+                    <div class="server-hero-info">
+
+                        <h1
+                            id="hero-server-name"
+                        >
+                            Loading...
+                        </h1>
+
+
+                        <div
+                            class="server-id"
+                        >
+                            ID:
+                            <span id="server-id">
+                                --
+                            </span>
+                        </div>
+
+
+                        <p
+                            id="server-description"
+                            class="server-description"
+                        >
+                            Loading server description...
+                        </p>
+
+                    </div>
+
+                </div>
+
+            </section>
+
+
+
+            <!-- =============================================
+                 PRIMARY STATS
+            ============================================== -->
+
+            <div class="stats-grid server-stats-grid">
+
+
+                <div class="stat-card">
+
+                    <div class="stat-icon">
+                        👥
+                    </div>
+
+                    <div>
+
+                        <div class="stat-label">
+                            MEMBERS
+                        </div>
+
+                        <div
+                            class="stat-value"
+                            id="members"
+                        >
+                            --
+                        </div>
+
+                    </div>
+
+                </div>
+
+
+
+                <div class="stat-card">
+
+                    <div class="stat-icon">
+                        #
+                    </div>
+
+                    <div>
+
+                        <div class="stat-label">
+                            CHANNELS
+                        </div>
+
+                        <div
+                            class="stat-value"
+                            id="channels"
+                        >
+                            --
+                        </div>
+
+                    </div>
+
+                </div>
+
+
+
+                <div class="stat-card">
+
+                    <div class="stat-icon">
+                        ◆
+                    </div>
+
+                    <div>
+
+                        <div class="stat-label">
+                            ROLES
+                        </div>
+
+                        <div
+                            class="stat-value"
+                            id="roles"
+                        >
+                            --
+                        </div>
+
+                    </div>
+
+                </div>
+
+
+
+                <div class="stat-card">
+
+                    <div class="stat-icon">
+                        ⚡
+                    </div>
+
+                    <div>
+
+                        <div class="stat-label">
+                            EVENTS
+                        </div>
+
+                        <div
+                            class="stat-value"
+                            id="events"
+                        >
+                            --
+                        </div>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+
+
+            <!-- =============================================
+                 CHANNEL / SERVER STATS
+            ============================================== -->
+
+            <div class="server-breakdown-grid">
+
+
+                <div class="stat-card compact">
+
+                    <div>
+
+                        <div class="stat-label">
+                            TEXT CHANNELS
+                        </div>
+
+                        <div
+                            class="stat-value"
+                            id="text-channel-count"
+                        >
+                            --
+                        </div>
+
+                    </div>
+
+                </div>
+
+
+
+                <div class="stat-card compact">
+
+                    <div>
+
+                        <div class="stat-label">
+                            VOICE CHANNELS
+                        </div>
+
+                        <div
+                            class="stat-value"
+                            id="voice-channel-count"
+                        >
+                            --
+                        </div>
+
+                    </div>
+
+                </div>
+
+
+
+                <div class="stat-card compact">
+
+                    <div>
+
+                        <div class="stat-label">
+                            CATEGORIES
+                        </div>
+
+                        <div
+                            class="stat-value"
+                            id="category-count"
+                        >
+                            --
+                        </div>
+
+                    </div>
+
+                </div>
+
+
+
+                <div class="stat-card compact">
+
+                    <div>
+
+                        <div class="stat-label">
+                            BOOSTS
+                        </div>
+
+                        <div
+                            class="stat-value"
+                            id="boost-count"
+                        >
+                            --
+                        </div>
+
+                    </div>
+
+                </div>
+
+
+
+                <div class="stat-card compact">
+
+                    <div>
+
+                        <div class="stat-label">
+                            BOOST TIER
+                        </div>
+
+                        <div
+                            class="stat-value"
+                            id="boost-tier"
+                        >
+                            --
+                        </div>
+
+                    </div>
+
+                </div>
+
+
+
+                <div class="stat-card compact">
+
+                    <div>
+
+                        <div class="stat-label">
+                            VERIFICATION
+                        </div>
+
+                        <div
+                            class="stat-value verification-value"
+                            id="verification-level"
+                        >
+                            --
+                        </div>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+
+
+            <!-- =============================================
+                 LOWER DASHBOARD
+            ============================================== -->
+
+            <div class="dashboard-grid">
+
+
+                <!-- =========================================
+                     SERVER INFORMATION
+                ========================================== -->
+
+                <section class="panel">
+
+                    <div class="panel-header">
+
+                        <div>
+
+                            <h2>
+                                Server Information
+                            </h2>
+
+                            <p>
+                                Discord server details
+                            </p>
+
+                        </div>
+
+                    </div>
+
+
+                    <div class="server-details">
+
+
+                        <div class="detail-row">
+
+                            <span>
+                                Server ID
+                            </span>
+
+                            <strong
+                                id="server-id-details"
+                            >
+                                --
+                            </strong>
+
+                        </div>
+
+
+                        <div class="detail-row">
+
+                            <span>
+                                Owner
+                            </span>
+
+                            <strong id="owner">
+                                --
+                            </strong>
+
+                        </div>
+
+
+                        <div class="detail-row">
+
+                            <span>
+                                Created
+                            </span>
+
+                            <strong id="created">
+                                --
+                            </strong>
+
+                        </div>
+
+
+                        <div class="detail-row">
+
+                            <span>
+                                Verification
+                            </span>
+
+                            <strong id="verification-details">
+                                --
+                            </strong>
+
+                        </div>
+
+
+                        <div class="detail-row">
+
+                            <span>
+                                Boost Tier
+                            </span>
+
+                            <strong id="boost-tier-details">
+                                --
+                            </strong>
+
+                        </div>
+
+                    </div>
+
+                </section>
+
+
+
+                <!-- =========================================
+                     QUICK ACTIONS
+                ========================================== -->
+
+                <section class="panel">
+
+                    <div class="panel-header">
+
+                        <div>
+
+                            <h2>
+                                Quick Actions
+                            </h2>
+
+                            <p>
+                                Manage and inspect this server
+                            </p>
+
+                        </div>
+
+                    </div>
+
+
+                    <div class="quick-actions-list">
+
+
+                        <a
+                            href="/servers/{{ guild_id }}/activity"
+                            class="server-action"
+                        >
+
+                            <span class="server-action-icon">
+                                ◷
+                            </span>
+
+                            <span>
+
+                                <strong>
+                                    View Activity
+                                </strong>
+
+                                <small>
+                                    Recent server activity
+                                </small>
+
+                            </span>
+
+                            <span class="server-action-arrow">
+                                →
+                            </span>
+
+                        </a>
+
+
+
+                        <a
+                            href="/servers/{{ guild_id }}/channels"
+                            class="server-action"
+                        >
+
+                            <span class="server-action-icon">
+                                #
+                            </span>
+
+                            <span>
+
+                                <strong>
+                                    Channels
+                                </strong>
+
+                                <small>
+                                    Browse server channels
+                                </small>
+
+                            </span>
+
+                            <span class="server-action-arrow">
+                                →
+                            </span>
+
+                        </a>
+
+
+
+                        <a
+                            href="/api/servers/{{ guild_id }}/members/view"
+                            class="server-action"
+                        >
+
+                            <span class="server-action-icon">
+                                👥
+                            </span>
+
+                            <span>
+
+                                <strong>
+                                    Members
+                                </strong>
+
+                                <small>
+                                    View server members
+                                </small>
+
+                            </span>
+
+                            <span class="server-action-arrow">
+                                →
+                            </span>
+
+                        </a>
+
+                    </div>
+
+                </section>
+
+            </div>
+
+
+
+            <!-- =============================================
+                 SERVER FEATURES
+            ============================================== -->
+
+            <section class="panel server-features-panel">
+
+                <div class="panel-header">
+
+                    <div>
+
+                        <h2>
+                            Server Features
+                        </h2>
+
+                        <p>
+                            Discord features enabled on this server
+                        </p>
+
+                    </div>
+
+                </div>
+
+
+                <div
+                    id="server-features"
+                    class="server-features"
+                >
+
+                    <span class="feature-empty">
+                        Loading features...
+                    </span>
+
+                </div>
+
+            </section>
+
+
+        </section>
+
+    </main>
+
+</div>
+
+
+
+<script>
+
+const guildId =
+    "{{ guild_id }}";
+
+try {
+
+    localStorage.setItem(
+        "kush_bush_selected_guild",
+        String(guildId)
+    );
+
+}
+catch (error) {
+
+    console.warn(
+        "Could not remember selected server:",
+        error
+    );
+
+}
+function setText(
+    id,
+    value,
+    fallback = "--"
+) {
+
+    const element =
+        document.getElementById(id);
+
+
+    if (!element) {
+        return;
+    }
+
+
+    element.textContent =
+        value ??
+        fallback;
+
+}
+
+
+
+async function loadServer() {
+
+    try {
+
+        const response =
+            await fetch(
+                `/api/servers/${guildId}`,
+                {
+                    cache: "no-store"
+                }
+            );
+
+
+        const result =
+            await response.json();
+
+
+        if (!response.ok) {
+
+            throw new Error(
+                result.error ||
+                `HTTP ${response.status}`
+            );
+
+        }
+
+
+        const server =
+            result.server ||
+            result;
+
+
+        // =================================================
+        // SERVER NAME
+        // =================================================
+
+        setText(
+            "server-name",
+            server.name,
+            "Server"
+        );
+
+
+        setText(
+            "hero-server-name",
+            server.name,
+            "Server"
+        );
+
+
+        // =================================================
+        // IDs
+        // =================================================
+
+        setText(
+            "server-id",
+            server.id ||
+            guildId
+        );
+
+
+        setText(
+            "server-id-details",
+            server.id ||
+            guildId
+        );
+
+
+        // =================================================
+        // COUNTS
+        // =================================================
+
+        setText(
+            "members",
+            server.member_count,
+            "0"
+        );
+
+
+        setText(
+            "channels",
+            server.channel_count,
+            "0"
+        );
+
+
+        setText(
+            "roles",
+            server.role_count,
+            "0"
+        );
+
+
+        setText(
+            "text-channel-count",
+            server.text_channel_count,
+            "0"
+        );
+
+
+        setText(
+            "voice-channel-count",
+            server.voice_channel_count,
+            "0"
+        );
+
+
+        setText(
+            "category-count",
+            server.category_count,
+            "0"
+        );
+
+
+        setText(
+            "boost-count",
+            server.premium_subscription_count,
+            "0"
+        );
+
+
+        setText(
+            "boost-tier",
+            server.premium_tier,
+            "0"
+        );
+
+
+        // =================================================
+        // EVENTS
+        // =================================================
+
+        setText(
+            "events",
+            server.event_count ??
+            0,
+            "0"
+        );
+
+
+        // =================================================
+        // DESCRIPTION
+        // =================================================
+
+        setText(
+            "server-description",
+            server.description ||
+            "No server description."
+        );
+
+
+        // =================================================
+        // OWNER
+        // =================================================
+
+        const owner =
+            server.owner;
+
+
+        setText(
+            "owner",
+            owner?.display_name ||
+            owner?.name ||
+            server.owner_id ||
+            "Unknown"
+        );
+
+
+        // =================================================
+        // CREATED
+        // =================================================
+
+        if (
+            server.created_at
+        ) {
+
+            const date =
+                new Date(
+                    server.created_at
+                );
+
+
+            setText(
+                "created",
+                date.toLocaleDateString(
+                    undefined,
+                    {
+                        year: "numeric",
+                        month: "long",
+                        day: "numeric"
+                    }
+                )
+            );
+
+        }
+
+
+        // =================================================
+        // VERIFICATION
+        // =================================================
+
+        setText(
+            "verification-level",
+            server.verification_level ||
+            "Unknown"
+        );
+
+
+        setText(
+            "verification-details",
+            server.verification_level ||
+            "Unknown"
+        );
+
+
+        // =================================================
+        // BOOST TIER
+        // =================================================
+
+        setText(
+            "boost-tier-details",
+            server.premium_tier ??
+            0,
+            "0"
+        );
+
+
+        // =================================================
+        // SERVER ICON
+        // =================================================
+
+        const icon =
+            document.getElementById(
+                "server-icon"
+            );
+
+
+        if (
+            icon &&
+            server.icon
+        ) {
+
+            icon.src =
+                server.icon;
+
+            icon.style.display =
+                "block";
+
+        }
+
+
+        // =================================================
+        // SERVER BANNER
+        // =================================================
+
+        const hero =
+            document.querySelector(
+                ".server-hero-background"
+            );
+
+
+        if (
+            hero &&
+            server.banner
+        ) {
+
+            hero.style.backgroundImage =
+                `url("${server.banner}")`;
+
+        }
+        else if (
+            hero &&
+            server.icon
+        ) {
+
+            hero.style.backgroundImage =
+                `url("${server.icon}")`;
+
+        }
+
+
+        // =================================================
+        // FEATURES
+        // =================================================
+
+        const featureContainer =
+            document.getElementById(
+                "server-features"
+            );
+
+
+        if (
+            featureContainer
+        ) {
+
+            const features =
+                Array.isArray(
+                    server.features
+                )
+                    ? server.features
+                    : [];
+
+
+            if (
+                features.length === 0
+            ) {
+
+                featureContainer.innerHTML =
+                    `
+                    <span class="feature-empty">
+                        No special features enabled.
+                    </span>
+                    `;
+
+            }
+            else {
+
+                featureContainer.innerHTML =
+                    features
+                        .map(
+                            feature => {
+
+                                const name =
+                                    String(
+                                        feature
+                                    )
+                                    .replaceAll(
+                                        "_",
+                                        " "
+                                    )
+                                    .toLowerCase()
+                                    .replace(
+                                        /\b\w/g,
+                                        char =>
+                                            char.toUpperCase()
+                                    );
+
+
+                                return `
+                                    <span class="feature-pill">
+                                        ${name}
+                                    </span>
+                                `;
+
+                            }
+                        )
+                        .join("");
+
+            }
+
+        }
+
+
+    }
+    catch (error) {
+
+        console.error(
+            "Failed to load server:",
+            error
+        );
+
+
+        setText(
+            "server-name",
+            "Failed to load server"
+        );
+
+
+        setText(
+            "hero-server-name",
+            "Failed to load server"
+        );
+
+    }
+
+}
+
+
+loadServer();
+
+</script>
+
+
+<script src="{{ url_for('static', filename='js/server_context.js') }}"></script>
+
+</body>
+
+</html>
