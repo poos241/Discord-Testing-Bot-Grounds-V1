@@ -61,7 +61,6 @@ def _check_csrf():
     "/<int:guild_id>/members/<int:user_id>/timeout"
 )
 @require_guild_access
-@require_guild_manage
 def timeout_member(guild_id, user_id):
     denied = _check_csrf()
     if denied:
@@ -87,7 +86,6 @@ def timeout_member(guild_id, user_id):
     "/<int:guild_id>/members/<int:user_id>/remove-timeout"
 )
 @require_guild_access
-@require_guild_manage
 def remove_timeout_member(guild_id, user_id):
     denied = _check_csrf()
     if denied:
@@ -108,7 +106,6 @@ def remove_timeout_member(guild_id, user_id):
     "/<int:guild_id>/members/<int:user_id>/kick"
 )
 @require_guild_access
-@require_guild_manage
 def kick_member(guild_id, user_id):
     denied = _check_csrf()
     if denied:
@@ -129,7 +126,6 @@ def kick_member(guild_id, user_id):
     "/<int:guild_id>/members/<int:user_id>/ban"
 )
 @require_guild_access
-@require_guild_manage
 def ban_member(guild_id, user_id):
     denied = _check_csrf()
     if denied:
@@ -155,7 +151,6 @@ def ban_member(guild_id, user_id):
     "/<int:guild_id>/members/<int:user_id>/unban"
 )
 @require_guild_access
-@require_guild_manage
 def unban_member(guild_id, user_id):
     denied = _check_csrf()
     if denied:
