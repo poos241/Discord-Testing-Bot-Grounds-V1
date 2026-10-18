@@ -34,6 +34,7 @@ from web.blueprints.server import servers_api
 from web.blueprints.statistics import statistics_api
 
 from web.blueprints.moderation import moderation_api
+from web.blueprints.modpanel import modpanel_api
 
 from web.blueprints.events import events_api
 
@@ -132,6 +133,7 @@ def create_app(bot):
     app.register_blueprint(statistics_api)
     
     app.register_blueprint(moderation_api)
+    app.register_blueprint(modpanel_api)
            
     app.register_blueprint(events_api)
     
