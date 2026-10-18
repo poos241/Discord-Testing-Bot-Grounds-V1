@@ -157,7 +157,6 @@ def get_events():
     "/servers/<int:guild_id>/events"
 )
 @require_guild_access
-@require_guild_manage
 def get_server_events(
     guild_id
 ):
