@@ -39,7 +39,6 @@ def get_guild(guild_id):
     "/api/servers/<int:guild_id>/health"
 )
 @require_guild_access
-@require_guild_manage
 def server_health(guild_id):
 
     guild, error = get_guild(
