@@ -130,7 +130,6 @@ def serialize_role(
     "/api/servers/<int:guild_id>/roles"
 )
 @require_guild_access
-@require_guild_manage
 def get_server_roles(
     guild_id
 ):
