@@ -1,0 +1,1266 @@
+/* =========================================================
+   KUSH BUSH WEB UI
+   Shared Application Styles
+   ========================================================= */
+
+
+/* ---------------------------------------------------------
+   GLOBAL
+   --------------------------------------------------------- */
+
+:root {
+
+    --bg-main: #0f1115;
+    --bg-panel: #1b2027;
+    --bg-panel-hover: #20262e;
+
+    --border: #353c46;
+    --border-hover: #697382;
+
+    --text-main: #f1f3f5;
+    --text-muted: #aeb7c4;
+    --text-soft: #c8ced8;
+
+    --accent: #4c9aff;
+
+    --success: #198754;
+    --warning: #ffc107;
+    --danger: #dc3545;
+
+}
+
+
+html,
+body {
+
+    min-height: 100%;
+
+}
+
+
+body {
+
+    background: var(--bg-main);
+
+    color: var(--text-main);
+
+    overflow-x: hidden;
+
+}
+
+
+/* ---------------------------------------------------------
+   LINKS
+   --------------------------------------------------------- */
+
+a {
+
+    color: var(--text-main);
+
+}
+
+
+a:hover {
+
+    color: #ffffff;
+
+}
+
+
+/* ---------------------------------------------------------
+   SHARED PANELS
+   --------------------------------------------------------- */
+
+.ui-card {
+
+    background: var(--bg-panel);
+
+    border: 1px solid var(--border);
+
+    color: var(--text-main);
+
+    border-radius: 10px;
+
+    transition:
+        border-color 0.2s,
+        transform 0.2s;
+
+}
+
+
+.ui-card:hover {
+
+    border-color: var(--border-hover);
+
+}
+
+
+/* ---------------------------------------------------------
+   TEXT
+   --------------------------------------------------------- */
+
+.ui-title {
+
+    color: #ffffff;
+
+}
+
+
+.ui-subtitle {
+
+    color: var(--text-muted);
+
+}
+
+
+.ui-label {
+
+    color: var(--text-soft);
+
+}
+
+
+.ui-muted {
+
+    color: var(--text-muted);
+
+}
+
+
+/* ---------------------------------------------------------
+   STATISTICS
+   --------------------------------------------------------- */
+
+.stat-label {
+
+    color: var(--text-muted);
+
+    font-size: 0.9rem;
+
+}
+
+
+.stat-value {
+
+    color: #ffffff;
+
+    font-size: 2rem;
+
+    font-weight: 700;
+
+}
+
+
+.stat-small {
+
+    color: var(--text-soft);
+
+    font-size: 0.85rem;
+
+}
+
+
+/* ---------------------------------------------------------
+   SIDEBAR
+   --------------------------------------------------------- */
+
+.dashboard-sidebar {
+
+    min-height: calc(100vh - 40px);
+
+    border-right: 1px solid var(--border);
+
+    padding-right: 15px;
+
+}
+
+
+.sidebar-title {
+
+    color: #ffffff;
+
+}
+
+
+.sidebar-link {
+
+    display: block;
+
+    padding: 11px 14px;
+
+    margin-bottom: 6px;
+
+    color: var(--text-soft) !important;
+
+    text-decoration: none;
+
+    border-radius: 7px;
+
+    transition:
+        background 0.15s,
+        color 0.15s;
+
+}
+
+
+.sidebar-link:hover {
+
+    background: #252b33;
+
+    color: #ffffff !important;
+
+}
+
+
+.sidebar-link.active {
+
+    background: #343b46;
+
+    color: #ffffff !important;
+
+}
+
+
+/* ---------------------------------------------------------
+   EVENT CARDS
+   --------------------------------------------------------- */
+
+.event-card {
+
+    background: #1e2329;
+
+    border: 1px solid #3a4149;
+
+    color: var(--text-main);
+
+}
+
+
+.event-card:hover {
+
+    border-color: var(--border-hover);
+
+}
+
+
+.event-time {
+
+    color: var(--text-muted);
+
+    font-size: 0.85rem;
+
+}
+
+
+.event-guild {
+
+    color: #ced4da;
+
+}
+
+
+.event-divider {
+
+    border-color: var(--border);
+
+}
+
+
+.event-data {
+
+    background: #111418;
+
+    color: #e9ecef;
+
+    border: 1px solid var(--border);
+
+    font-size: 0.85rem;
+
+    max-height: 400px;
+
+    overflow: auto;
+
+}
+
+
+/* ---------------------------------------------------------
+   EMPTY / ERROR STATES
+   --------------------------------------------------------- */
+
+.empty-state {
+
+    background: var(--bg-panel);
+
+    border: 1px solid var(--border);
+
+    color: var(--text-muted);
+
+}
+
+
+.error-state {
+
+    background: #2a1719;
+
+    border: 1px solid #5c2529;
+
+    color: #ffb3b8;
+
+}
+
+
+/* ---------------------------------------------------------
+   SERVER CARDS
+   --------------------------------------------------------- */
+
+.server-card {
+
+    background: var(--bg-panel);
+
+    border: 1px solid var(--border);
+
+    color: #ffffff;
+
+    transition:
+        border-color 0.2s,
+        transform 0.2s;
+
+}
+
+
+.server-card:hover {
+
+    border-color: var(--border-hover);
+
+    transform: translateY(-2px);
+
+}
+
+
+.server-id {
+
+    color: var(--text-muted);
+
+    font-size: 0.85rem;
+
+}
+
+
+.server-stat-label {
+
+    color: #9da7b5;
+
+    font-size: 0.85rem;
+
+}
+
+
+.server-stat {
+
+    color: #dce1e8;
+
+}
+
+
+.server-icon {
+
+    width: 52px;
+
+    height: 52px;
+
+    border-radius: 12px;
+
+    background: #343b46;
+
+    display: flex;
+
+    align-items: center;
+
+    justify-content: center;
+
+    font-size: 1.4rem;
+
+    font-weight: bold;
+
+}
+
+
+/* ---------------------------------------------------------
+   FORMS
+   --------------------------------------------------------- */
+
+.form-label {
+
+    color: #ffffff;
+
+    font-weight: 500;
+
+}
+
+
+.form-control,
+.form-select {
+
+    background-color: #111418 !important;
+
+    color: #ffffff !important;
+
+    border-color: var(--border) !important;
+
+}
+
+
+.form-control:focus,
+.form-select:focus {
+
+    border-color: var(--accent) !important;
+
+    box-shadow:
+        0 0 0 0.2rem
+        rgba(76, 154, 255, 0.15) !important;
+
+}
+
+
+.form-control::placeholder {
+
+    color: #77808c;
+
+}
+
+
+/* ---------------------------------------------------------
+   BUTTONS
+   --------------------------------------------------------- */
+
+.btn {
+
+    border-radius: 7px;
+
+}
+
+
+.btn-primary {
+
+    border: none;
+
+}
+
+
+
+
+
+
+/* =========================================================
+   DASHBOARD ACTIVITY
+   ========================================================= */
+
+.activity {
+    display: flex;
+    gap: 14px;
+    padding: 14px 16px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    transition:
+        background-color 0.18s ease,
+        transform 0.18s ease;
+}
+
+.activity:hover {
+    background: rgba(255,255,255,0.035);
+    transform: translateX(2px);
+}
+
+
+.activity:last-child {
+    border-bottom: none;
+}
+
+
+.activity-icon {
+    width: 38px;
+    height: 38px;
+    min-width: 38px;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    border-radius: 10px;
+
+    background: rgba(255,255,255,0.06);
+
+    font-size: 18px;
+}
+
+
+.activity-content {
+    flex: 1;
+    min-width: 0;
+}
+
+
+.activity-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+
+.activity-type {
+    font-weight: 600;
+    text-transform: capitalize;
+}
+
+
+.activity-category {
+    display: inline-block;
+
+    margin-left: 8px;
+
+    padding: 2px 7px;
+
+    border-radius: 999px;
+
+    font-size: 11px;
+
+    background: rgba(255,255,255,0.07);
+
+    color: var(--bs-secondary-color);
+}
+
+
+.activity-time {
+    white-space: nowrap;
+
+    font-size: 12px;
+
+    color: var(--bs-secondary-color);
+}
+
+
+.activity-data {
+    margin-top: 5px;
+
+    font-size: 13px;
+
+    color: var(--bs-secondary-color);
+
+    overflow: hidden;
+
+    text-overflow: ellipsis;
+
+    white-space: nowrap;
+}
+
+
+/* =========================================================
+   EVENT SEVERITY
+   ========================================================= */
+
+.event-danger {
+    border-left: 3px solid #dc3545;
+}
+
+
+.event-success {
+    border-left: 3px solid #198754;
+}
+
+
+.event-warning {
+    border-left: 3px solid #ffc107;
+}
+
+
+.event-neutral {
+    border-left: 3px solid #6c757d;
+}
+
+
+/* =========================================================
+   EMPTY ACTIVITY
+   ========================================================= */
+
+.activity-empty {
+    min-height: 180px;
+
+    display: flex;
+
+    flex-direction: column;
+
+    align-items: center;
+
+    justify-content: center;
+
+    gap: 6px;
+
+    color: var(--bs-secondary-color);
+
+    text-align: center;
+}
+
+
+.activity-empty-icon {
+    font-size: 32px;
+
+    opacity: 0.45;
+
+    margin-bottom: 4px;
+}
+
+
+/* =========================================================
+   EVENT STATISTICS
+   ========================================================= */
+
+.event-stat {
+    display: flex;
+
+    align-items: center;
+
+    justify-content: space-between;
+
+    padding: 9px 0;
+
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+}
+
+
+.event-stat:last-child {
+    border-bottom: none;
+}
+
+
+.event-stat > div {
+    display: flex;
+
+    align-items: center;
+
+    gap: 8px;
+}
+
+
+.event-stat-icon {
+    width: 26px;
+    height: 26px;
+
+    display: inline-flex;
+
+    align-items: center;
+
+    justify-content: center;
+
+    border-radius: 7px;
+
+    background: rgba(255,255,255,0.06);
+
+    font-size: 13px;
+}
+
+
+/* =========================================================
+   CONNECTION STATUS
+   ========================================================= */
+
+.connection-status {
+    display: inline-flex;
+
+    align-items: center;
+
+    gap: 8px;
+
+    padding: 5px 10px;
+
+    border-radius: 999px;
+
+    background: rgba(255,255,255,0.05);
+
+    font-size: 12px;
+
+    color: var(--bs-secondary-color);
+}
+
+
+.connection-dot {
+    width: 8px;
+    height: 8px;
+
+    border-radius: 50%;
+
+    background: #dc3545;
+
+    box-shadow:
+        0 0 0 3px rgba(220,53,69,0.12);
+}
+
+
+.connection-dot.online {
+    background: #198754;
+
+    box-shadow:
+        0 0 0 3px rgba(25,135,84,0.12);
+}
+
+
+/* =========================================================
+   DASHBOARD LOADING
+   ========================================================= */
+
+.dashboard-loading {
+    opacity: 0.7;
+
+    transition:
+        opacity 0.2s ease;
+}
+
+
+/* =========================================================
+   LAST UPDATED
+   ========================================================= */
+
+#last-updated {
+    font-size: 12px;
+
+    color: var(--bs-secondary-color);
+}
+
+
+/* =========================================================
+   MOBILE
+   ========================================================= */
+
+@media (
+    max-width: 768px
+) {
+
+    .activity-header {
+        align-items: flex-start;
+
+        flex-direction: column;
+
+        gap: 4px;
+    }
+
+
+    .activity-time {
+        font-size: 11px;
+    }
+
+
+    .activity {
+        padding: 12px;
+    }
+
+}
+
+
+
+
+/* =========================================================
+   SERVER HEADER
+   ========================================================= */
+
+.server-avatar {
+    width: 64px;
+    height: 64px;
+
+    display: flex;
+
+    align-items: center;
+
+    justify-content: center;
+
+    border-radius: 18px;
+
+    background:
+        linear-gradient(
+            135deg,
+            rgba(13,110,253,0.85),
+            rgba(111,66,193,0.85)
+        );
+
+    color: white;
+
+    font-size: 20px;
+
+    font-weight: 700;
+
+    box-shadow:
+        0 8px 24px rgba(0,0,0,0.2);
+}
+
+
+#server-name {
+    font-weight: 700;
+    letter-spacing: -0.02em;
+}
+
+
+#server-id {
+    font-family:
+        ui-monospace,
+        SFMono-Regular,
+        Menlo,
+        Monaco,
+        Consolas,
+        monospace;
+}
+
+
+
+
+/* =========================================================
+   TOP NAVIGATION
+========================================================= */
+
+.top-navbar {
+
+    display: flex;
+
+    align-items: center;
+
+    justify-content: space-between;
+
+    gap: 24px;
+
+    padding: 14px 20px;
+
+    margin-bottom: 20px;
+
+    border: 1px solid rgba(255,255,255,0.08);
+
+    border-radius: 14px;
+
+    background:
+        rgba(18,18,24,0.92);
+
+    backdrop-filter:
+        blur(14px);
+
+}
+
+
+.brand-link {
+
+    display: flex;
+
+    align-items: center;
+
+    gap: 10px;
+
+    color: white;
+
+    text-decoration: none;
+
+    font-weight: 700;
+
+    font-size: 17px;
+
+}
+
+
+.brand-icon,
+.auth-logo-icon {
+
+    display: flex;
+
+    align-items: center;
+
+    justify-content: center;
+
+    width: 38px;
+
+    height: 38px;
+
+    border-radius: 10px;
+
+    background:
+        linear-gradient(
+            135deg,
+            #5865f2,
+            #7b61ff
+        );
+
+    color: white;
+
+    font-weight: 800;
+
+}
+
+
+.nav-links {
+
+    display: flex;
+
+    align-items: center;
+
+    gap: 6px;
+
+    flex: 1;
+
+}
+
+
+.nav-link-item {
+
+    color: #a9a9b5;
+
+    text-decoration: none;
+
+    padding: 8px 12px;
+
+    border-radius: 8px;
+
+    transition:
+        background .15s ease,
+        color .15s ease;
+
+}
+
+
+.nav-link-item:hover {
+
+    color: white;
+
+    background:
+        rgba(255,255,255,0.07);
+
+}
+
+
+.user-area {
+
+    display: flex;
+
+    align-items: center;
+
+    gap: 10px;
+
+}
+
+
+.user-avatar {
+
+    width: 34px;
+
+    height: 34px;
+
+    border-radius: 50%;
+
+}
+
+
+.user-avatar-placeholder {
+
+    display: flex;
+
+    align-items: center;
+
+    justify-content: center;
+
+    width: 34px;
+
+    height: 34px;
+
+    border-radius: 50%;
+
+    background: #5865f2;
+
+    color: white;
+
+    font-weight: 700;
+
+}
+
+
+.user-name {
+
+    color: #e5e5ea;
+
+    font-size: 14px;
+
+}
+
+
+.logout-button,
+.login-button-small {
+
+    padding: 7px 12px;
+
+    border-radius: 8px;
+
+    text-decoration: none;
+
+    font-size: 13px;
+
+}
+
+
+.logout-button {
+
+    color: #ff8d8d;
+
+    background:
+        rgba(255,70,70,0.08);
+
+}
+
+
+.logout-button:hover {
+
+    background:
+        rgba(255,70,70,0.16);
+
+}
+
+
+/* =========================================================
+   AUTH PAGE
+========================================================= */
+
+.auth-page {
+
+    min-height: 85vh;
+
+    display: flex;
+
+    align-items: center;
+
+    justify-content: center;
+
+}
+
+
+.auth-card {
+
+    width: min(
+        430px,
+        calc(100vw - 32px)
+    );
+
+    padding: 42px;
+
+    border-radius: 22px;
+
+    border: 1px solid rgba(255,255,255,0.08);
+
+    background:
+        rgba(18,18,25,0.95);
+
+    box-shadow:
+        0 30px 80px rgba(0,0,0,0.35);
+
+    text-align: center;
+
+}
+
+
+.auth-logo {
+
+    display: flex;
+
+    justify-content: center;
+
+    margin-bottom: 22px;
+
+}
+
+
+.auth-logo-icon {
+
+    width: 62px;
+
+    height: 62px;
+
+    border-radius: 16px;
+
+    font-size: 20px;
+
+}
+
+
+.auth-card h1 {
+
+    color: white;
+
+    font-size: 27px;
+
+    margin-bottom: 10px;
+
+}
+
+
+.auth-subtitle {
+
+    color: #9696a5;
+
+    line-height: 1.6;
+
+    margin-bottom: 28px;
+
+}
+
+
+.discord-login-button {
+
+    display: flex;
+
+    align-items: center;
+
+    justify-content: center;
+
+    gap: 10px;
+
+    width: 100%;
+
+    padding: 13px 18px;
+
+    border-radius: 10px;
+
+    background: #5865f2;
+
+    color: white;
+
+    text-decoration: none;
+
+    font-weight: 700;
+
+    transition:
+        transform .15s ease,
+        background .15s ease;
+
+}
+
+
+.discord-login-button:hover {
+
+    background: #4752c4;
+
+    color: white;
+
+    transform: translateY(-1px);
+
+}
+
+
+.discord-login-icon {
+
+    display: flex;
+
+    align-items: center;
+
+    justify-content: center;
+
+    width: 25px;
+
+    height: 25px;
+
+    border-radius: 7px;
+
+    background: rgba(255,255,255,0.18);
+
+}
+
+
+.auth-error {
+
+    margin-bottom: 20px;
+
+    padding: 12px;
+
+    border-radius: 9px;
+
+    color: #ffb4b4;
+
+    background:
+        rgba(255,70,70,0.10);
+
+    border:
+        1px solid rgba(255,70,70,0.20);
+
+}
+
+
+.auth-footer {
+
+    margin-top: 22px;
+
+    color: #6f6f7d;
+
+    font-size: 12px;
+
+}
+
+
+
+
+
+/* =========================================================
+   GLOBAL BOT AVATAR
+========================================================= */
+
+.global-bot-brand {
+
+    overflow: hidden;
+
+    position: relative;
+
+}
+
+
+.global-bot-brand img {
+
+    width: 100%;
+
+    height: 100%;
+
+    object-fit: cover;
+
+    border-radius: inherit;
+
+    display: block;
+
+}
+
+
+/* =========================================================
+   AUTH BOT AVATAR
+========================================================= */
+
+.auth-bot-icon {
+
+    overflow: hidden;
+
+    position: relative;
+
+}
+
+
+.auth-bot-icon img {
+
+    width: 100%;
+
+    height: 100%;
+
+    object-fit: cover;
+
+    border-radius: inherit;
+
+    display: block;
+
+}
+
+
+#auth-bot-avatar-fallback,
+#global-bot-avatar-fallback {
+
+    width: 100%;
+
+    height: 100%;
+
+    align-items: center;
+
+    justify-content: center;
+
+}
