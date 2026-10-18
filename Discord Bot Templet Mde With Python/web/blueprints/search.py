@@ -29,7 +29,6 @@ def get_guild(guild_id):
     "/api/servers/<int:guild_id>/search"
 )
 @require_guild_access
-@require_guild_manage
 def search_server(guild_id):
 
     guild = get_guild(
