@@ -88,23 +88,6 @@ class GuildService:
         if not bot.is_ready():
             return []
 
-        cursor = database.connection.cursor()
-
-        cursor.execute(
-            """
-            SELECT
-                guild_id,
-                COUNT(*)
-            FROM logger_events
-            GROUP BY guild_id
-            """
-        )
-
-        event_counts = {
-            row[0]: row[1]
-            for row in cursor.fetchall()
-        }
-
         servers = []
 
         for guild in bot.guilds:
@@ -124,10 +107,7 @@ class GuildService:
                     len(guild.channels),
 
                 "event_count":
-                    event_counts.get(
-                        guild.id,
-                        0
-                    ),
+                    database.count_events(guild.id),
 
                 "icon":
                     (
@@ -148,111 +128,11 @@ class GuildService:
         event_type=None,
         search=None
     ):
-
-        cursor = database.connection.cursor()
-
-        query = """
-            SELECT
-                id,
-                guild_id,
-                category,
-                action,
-                event,
-                created,
-                payload
-            FROM logger_events
-            WHERE guild_id = ?
-        """
-
-        parameters = [guild_id]
-
-
-        if category:
-
-            query += """
-                AND category = ?
-            """
-
-            parameters.append(category)
-
-
-        if event_type:
-
-            query += """
-                AND event = ?
-            """
-
-            parameters.append(event_type)
-
-
-        if search:
-
-            query += """
-                AND payload LIKE ?
-            """
-
-            parameters.append(
-                f"%{search}%"
-            )
-
-
-        query += """
-            ORDER BY id DESC
-            LIMIT ?
-        """
-
-        parameters.append(
-            min(limit, 200)
+        return database.search_events(
+            guild_id, search=search, category=category,
+            event_type=event_type, limit=min(limit, 200),
         )
 
-
-        cursor.execute(
-            query,
-            parameters
-        )
-
-        rows = cursor.fetchall()
-
-        import json
-
-        events = []
-
-
-        for row in rows:
-
-            try:
-
-                data = json.loads(
-                    row[6]
-                )
-
-            except Exception:
-
-                data = {}
-
-
-            events.append({
-
-                "id": row[0],
-
-                "guild_id": row[1],
-
-                "category": row[2],
-
-                "action": row[3],
-
-                "event": row[4],
-
-                "created": row[5],
-
-                "data": data
-
-            })
-
-
-        return events
-    
-    
     def get_guild_info(self, guild_id):
 
         guild = self.get_guild(
