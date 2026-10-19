@@ -36,6 +36,14 @@
                     "mod_name": "Web dashboard",
                     "ts": 1792338983.0582018,
                     "extra": {}
+                },
+                {
+                    "action": "add_xp",
+                    "reason": "1000 XP",
+                    "mod_id": null,
+                    "mod_name": "Web dashboard",
+                    "ts": 1792341287.4485216,
+                    "extra": {}
                 }
             ]
         }
