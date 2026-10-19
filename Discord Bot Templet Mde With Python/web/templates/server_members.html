@@ -679,6 +679,15 @@
             <div id="modpanel-note-list" class="member-role-list" style="margin-bottom:12px;">None</div>
 
             <div class="member-modal-section-title">Case History</div>
+            <div id="modpanel-case-target" style="display:flex;align-items:center;gap:10px;
+                padding:10px 12px;background:rgba(255,255,255,.03);border-radius:10px;margin-bottom:8px;">
+                <img id="modpanel-case-target-avatar" src="" alt=""
+                    style="width:36px;height:36px;border-radius:50%;">
+                <div>
+                    <div id="modpanel-case-target-name" style="font-weight:700;font-size:.9rem;"></div>
+                    <div id="modpanel-case-target-id" style="font-size:.75rem;opacity:.6;"></div>
+                </div>
+            </div>
             <div id="modpanel-case-list" class="member-role-list">None</div>
 
         </div>
@@ -686,6 +695,51 @@
     </section>
 
 </div>
+
+<style>
+    .member-row {
+        background: rgba(255,255,255,.025);
+        border: 1px solid rgba(255,255,255,.07);
+        border-radius: 12px;
+        margin-bottom: 8px;
+        padding: 10px 14px;
+        transition: background .12s, border-color .12s, transform .08s;
+    }
+    .member-row:hover {
+        background: rgba(255,255,255,.06);
+        border-color: rgba(255,255,255,.16);
+        transform: translateY(-1px);
+    }
+    .member-avatar { position: relative; }
+    .member-avatar img, .member-avatar span {
+        width: 44px; height: 44px; border-radius: 50%;
+    }
+    .member-status {
+        position: absolute; bottom: 0; right: 0;
+        width: 13px; height: 13px; border-radius: 50%;
+        border: 2.5px solid #1e1f22;
+    }
+    .member-status.status-online { background: #23a55a; }
+    .member-status.status-idle { background: #f0b232; }
+    .member-status.status-dnd { background: #f23f43; }
+    .member-status.status-offline { background: #80848e; }
+    .member-name { font-weight: 700; font-size: .95rem; }
+    .bot-badge {
+        background: #5865f2; color: #fff; font-size: .65rem;
+        padding: 1px 6px; border-radius: 6px; margin-left: 6px;
+        vertical-align: middle;
+    }
+    .member-username { font-size: .78rem; opacity: .55; }
+    .member-role-chip {
+        font-size: .75rem; padding: 3px 10px; border-radius: 99px;
+        background: rgba(255,255,255,.07);
+    }
+    .member-status-text { font-size: .78rem; text-transform: capitalize; }
+    .member-status-text.status-online { color: #23a55a; }
+    .member-status-text.status-idle { color: #f0b232; }
+    .member-status-text.status-dnd { color: #f23f43; }
+    .member-status-text.status-offline { color: #80848e; }
+</style>
 
 <script>
 
@@ -1884,6 +1938,17 @@ async function loadModPanel(memberId) {
         document.getElementById("modpanel-watch").textContent =
             result.watched ? "Yes" : "No";
 
+        // Target user header in case history
+        const tAv = document.getElementById("modpanel-case-target-avatar");
+        const tName = document.getElementById("modpanel-case-target-name");
+        const tId = document.getElementById("modpanel-case-target-id");
+        if (result.member) {
+            tAv.src = result.member.avatar_url || "";
+            tAv.style.display = result.member.avatar_url ? "" : "none";
+            tName.textContent = result.member.display_name || result.member.name || "";
+            tId.textContent = result.member.id ? `ID: ${result.member.id}` : "";
+        }
+
         renderModpanelLists(result);
 
     }
@@ -2115,7 +2180,11 @@ document.querySelectorAll("#modpanel-section [data-action]").forEach(btn => {
                 await modpanelFetch(`${base}/wipe`, "POST", {});
             }
 
-            await loadModPanel(memberId);
+            // Refresh everything: member details (includes mod panel) + member list
+            await openMemberDetails(memberId);
+            if (typeof loadMembers === "function") {
+                await loadMembers();
+            }
 
         }
         catch (error) {
