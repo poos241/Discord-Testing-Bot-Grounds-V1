@@ -698,11 +698,14 @@
 
 <style>
     .member-row {
+        display: flex; align-items: center; gap: 14px;
+        width: 100%; text-align: left;
         background: rgba(255,255,255,.025);
         border: 1px solid rgba(255,255,255,.07);
         border-radius: 12px;
         margin-bottom: 8px;
-        padding: 10px 14px;
+        padding: 10px 16px;
+        cursor: pointer; color: inherit; font: inherit;
         transition: background .12s, border-color .12s, transform .08s;
     }
     .member-row:hover {
@@ -710,9 +713,14 @@
         border-color: rgba(255,255,255,.16);
         transform: translateY(-1px);
     }
-    .member-avatar { position: relative; }
+    .member-avatar { position: relative; flex-shrink: 0; }
     .member-avatar img, .member-avatar span {
         width: 44px; height: 44px; border-radius: 50%;
+        display: block; object-fit: cover;
+    }
+    .member-avatar span {
+        display: flex; align-items: center; justify-content: center;
+        background: #5865f2; color: #fff; font-weight: 700;
     }
     .member-status {
         position: absolute; bottom: 0; right: 0;
@@ -723,22 +731,33 @@
     .member-status.status-idle { background: #f0b232; }
     .member-status.status-dnd { background: #f23f43; }
     .member-status.status-offline { background: #80848e; }
-    .member-name { font-weight: 700; font-size: .95rem; }
+    .member-main { flex: 1; min-width: 0; }
+    .member-name {
+        font-weight: 700; font-size: .95rem;
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
     .bot-badge {
         background: #5865f2; color: #fff; font-size: .65rem;
         padding: 1px 6px; border-radius: 6px; margin-left: 6px;
         vertical-align: middle;
     }
-    .member-username { font-size: .78rem; opacity: .55; }
+    .member-username {
+        font-size: .78rem; opacity: .55;
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .member-role { flex-shrink: 0; display: flex; align-items: center; gap: 6px; }
     .member-role-chip {
         font-size: .75rem; padding: 3px 10px; border-radius: 99px;
-        background: rgba(255,255,255,.07);
+        background: rgba(255,255,255,.07); white-space: nowrap;
     }
+    .member-role small { opacity: .5; font-size: .7rem; }
+    .member-status-label { flex-shrink: 0; min-width: 52px; text-align: right; }
     .member-status-text { font-size: .78rem; text-transform: capitalize; }
     .member-status-text.status-online { color: #23a55a; }
     .member-status-text.status-idle { color: #f0b232; }
     .member-status-text.status-dnd { color: #f23f43; }
     .member-status-text.status-offline { color: #80848e; }
+    .member-row-arrow { flex-shrink: 0; opacity: .4; font-size: 1.1rem; }
 </style>
 
 <script>
@@ -2011,35 +2030,68 @@ function renderModpanelLists(data) {
         add_xp: "⭐", remove_xp: "⭐",
     };
 
+    // Target user info for the ACTION BY / MEMBER cards
+    const targetAv = document.getElementById("modpanel-case-target-avatar");
+    const targetName = document.getElementById("modpanel-case-target-name");
+    const targetIdEl = document.getElementById("modpanel-case-target-id");
+    const tAvSrc = targetAv ? targetAv.src : "";
+    const tName = targetName ? targetName.textContent : "";
+    const tId = targetIdEl ? targetIdEl.textContent.replace(/^ID:\s*/, "") : "";
+
     document.getElementById("modpanel-case-list").innerHTML =
         cases.length
-            ? cases.map(c => {
+            ? cases.map((c, i) => {
                 const extra = c.extra || {};
                 const modAvatar = extra.moderator_avatar || c.moderator_avatar;
+                const modName = c.moderator || "Unknown";
                 const modId = extra.moderator_id || c.moderator_id;
                 const evidence = extra.evidence || c.evidence;
-                const avatarHtml = modAvatar
-                    ? `<img src="${escapeHtml(modAvatar)}" style="width:22px;height:22px;border-radius:50%;vertical-align:middle;margin-right:6px;" alt="">`
-                    : "";
+                const dmBadge = (extra.dm_sent || c.dm_sent)
+                    ? `<span style="font-size:.7rem;background:rgba(39,174,96,.25);color:#7dffa8;padding:2px 8px;border-radius:99px;margin-left:8px;">DM sent</span>` : "";
                 const evidenceHtml = evidence
-                    ? `<div style="font-size:.75rem;margin-top:4px;">
-                         📎 <strong>Evidence:</strong> ${
+                    ? `<div style="margin-top:8px;font-size:.78rem;">
+                         <div style="opacity:.55;margin-bottom:4px;">EVIDENCE</div>
+                         <div style="background:rgba(255,255,255,.04);border-radius:8px;padding:8px 10px;">${
                              /^https?:\/\//i.test(evidence)
                                  ? `<a href="${escapeHtml(evidence)}" target="_blank" rel="noopener" style="color:#7aa2ff;">${escapeHtml(evidence)}</a>`
                                  : escapeHtml(evidence)
-                         }
+                         }</div>
                        </div>`
                     : "";
-                const dmBadge = (extra.dm_sent || c.dm_sent)
-                    ? ` <span style="font-size:.7rem;background:rgba(39,174,96,.25);padding:1px 6px;border-radius:99px;">DM sent</span>` : "";
+                const ts = c.timestamp || c.ts || "";
                 return `
-                <div style="padding:8px 0;border-bottom:1px solid rgba(255,255,255,.06);">
-                    ${actionEmoji[c.action] || "•"} <strong>${escapeHtml(c.action || "")}</strong>${dmBadge}
-                    — ${escapeHtml(c.reason || "")}
-                    <div style="font-size:.75rem;opacity:.75;margin-top:3px;">
-                        ${avatarHtml}${escapeHtml(c.moderator || "")}
-                        ${modId ? `<span style="opacity:.6;">(${escapeHtml(modId)})</span>` : ""}
-                        · ${escapeHtml(c.timestamp || c.ts || "")}
+                <div style="background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.07);border-radius:12px;padding:12px;margin-bottom:10px;">
+                    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+                        <div style="font-weight:800;font-size:.92rem;">
+                            ${actionEmoji[c.action] || "•"} ${escapeHtml((c.action || "").replace(/_/g, " ").toUpperCase())}${dmBadge}
+                        </div>
+                        <div style="font-size:.72rem;opacity:.5;">${escapeHtml(ts)}</div>
+                    </div>
+                    <div style="display:flex;gap:10px;margin-bottom:10px;">
+                        <div style="flex:1;background:rgba(255,255,255,.03);border-radius:10px;padding:10px;">
+                            <div style="font-size:.68rem;opacity:.5;margin-bottom:6px;letter-spacing:.04em;">MEMBER</div>
+                            <div style="display:flex;align-items:center;gap:8px;">
+                                ${tAvSrc ? `<img src="${escapeHtml(tAvSrc)}" style="width:32px;height:32px;border-radius:50%;" alt="">` : ""}
+                                <div>
+                                    <div style="font-weight:700;font-size:.85rem;">${escapeHtml(tName || "Unknown")}</div>
+                                    <div style="font-size:.72rem;opacity:.55;">${escapeHtml(tId)}</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div style="flex:1;background:rgba(255,255,255,.03);border-radius:10px;padding:10px;">
+                            <div style="font-size:.68rem;opacity:.5;margin-bottom:6px;letter-spacing:.04em;">ACTION BY</div>
+                            <div style="display:flex;align-items:center;gap:8px;">
+                                ${modAvatar ? `<img src="${escapeHtml(modAvatar)}" style="width:32px;height:32px;border-radius:50%;" alt="">` : ""}
+                                <div>
+                                    <div style="font-weight:700;font-size:.85rem;">${escapeHtml(modName)}</div>
+                                    <div style="font-size:.72rem;opacity:.55;">${modId ? escapeHtml(modId) : ""}</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div style="font-size:.78rem;">
+                        <div style="opacity:.55;margin-bottom:4px;">REASON</div>
+                        <div style="background:rgba(255,255,255,.04);border-radius:8px;padding:8px 10px;">${escapeHtml(c.reason || "No reason given.")}</div>
                     </div>
                     ${evidenceHtml}
                 </div>`;
