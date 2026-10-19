@@ -598,10 +598,15 @@
         ></div>
 
 
-        <div class="member-modal-section" id="modpanel-section" style="display:none;">
+        <div class="member-modal-section" id="modpanel-section" style="display:none;
+            background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.08);
+            border-radius:14px;padding:16px;margin-top:8px;">
 
-            <div class="member-modal-section-title">
-                Moderation Panel
+            <div class="member-modal-section-title" style="
+                font-size:1rem;font-weight:800;letter-spacing:.02em;
+                padding-bottom:10px;margin-bottom:12px;
+                border-bottom:1px solid rgba(255,255,255,.08);">
+                🛡️ Moderation Panel
             </div>
 
 
@@ -630,21 +635,39 @@
             </div>
 
 
-            <div class="modpanel-actions" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;">
+            <style>
+                .modpanel-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+                .modpanel-actions .btn {
+                    border: none; font-weight: 600; padding: 7px 14px; border-radius: 8px;
+                    cursor: pointer; transition: transform .08s, filter .12s; font-size: .82rem;
+                }
+                .modpanel-actions .btn:hover { filter: brightness(1.15); transform: translateY(-1px); }
+                .modpanel-actions .btn:active { transform: translateY(0); }
+                .btn-mod-warn    { background: #e8a020; color: #1a1a1a; }
+                .btn-mod-timeout { background: #e07b24; color: #fff; }
+                .btn-mod-kick    { background: #d6543c; color: #fff; }
+                .btn-mod-ban     { background: #c0392b; color: #fff; }
+                .btn-mod-danger  { background: #8e2a20; color: #fff; }
+                .btn-mod-info    { background: #2980b9; color: #fff; }
+                .btn-mod-neutral { background: #4a4e57; color: #fff; }
+                .btn-mod-unban   { background: #27ae60; color: #fff; }
+            </style>
 
-                <button type="button" class="btn btn-sm btn-warning" data-action="warn">Warn</button>
-                <button type="button" class="btn btn-sm btn-warning" data-action="timeout">Timeout</button>
-                <button type="button" class="btn btn-sm btn-warning" data-action="untimeout">Remove Timeout</button>
-                <button type="button" class="btn btn-sm btn-danger" data-action="kick">Kick</button>
-                <button type="button" class="btn btn-sm btn-danger" data-action="ban">Ban</button>
-                <button type="button" class="btn btn-sm btn-secondary" data-action="unban">Unban</button>
-                <button type="button" class="btn btn-sm btn-secondary" data-action="clear">Clear Msgs</button>
-                <button type="button" class="btn btn-sm btn-info" data-action="note">Add Note</button>
-                <button type="button" class="btn btn-sm btn-info" data-action="watch">Watch / Unwatch</button>
-                <button type="button" class="btn btn-sm btn-info" data-action="xp">Add / Remove XP</button>
-                <button type="button" class="btn btn-sm btn-secondary" data-action="rename">Rename</button>
-                <button type="button" class="btn btn-sm btn-danger" data-action="strip">Strip Roles</button>
-                <button type="button" class="btn btn-sm btn-danger" data-action="wipe">Wipe Data</button>
+            <div class="modpanel-actions">
+
+                <button type="button" class="btn btn-mod-warn" data-action="warn">⚠️ Warn</button>
+                <button type="button" class="btn btn-mod-timeout" data-action="timeout">⏱️ Timeout</button>
+                <button type="button" class="btn btn-mod-neutral" data-action="untimeout">Remove Timeout</button>
+                <button type="button" class="btn btn-mod-kick" data-action="kick">👢 Kick</button>
+                <button type="button" class="btn btn-mod-ban" data-action="ban">🔨 Ban</button>
+                <button type="button" class="btn btn-mod-unban" data-action="unban">🔓 Unban</button>
+                <button type="button" class="btn btn-mod-neutral" data-action="clear">🧹 Clear Msgs</button>
+                <button type="button" class="btn btn-mod-info" data-action="note">📝 Add Note</button>
+                <button type="button" class="btn btn-mod-info" data-action="watch">👁️ Watch / Unwatch</button>
+                <button type="button" class="btn btn-mod-info" data-action="xp">⭐ Add / Remove XP</button>
+                <button type="button" class="btn btn-mod-neutral" data-action="rename">✏️ Rename</button>
+                <button type="button" class="btn btn-mod-danger" data-action="strip">🎭 Strip Roles</button>
+                <button type="button" class="btn btn-mod-danger" data-action="wipe">🗑️ Wipe Data</button>
 
             </div>
 
@@ -1925,16 +1948,46 @@ function renderModpanelLists(data) {
 
     document.getElementById("modpanel-case-list").innerHTML =
         cases.length
-            ? cases.map(c => `
-                <div style="padding:6px 0;border-bottom:1px solid rgba(255,255,255,.06);">
-                    ${actionEmoji[c.action] || "•"} <strong>${escapeHtml(c.action || "")}</strong>
+            ? cases.map(c => {
+                const extra = c.extra || {};
+                const modAvatar = extra.moderator_avatar || c.moderator_avatar;
+                const modId = extra.moderator_id || c.moderator_id;
+                const evidence = extra.evidence || c.evidence;
+                const avatarHtml = modAvatar
+                    ? `<img src="${escapeHtml(modAvatar)}" style="width:22px;height:22px;border-radius:50%;vertical-align:middle;margin-right:6px;" alt="">`
+                    : "";
+                const evidenceHtml = evidence
+                    ? `<div style="font-size:.75rem;margin-top:4px;">
+                         📎 <strong>Evidence:</strong> ${
+                             /^https?:\/\//i.test(evidence)
+                                 ? `<a href="${escapeHtml(evidence)}" target="_blank" rel="noopener" style="color:#7aa2ff;">${escapeHtml(evidence)}</a>`
+                                 : escapeHtml(evidence)
+                         }
+                       </div>`
+                    : "";
+                const dmBadge = (extra.dm_sent || c.dm_sent)
+                    ? ` <span style="font-size:.7rem;background:rgba(39,174,96,.25);padding:1px 6px;border-radius:99px;">DM sent</span>` : "";
+                return `
+                <div style="padding:8px 0;border-bottom:1px solid rgba(255,255,255,.06);">
+                    ${actionEmoji[c.action] || "•"} <strong>${escapeHtml(c.action || "")}</strong>${dmBadge}
                     — ${escapeHtml(c.reason || "")}
-                    <div style="font-size:.75rem;opacity:.6;">
-                        ${escapeHtml(c.moderator || "")} · ${escapeHtml(c.timestamp || "")}
+                    <div style="font-size:.75rem;opacity:.75;margin-top:3px;">
+                        ${avatarHtml}${escapeHtml(c.moderator || "")}
+                        ${modId ? `<span style="opacity:.6;">(${escapeHtml(modId)})</span>` : ""}
+                        · ${escapeHtml(c.timestamp || c.ts || "")}
                     </div>
-                </div>`).join("")
+                    ${evidenceHtml}
+                </div>`;
+            }).join("")
             : "None";
 
+}
+
+
+function askDmAndEvidence(actionName) {
+    const dm = confirm(`DM the user about this ${actionName}?\n\nOK = Yes, send DM\nCancel = No DM`);
+    const evidence = prompt("Evidence (optional — paste image URL or description):", "") || "";
+    return {dm, evidence: evidence.trim()};
 }
 
 
@@ -1964,7 +2017,9 @@ document.querySelectorAll("#modpanel-section [data-action]").forEach(btn => {
             if (action === "warn") {
                 const reason = prompt("Warn reason:");
                 if (reason === null) return;
-                await modpanelFetch(`${base}/warn`, "POST", {reason: reason || "No reason provided."});
+                const {dm, evidence} = askDmAndEvidence("warn");
+                await modpanelFetch(`${base}/warn`, "POST",
+                    {reason: reason || "No reason provided.", dm, evidence});
             }
 
             else if (action === "timeout") {
@@ -1973,8 +2028,9 @@ document.querySelectorAll("#modpanel-section [data-action]").forEach(btn => {
                 const seconds = parseDuration(durationStr);
                 if (!seconds) { alert("Invalid duration format."); return; }
                 const reason = prompt("Reason (optional):") || "";
+                const {dm, evidence} = askDmAndEvidence("timeout");
                 await modpanelFetch(`/api/servers/${guildId}/members/${memberId}/timeout`, "POST",
-                    {duration: seconds, reason: reason});
+                    {duration: seconds, reason: reason, dm, evidence});
             }
 
             else if (action === "untimeout") {
@@ -1986,8 +2042,9 @@ document.querySelectorAll("#modpanel-section [data-action]").forEach(btn => {
                 const reason = prompt("Kick reason:");
                 if (reason === null) return;
                 if (!confirm(`Kick this member?\nReason: ${reason || "none"}`)) return;
+                const {dm: kickDm, evidence: kickEv} = askDmAndEvidence("kick");
                 await modpanelFetch(`/api/servers/${guildId}/members/${memberId}/kick`, "POST",
-                    {reason: reason || "No reason provided."});
+                    {reason: reason || "No reason provided.", dm: kickDm, evidence: kickEv});
             }
 
             else if (action === "ban") {
@@ -1995,12 +2052,14 @@ document.querySelectorAll("#modpanel-section [data-action]").forEach(btn => {
                 if (reason === null) return;
                 const duration = (prompt("Duration (blank = permanent, e.g. 7d, 12h):", "") || "").trim();
                 if (!confirm(`Ban this member?\nReason: ${reason || "none"}\nDuration: ${duration || "permanent"}`)) return;
+                const {dm: banDm, evidence: banEv} = askDmAndEvidence("ban");
                 if (duration) {
                     await modpanelFetch(`${base}/tempban`, "POST",
-                        {reason: reason || "No reason provided.", duration: duration});
+                        {reason: reason || "No reason provided.", duration: duration,
+                         dm: banDm, evidence: banEv});
                 } else {
                     await modpanelFetch(`/api/servers/${guildId}/members/${memberId}/ban`, "POST",
-                        {reason: reason || "No reason provided."});
+                        {reason: reason || "No reason provided.", dm: banDm, evidence: banEv});
                 }
             }
 
