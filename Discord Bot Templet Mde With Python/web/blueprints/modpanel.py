@@ -10,9 +10,35 @@ from flask import Blueprint, request, jsonify
 
 import secrets
 
+from flask import session
+
 from web.services.discord_state import discord_state, run_coro_threadsafe
 from web.security.decorators import require_guild_access
 from web.blueprints.auth import get_csrf_token
+
+
+def _moderator():
+    """Return (name, id, avatar_url) of the logged-in Discord user."""
+    user = session.get("user") or {}
+    name = user.get("username") or user.get("global_name") or "Web dashboard"
+    uid = str(user.get("id") or "")
+    avatar_hash = user.get("avatar")
+    avatar_url = (
+        f"https://cdn.discordapp.com/avatars/{uid}/{avatar_hash}.png"
+        if uid and avatar_hash else None
+    )
+    return name, uid, avatar_url
+
+
+def _try_dm(member, text):
+    """Try to DM the member. Returns True on success."""
+    try:
+        from cogs.admin_cog import _dm_target
+        return bool(
+            run_coro_threadsafe(_dm_target(member, text)).result(timeout=15)
+        )
+    except Exception:
+        return False
 
 
 modpanel_api = Blueprint(
@@ -187,6 +213,11 @@ def modpanel_warn(guild_id, user_id):
 
     data = request.get_json(silent=True) or {}
     reason = (data.get("reason") or "No reason provided.").strip()
+    want_dm = bool(data.get("dm"))
+    evidence = (data.get("evidence") or "").strip() or None
+
+    mod_name, mod_id, mod_avatar = _moderator()
+    mod_label = f"{mod_name} ({mod_id})" if mod_id else mod_name
 
     _mod_record, _record_case, _save_mod_data = _mod_helpers()
     if not _mod_record:
@@ -195,20 +226,42 @@ def modpanel_warn(guild_id, user_id):
             "error": "Mod data helpers unavailable.",
         }), 500
 
+    # DM first (before any action that might remove them)
+    dm_sent = False
+    if want_dm:
+        guild, member = _get_member(guild_id, user_id)
+        if member:
+            dm_sent = _try_dm(
+                member,
+                f"⚠️ You've been warned in **{guild.name}**\n**Reason:** {reason}",
+            )
+
     mod_data, urec = _mod_record(guild_id, user_id)
     warns = urec.setdefault("warns", [])
     warns.append({
         "reason": reason,
-        "moderator": "Web dashboard",
+        "moderator": mod_label,
+        "moderator_id": mod_id,
+        "moderator_avatar": mod_avatar,
+        "evidence": evidence,
+        "dm_sent": dm_sent,
         "timestamp": __import__("datetime").datetime.now(
             __import__("datetime").timezone.utc
         ).isoformat(),
     })
     _save_mod_data(mod_data)
     if _record_case:
-        _record_case(guild_id, user_id, "warn", reason, "Web dashboard")
+        _record_case(
+            guild_id, user_id, "warn", reason, mod_label,
+            extra={
+                "moderator_id": mod_id,
+                "moderator_avatar": mod_avatar,
+                "evidence": evidence,
+                "dm_sent": dm_sent,
+            },
+        )
 
-    return jsonify({"success": True, "warn_count": len(warns)})
+    return jsonify({"success": True, "warn_count": len(warns), "dm_sent": dm_sent})
 
 
 # ============================================================
@@ -369,7 +422,9 @@ def modpanel_xp(guild_id, user_id):
 
     try:
         from cogs.Level_system import award_xp
-        award_xp(guild, int(user_id), display, amount, apply_event=False)
+        run_coro_threadsafe(
+            award_xp(guild, int(user_id), display, amount, apply_event=False)
+        ).result(timeout=15)
     except Exception as e:
         return jsonify({"success": False, "error": f"XP update failed: {e}"}), 500
 
@@ -543,6 +598,11 @@ def modpanel_tempban(guild_id, user_id):
     data = request.get_json(silent=True) or {}
     duration_str = (data.get("duration") or "").strip()
     reason = (data.get("reason") or "No reason provided.").strip()
+    want_dm = bool(data.get("dm"))
+    evidence = (data.get("evidence") or "").strip() or None
+
+    mod_name, mod_id, mod_avatar = _moderator()
+    mod_label = f"{mod_name} ({mod_id})" if mod_id else mod_name
 
     # Parse duration
     import re as _re
@@ -554,6 +614,14 @@ def modpanel_tempban(guild_id, user_id):
     seconds = n * mult
     if seconds <= 0 or seconds > 2419200:  # max 28d
         return jsonify({"success": False, "error": "Duration must be 1m to 28d."}), 400
+
+    # DM before ban
+    dm_sent = False
+    if want_dm:
+        dm_sent = _try_dm(
+            member,
+            f"🔨 You've been banned from **{guild.name}**\n**Reason:** {reason}\n**Duration:** {duration_str}",
+        )
 
     # Ban via Discord
     try:
@@ -584,10 +652,16 @@ def modpanel_tempban(guild_id, user_id):
         _record_case(
             guild_id, user_id, "ban",
             f"{reason} (tempban: {duration_str})",
-            "Web dashboard",
+            mod_label,
+            extra={
+                "moderator_id": mod_id,
+                "moderator_avatar": mod_avatar,
+                "evidence": evidence,
+                "dm_sent": dm_sent,
+            },
         )
 
-    return jsonify({"success": True, "duration": duration_str})
+    return jsonify({"success": True, "duration": duration_str, "dm_sent": dm_sent})
 
 
 # ============================================================
@@ -634,7 +708,9 @@ def modpanel_wipe(guild_id, user_id):
         xp, _ = _xp_for(guild_id, user_id)
         if xp > 0 and guild:
             display = member.display_name if member else str(user_id)
-            award_xp(guild, int(user_id), display, -xp, apply_event=False)
+            run_coro_threadsafe(
+                award_xp(guild, int(user_id), display, -xp, apply_event=False)
+            ).result(timeout=15)
     except Exception:
         pass
 
