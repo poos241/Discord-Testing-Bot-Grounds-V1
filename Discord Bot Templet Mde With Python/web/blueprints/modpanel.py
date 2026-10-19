@@ -20,7 +20,12 @@ from web.blueprints.auth import get_csrf_token
 def _moderator():
     """Return (name, id, avatar_url) of the logged-in Discord user."""
     user = session.get("user") or {}
-    name = user.get("username") or user.get("global_name") or "Web dashboard"
+    name = (
+        user.get("global_name")
+        or user.get("username")
+        or (f"User {user.get('id')}" if user.get("id") else None)
+        or "Web dashboard"
+    )
     uid = str(user.get("id") or "")
     avatar_hash = user.get("avatar")
     avatar_url = (
@@ -683,13 +688,43 @@ def modpanel_wipe(guild_id, user_id):
     if not _mod_record:
         return jsonify({"success": False, "error": "Mod data helpers unavailable."}), 500
 
+    mod_name, mod_id, _ = _moderator()
+    mod_label = f"{mod_name} ({mod_id})" if mod_id else mod_name
+
+    # Unban if banned
+    guild, member = _get_member(guild_id, user_id)
+    if guild:
+        try:
+            bans = run_coro_threadsafe(guild.bans()).result(timeout=15)
+            for ban_entry in bans:
+                if ban_entry.user.id == int(user_id):
+                    run_coro_threadsafe(
+                        guild.unban(ban_entry.user, reason="Wipe data via web dashboard")
+                    ).result(timeout=15)
+                    break
+        except Exception:
+            pass
+        # Remove timeout if timed out
+        if member:
+            try:
+                if hasattr(member, "is_timed_out") and member.is_timed_out():
+                    run_coro_threadsafe(
+                        member.timeout(None, reason="Wipe data via web dashboard")
+                    ).result(timeout=15)
+            except Exception:
+                pass
+
     # Clear warns/notes/cases from mod_data.json
     mod_data, urec = _mod_record(guild_id, user_id)
     urec["warns"] = []
     urec["notes"] = []
     _save_mod_data(mod_data)
     if _record_case:
-        _record_case(guild_id, user_id, "wipe", "Data wiped via web dashboard.", "Web dashboard")
+        _record_case(
+            guild_id, user_id, "wipe",
+            "All data wiped via web dashboard (warns, notes, XP, watch, ban, timeout).",
+            mod_label,
+        )
 
     # Remove watch entry
     wc = _watch_cog()
