@@ -87,6 +87,9 @@ class MemberService:
             "bot":
                 member.bot,
 
+            "status":
+                str(member.status) if hasattr(member, "status") else "offline",
+
             "avatar": (
                 str(member.display_avatar.url)
                 if member.display_avatar
