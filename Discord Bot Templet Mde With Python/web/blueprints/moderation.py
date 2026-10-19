@@ -44,6 +44,50 @@ def _fail(e):
     return jsonify({"success": False, "error": str(e)}), code
 
 
+def _moderator():
+    from flask import session
+    user = session.get("user") or {}
+    name = user.get("username") or user.get("global_name") or "Web dashboard"
+    uid = str(user.get("id") or "")
+    avatar_hash = user.get("avatar")
+    avatar_url = (
+        f"https://cdn.discordapp.com/avatars/{uid}/{avatar_hash}.png"
+        if uid and avatar_hash else None
+    )
+    label = f"{name} ({uid})" if uid else name
+    return label, uid, avatar_url
+
+
+def _record_web_case(guild_id, user_id, action, reason, extra=None):
+    try:
+        from cogs.admin_cog import _record_case
+        label, uid, avatar_url = _moderator()
+        ex = dict(extra or {})
+        ex.update({"moderator_id": uid, "moderator_avatar": avatar_url})
+        _record_case(guild_id, user_id, action, reason, label, extra=ex)
+    except Exception:
+        pass
+
+
+def _dm_member(guild_id, user_id, text):
+    try:
+        from cogs.admin_cog import _dm_target
+        bot = discord_state.bot
+        if not bot:
+            return False
+        guild = bot.get_guild(int(guild_id))
+        if not guild:
+            return False
+        member = guild.get_member(int(user_id))
+        if not member:
+            return False
+        return bool(
+            run_coro_threadsafe(_dm_target(member, text)).result(timeout=15)
+        )
+    except Exception:
+        return False
+
+
 def _check_csrf():
     """Validate the CSRF token on state-changing requests."""
     supplied = (
@@ -70,7 +114,21 @@ def timeout_member(guild_id, user_id):
         duration = int(data.get("duration", 600))
     except (TypeError, ValueError):
         duration = 600
-    reason = data.get("reason")
+    reason = data.get("reason") or "No reason provided."
+    want_dm = bool(data.get("dm"))
+    evidence = (data.get("evidence") or "").strip() or None
+
+    if want_dm:
+        bot = discord_state.bot
+        guild = bot.get_guild(int(guild_id)) if bot else None
+        gname = guild.name if guild else "the server"
+        dm_sent = _dm_member(
+            guild_id, user_id,
+            f"⏱️ You've been timed out in **{gname}**\n**Reason:** {reason}",
+        )
+    else:
+        dm_sent = False
+
     service = _service()
     try:
         run_coro_threadsafe(
@@ -78,8 +136,12 @@ def timeout_member(guild_id, user_id):
         ).result(timeout=20)
     except Exception as e:
         return _fail(e)
+    _record_web_case(
+        guild_id, user_id, "timeout", reason,
+        extra={"duration": duration, "evidence": evidence, "dm_sent": dm_sent},
+    )
     return _ok("timeout", guild_id, user_id,
-               duration=duration, reason=reason)
+               duration=duration, reason=reason, dm_sent=dm_sent)
 
 
 @moderation_api.post(
@@ -111,7 +173,21 @@ def kick_member(guild_id, user_id):
     if denied:
         return denied
     data = request.get_json(silent=True) or {}
-    reason = data.get("reason")
+    reason = data.get("reason") or "No reason provided."
+    want_dm = bool(data.get("dm"))
+    evidence = (data.get("evidence") or "").strip() or None
+
+    if want_dm:
+        bot = discord_state.bot
+        guild = bot.get_guild(int(guild_id)) if bot else None
+        gname = guild.name if guild else "the server"
+        dm_sent = _dm_member(
+            guild_id, user_id,
+            f"👢 You've been kicked from **{gname}**\n**Reason:** {reason}",
+        )
+    else:
+        dm_sent = False
+
     service = _service()
     try:
         run_coro_threadsafe(
@@ -119,7 +195,11 @@ def kick_member(guild_id, user_id):
         ).result(timeout=20)
     except Exception as e:
         return _fail(e)
-    return _ok("kick", guild_id, user_id)
+    _record_web_case(
+        guild_id, user_id, "kick", reason,
+        extra={"evidence": evidence, "dm_sent": dm_sent},
+    )
+    return _ok("kick", guild_id, user_id, dm_sent=dm_sent)
 
 
 @moderation_api.post(
@@ -131,12 +211,26 @@ def ban_member(guild_id, user_id):
     if denied:
         return denied
     data = request.get_json(silent=True) or {}
-    reason = data.get("reason")
+    reason = data.get("reason") or "No reason provided."
+    want_dm = bool(data.get("dm"))
+    evidence = (data.get("evidence") or "").strip() or None
     try:
         delete_days = int(data.get("delete_message_days", 0))
     except (TypeError, ValueError):
         delete_days = 0
     delete_days = max(0, min(delete_days, 7))
+
+    if want_dm:
+        bot = discord_state.bot
+        guild = bot.get_guild(int(guild_id)) if bot else None
+        gname = guild.name if guild else "the server"
+        dm_sent = _dm_member(
+            guild_id, user_id,
+            f"🔨 You've been banned from **{gname}**\n**Reason:** {reason}",
+        )
+    else:
+        dm_sent = False
+
     service = _service()
     try:
         run_coro_threadsafe(
@@ -144,7 +238,11 @@ def ban_member(guild_id, user_id):
         ).result(timeout=20)
     except Exception as e:
         return _fail(e)
-    return _ok("ban", guild_id, user_id)
+    _record_web_case(
+        guild_id, user_id, "ban", reason,
+        extra={"evidence": evidence, "dm_sent": dm_sent},
+    )
+    return _ok("ban", guild_id, user_id, dm_sent=dm_sent)
 
 
 @moderation_api.post(
