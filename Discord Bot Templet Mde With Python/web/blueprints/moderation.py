@@ -47,7 +47,12 @@ def _fail(e):
 def _moderator():
     from flask import session
     user = session.get("user") or {}
-    name = user.get("username") or user.get("global_name") or "Web dashboard"
+    name = (
+        user.get("global_name")
+        or user.get("username")
+        or (f"User {user.get('id')}" if user.get("id") else None)
+        or "Web dashboard"
+    )
     uid = str(user.get("id") or "")
     avatar_hash = user.get("avatar")
     avatar_url = (
