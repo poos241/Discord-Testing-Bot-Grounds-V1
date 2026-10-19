@@ -1,33 +1,8 @@
 {
     "557680433245061130": {
         "765094342279954509": {
-            "warns": [
-                {
-                    "reason": "this is just a test to see if this works.",
-                    "mod_id": 287282266261159937,
-                    "mod_name": "poos241 (Purekush)",
-                    "ts": 1792107578.4310265
-                },
-                {
-                    "reason": "this is a test to see if this even works",
-                    "mod_id": 287282266261159937,
-                    "mod_name": "poos241 (Purekush)",
-                    "ts": 1792109160.6133468
-                },
-                {
-                    "reason": "this is a test to see if this will work or not",
-                    "moderator": "Web dashboard",
-                    "timestamp": "2026-10-18T15:56:23.056699+00:00"
-                }
-            ],
-            "notes": [
-                {
-                    "text": "the user was acting bad in gen chat and had to give them a warning about it lets keep a eye on this user.",
-                    "mod_id": 287282266261159937,
-                    "mod_name": "poos241 (Purekush)",
-                    "ts": 1792071759.619103
-                }
-            ],
+            "warns": [],
+            "notes": [],
             "cases": [
                 {
                     "action": "warn",
@@ -67,6 +42,28 @@
                     "mod_id": null,
                     "mod_name": "poos241 (287282266261159937)",
                     "ts": 1792415012.761389,
+                    "extra": {
+                        "duration": 600,
+                        "evidence": null,
+                        "dm_sent": true,
+                        "moderator_id": "287282266261159937",
+                        "moderator_avatar": "https://cdn.discordapp.com/avatars/287282266261159937/d840e7f04f8ec86089ae9bf2e92d8ae2.png"
+                    }
+                },
+                {
+                    "action": "wipe",
+                    "reason": "All data wiped via web dashboard (warns, notes, XP, watch, ban, timeout).",
+                    "mod_id": null,
+                    "mod_name": "Purekush (287282266261159937)",
+                    "ts": 1792419248.0072968,
+                    "extra": {}
+                },
+                {
+                    "action": "timeout",
+                    "reason": "this is a test to make sure this works ",
+                    "mod_id": null,
+                    "mod_name": "Purekush (287282266261159937)",
+                    "ts": 1792419311.9397817,
                     "extra": {
                         "duration": 600,
                         "evidence": null,
