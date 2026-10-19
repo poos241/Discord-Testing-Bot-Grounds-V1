@@ -64,12 +64,28 @@ def _moderator():
 
 
 def _record_web_case(guild_id, user_id, action, reason, extra=None):
+    import datetime
     try:
-        from cogs.admin_cog import _record_case
+        from cogs.admin_cog import _mod_record, _save_mod_data
         label, uid, avatar_url = _moderator()
+        # label is "Name (id)"; split for separate fields
+        mod_name = label.rsplit(" (", 1)[0] if " (" in label else label
         ex = dict(extra or {})
-        ex.update({"moderator_id": uid, "moderator_avatar": avatar_url})
-        _record_case(guild_id, user_id, action, reason, label, extra=ex)
+        mod_data, urec = _mod_record(str(guild_id), str(user_id))
+        cases = urec.setdefault("cases", [])
+        cases.append({
+            "action": action,
+            "reason": reason,
+            "moderator": mod_name,
+            "moderator_id": uid,
+            "moderator_avatar": avatar_url,
+            "evidence": ex.get("evidence"),
+            "dm_sent": ex.get("dm_sent", False),
+            "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        })
+        if len(cases) > 50:
+            cases[:] = cases[-50:]
+        _save_mod_data(mod_data)
     except Exception:
         pass
 
