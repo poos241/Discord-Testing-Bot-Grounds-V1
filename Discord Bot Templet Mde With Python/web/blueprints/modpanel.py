@@ -17,6 +17,34 @@ from web.security.decorators import require_guild_access
 from web.blueprints.auth import get_csrf_token
 
 
+def _record_case_direct(guild_id, user_id, action, reason, evidence=None, dm_sent=False):
+    """Record a case directly to mod_data.json with full moderator attribution."""
+    import datetime
+    try:
+        _mod_record, _, _save_mod_data = _mod_helpers()
+        if not _mod_record:
+            return
+        mod_name, mod_id, mod_avatar = _moderator()
+        mod_data, urec = _mod_record(str(guild_id), str(user_id))
+        cases = urec.setdefault("cases", [])
+        cases.append({
+            "action": action,
+            "reason": reason,
+            "moderator": mod_name,
+            "moderator_id": mod_id,
+            "moderator_avatar": mod_avatar,
+            "evidence": evidence,
+            "dm_sent": dm_sent,
+            "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        })
+        # Keep last 50
+        if len(cases) > 50:
+            cases[:] = cases[-50:]
+        _save_mod_data(mod_data)
+    except Exception:
+        pass
+
+
 def _moderator():
     """Return (name, id, avatar_url) of the logged-in Discord user."""
     user = session.get("user") or {}
@@ -255,16 +283,8 @@ def modpanel_warn(guild_id, user_id):
         ).isoformat(),
     })
     _save_mod_data(mod_data)
-    if _record_case:
-        _record_case(
-            guild_id, user_id, "warn", reason, mod_label,
-            extra={
-                "moderator_id": mod_id,
-                "moderator_avatar": mod_avatar,
-                "evidence": evidence,
-                "dm_sent": dm_sent,
-            },
-        )
+    _record_case_direct(guild_id, user_id, "warn", reason,
+                        evidence=evidence, dm_sent=dm_sent)
 
     return jsonify({"success": True, "warn_count": len(warns), "dm_sent": dm_sent})
 
@@ -354,17 +374,27 @@ def modpanel_watch(guild_id, user_id):
     data = request.get_json(silent=True) or {}
     reason = (data.get("reason") or "Watched via web dashboard.").strip()
 
+    mod_name, mod_id, _ = _moderator()
+    mod_label = f"{mod_name} ({mod_id})" if mod_id else mod_name
+
     try:
         if hasattr(wc, "watch_add"):
-            result = wc.watch_add(str(guild_id), str(user_id), reason)
+            result = wc.watch_add(str(guild_id), str(user_id))
             if hasattr(result, "__await__"):
                 run_coro_threadsafe(result).result(timeout=15)
+        # Set reason/moderator directly on the watch entry
+        try:
+            users = wc._guild_data(str(guild_id)).get("users", {})
+            entry = users.get(str(user_id))
+            if isinstance(entry, dict):
+                entry["reason"] = reason
+                entry["added_by"] = mod_label
+        except Exception:
+            pass
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
-    _, _record_case, _ = _mod_helpers()
-    if _record_case:
-        _record_case(guild_id, user_id, "watch", reason, "Web dashboard")
+    _record_case_direct(guild_id, user_id, "watch", reason)
 
     return jsonify({"success": True, "watched": True})
 
@@ -390,9 +420,7 @@ def modpanel_unwatch(guild_id, user_id):
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
-    _, _record_case, _ = _mod_helpers()
-    if _record_case:
-        _record_case(guild_id, user_id, "unwatch", "Removed via web dashboard.", "Web dashboard")
+    _record_case_direct(guild_id, user_id, "unwatch", "Watch removed via web dashboard.")
 
     return jsonify({"success": True, "watched": False})
 
@@ -434,9 +462,8 @@ def modpanel_xp(guild_id, user_id):
         return jsonify({"success": False, "error": f"XP update failed: {e}"}), 500
 
     _, _record_case, _ = _mod_helpers()
-    if _record_case:
-        action = "add_xp" if amount > 0 else "remove_xp"
-        _record_case(guild_id, user_id, action, f"{amount} XP", "Web dashboard")
+    action = "add_xp" if amount > 0 else "remove_xp"
+    _record_case_direct(guild_id, user_id, action, f"{amount} XP")
 
     xp, level = _xp_for(guild_id, user_id)
     return jsonify({"success": True, "xp": xp, "level": level})
@@ -470,12 +497,10 @@ def modpanel_rename(guild_id, user_id):
         return jsonify({"success": False, "error": str(e)}), 500
 
     _, _record_case, _ = _mod_helpers()
-    if _record_case:
-        _record_case(
-            guild_id, user_id, "rename",
-            f"Nickname set to '{nickname}'" if nickname else "Nickname reset",
-            "Web dashboard",
-        )
+    _record_case_direct(
+        guild_id, user_id, "rename",
+        f"Nickname set to '{nickname}'" if nickname else "Nickname reset",
+    )
 
     return jsonify({"success": True})
 
@@ -511,12 +536,10 @@ def modpanel_strip_roles(guild_id, user_id):
         return jsonify({"success": False, "error": str(e)}), 500
 
     _, _record_case, _ = _mod_helpers()
-    if _record_case:
-        _record_case(
-            guild_id, user_id, "strip_roles",
-            f"Removed {len(removed)} roles: {', '.join(removed[:10])}",
-            "Web dashboard",
-        )
+    _record_case_direct(
+        guild_id, user_id, "strip_roles",
+        f"Removed {len(removed)} roles: {', '.join(removed[:10])}",
+    )
 
     return jsonify({"success": True, "removed": removed})
 
@@ -569,12 +592,10 @@ def modpanel_clear(guild_id, user_id):
             continue
 
     _, _record_case, _ = _mod_helpers()
-    if _record_case:
-        _record_case(
-            guild_id, user_id, "clear",
-            f"Cleared ~{cleared} messages via web dashboard.",
-            "Web dashboard",
-        )
+    _record_case_direct(
+        guild_id, user_id, "clear",
+        f"Cleared ~{cleared} messages via web dashboard.",
+    )
 
     return jsonify({"success": True, "cleared": cleared})
 
@@ -653,18 +674,11 @@ def modpanel_tempban(guild_id, user_id):
         pass
 
     _, _record_case, _ = _mod_helpers()
-    if _record_case:
-        _record_case(
-            guild_id, user_id, "ban",
-            f"{reason} (tempban: {duration_str})",
-            mod_label,
-            extra={
-                "moderator_id": mod_id,
-                "moderator_avatar": mod_avatar,
-                "evidence": evidence,
-                "dm_sent": dm_sent,
-            },
-        )
+    _record_case_direct(
+        guild_id, user_id, "ban",
+        f"{reason} (tempban: {duration_str})",
+        evidence=evidence, dm_sent=dm_sent,
+    )
 
     return jsonify({"success": True, "duration": duration_str, "dm_sent": dm_sent})
 
@@ -718,13 +732,12 @@ def modpanel_wipe(guild_id, user_id):
     mod_data, urec = _mod_record(guild_id, user_id)
     urec["warns"] = []
     urec["notes"] = []
+    urec["cases"] = []
     _save_mod_data(mod_data)
-    if _record_case:
-        _record_case(
-            guild_id, user_id, "wipe",
-            "All data wiped via web dashboard (warns, notes, XP, watch, ban, timeout).",
-            mod_label,
-        )
+    _record_case_direct(
+        guild_id, user_id, "wipe",
+        "All data wiped via web dashboard (warns, notes, XP, watch, ban, timeout).",
+    )
 
     # Remove watch entry
     wc = _watch_cog()
