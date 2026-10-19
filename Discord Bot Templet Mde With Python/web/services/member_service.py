@@ -1,6 +1,6 @@
 
 
-class MemberService:  # presence-status-update
+class MemberService:
 
     def __init__(self, bot):
         self.bot = bot
