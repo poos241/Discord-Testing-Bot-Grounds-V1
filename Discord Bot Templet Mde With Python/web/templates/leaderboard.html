@@ -152,6 +152,11 @@ load().catch(e => {
         `<div style="text-align:center;opacity:.6;padding:40px;">Error: ${escapeHtml(e.message)}</div>`;
 });
 
+// Silent auto-refresh every 60s
+setInterval(function() {
+    load().catch(function() {});
+}, 60000);
+
 </script>
 
 </body>
