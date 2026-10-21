@@ -277,6 +277,21 @@ def create_app(bot):
         )
 
 
+    @app.route("/profile")
+    def profile():
+
+        if not session.get("user"):
+
+            return redirect(
+                url_for("auth.login")
+            )
+
+        return render_template(
+            "profile.html",
+            user=session.get("user"),
+        )
+
+
     @app.get("/servers/<int:guild_id>")
     def server_page(guild_id):
 
