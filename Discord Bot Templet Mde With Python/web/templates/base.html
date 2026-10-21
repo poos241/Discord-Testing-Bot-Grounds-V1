@@ -117,6 +117,55 @@
 
     <div class="user-area">
 
+        <a href="{{ url_for('servers') }}" class="user-pill" id="navbar-server-pill"
+            title="Current server" style="display: none;">
+            <div class="user-avatar-placeholder" id="navbar-server-avatar">?</div>
+            <div>
+                <div class="user-pill-label">CURRENT SERVER</div>
+                <div class="user-pill-name" id="navbar-server-name">No server</div>
+            </div>
+        </a>
+
+        <script>
+        (function() {
+            try {
+                var guildId = null;
+                // Try to find guild id from URL or localStorage
+                var m = window.location.pathname.match(/\/servers\/(\d+)/);
+                if (m) guildId = m[1];
+                if (!guildId) {
+                    try { guildId = localStorage.getItem("kush_bush_selected_guild"); } catch (e) {}
+                }
+                if (!guildId) return;
+                fetch("/api/servers/" + guildId, {credentials: "same-origin"})
+                    .then(function(r) { return r.ok ? r.json() : null; })
+                    .then(function(data) {
+                        if (!data) return;
+                        var name = data.name || data.guild_name || "Server";
+                        var icon = data.icon || data.icon_url;
+                        var pill = document.getElementById("navbar-server-pill");
+                        var nameEl = document.getElementById("navbar-server-name");
+                        var avEl = document.getElementById("navbar-server-avatar");
+                        if (nameEl) nameEl.textContent = name;
+                        if (avEl) {
+                            if (icon) {
+                                avEl.innerHTML = "";
+                                var img = document.createElement("img");
+                                img.src = icon;
+                                img.alt = "";
+                                img.style.cssText = "width:32px;height:32px;border-radius:50%;";
+                                avEl.appendChild(img);
+                            } else {
+                                avEl.textContent = (name[0] || "?").toUpperCase();
+                            }
+                        }
+                        if (pill) pill.style.display = "";
+                    })
+                    .catch(function() {});
+            } catch (e) {}
+        })();
+        </script>
+
         {% if session.get("user") %}
 
             {% set user = session.get("user") %}
