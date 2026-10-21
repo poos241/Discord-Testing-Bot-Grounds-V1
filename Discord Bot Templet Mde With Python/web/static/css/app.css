@@ -1010,6 +1010,51 @@ a:hover {
 }
 
 
+/* ============================================================
+   LIVELINESS — entrance animations & value pulses
+   ============================================================ */
+
+@keyframes fadeSlideIn {
+    from { opacity: 0; transform: translateY(12px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes pulseGlow {
+    0%   { box-shadow: 0 0 0 0 rgba(88,101,242,.45); }
+    100% { box-shadow: 0 0 0 12px rgba(88,101,242,0); }
+}
+
+@keyframes valueFlash {
+    0%   { color: #7aa2ff; }
+    100% { color: inherit; }
+}
+
+.animate-in {
+    animation: fadeSlideIn .45s ease both;
+}
+
+.animate-in-1 { animation: fadeSlideIn .45s ease both; animation-delay: .05s; }
+.animate-in-2 { animation: fadeSlideIn .45s ease both; animation-delay: .12s; }
+.animate-in-3 { animation: fadeSlideIn .45s ease both; animation-delay: .19s; }
+.animate-in-4 { animation: fadeSlideIn .45s ease both; animation-delay: .26s; }
+.animate-in-5 { animation: fadeSlideIn .45s ease both; animation-delay: .33s; }
+
+.pulse-once {
+    animation: pulseGlow .8s ease-out;
+}
+
+.value-changed {
+    animation: valueFlash 1.2s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .animate-in, .animate-in-1, .animate-in-2, .animate-in-3,
+    .animate-in-4, .animate-in-5, .pulse-once, .value-changed {
+        animation: none;
+    }
+}
+
+
 .user-avatar {
 
     width: 34px;
