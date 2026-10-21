@@ -32,6 +32,11 @@ document.addEventListener(
 
         loadChannels();
 
+        // Silent auto-refresh every 45s
+        setInterval(function() {
+            loadChannels(true).catch(function() {});
+        }, 45000);
+
     }
 );
 
@@ -249,7 +254,7 @@ function getChannelTypeLabel(
    LOAD CHANNELS
 ========================================================= */
 
-async function loadChannels() {
+async function loadChannels(silent) {
 
     const list =
         document.getElementById(
@@ -279,7 +284,8 @@ async function loadChannels() {
     }
 
 
-    list.innerHTML = `
+    if (!silent) {
+        list.innerHTML = `
 
         <div class="channels-loading">
 
@@ -291,7 +297,8 @@ async function loadChannels() {
 
         </div>
 
-    `;
+        `;
+    }
 
 
     try {
