@@ -725,7 +725,12 @@ def create_app(bot):
 
 if __name__ == "__main__":
 
+    from web.serve import run_server, get_host_port
+
     app = create_app(bot=None)
 
-    debug = os.environ.get("WEB_DEBUG", "").lower() in ("1", "true", "yes")
-    app.run(host="127.0.0.1", port=5000, debug=debug, use_reloader=False)
+    host, port = get_host_port()
+    # Standalone test defaults to localhost only
+    if os.environ.get("WEB_HOST") is None:
+        host = "127.0.0.1"
+    run_server(app, host=host, port=port)
