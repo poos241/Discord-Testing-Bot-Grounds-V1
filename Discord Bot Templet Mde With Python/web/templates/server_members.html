@@ -1109,7 +1109,9 @@ document.addEventListener(
    MEMBERS
 ========================================================= */
 
-async function loadMembers() {
+async function loadMembers(silent) {
+
+    window._membersSilent = !!silent;
 
     const container =
         document.getElementById(
@@ -1117,7 +1119,8 @@ async function loadMembers() {
         );
 
 
-    container.innerHTML = `
+    if (!silent) {
+        container.innerHTML = `
 
         <div class="members-loading">
 
@@ -1127,7 +1130,8 @@ async function loadMembers() {
                 Loading members...
             </span>
 
-        </div>
+        </div>`;
+    }
 
     `;
 
@@ -1257,6 +1261,8 @@ function updateSummary(
 function renderMembers(
     members
 ) {
+
+    var silent = !!window._membersSilent;
 
     const container =
         document.getElementById(
@@ -1604,6 +1610,11 @@ function renderMembers(
             }
         ).join("");
 
+
+    // Stagger-fade rows in (only on non-silent loads to avoid flicker)
+    if (!silent && window.staggerIn) {
+        window.staggerIn(".member-row-button", 5);
+    }
 
     container
         .querySelectorAll(
@@ -2591,6 +2602,15 @@ Promise.all(
         loadMembers()
     ]
 );
+
+
+// Silent auto-refresh every 30s (preserves search/filter/scroll)
+setInterval(function() {
+    // Don't refresh while a member modal is open
+    var modal = document.getElementById("member-modal");
+    if (modal && modal.style.display !== "none" && modal.offsetParent !== null) return;
+    loadMembers(true).catch(function() {});
+}, 30000);
 
 </script>
 
