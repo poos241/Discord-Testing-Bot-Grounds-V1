@@ -272,6 +272,34 @@
     </div>
 
 
+    <script>
+    // Hide legacy per-page server pill — server info now lives in the navbar
+    (function() {
+        function hideLegacyPill() {
+            var nameEl = document.getElementById("server-picker-name");
+            if (nameEl) {
+                // Walk up to find the pill container (usually 2-3 levels up)
+                var el = nameEl;
+                for (var i = 0; i < 4 && el; i++) {
+                    el = el.parentElement;
+                    if (el && el.textContent && el.textContent.indexOf("CURRENT SERVER") !== -1) {
+                        el.style.display = "none";
+                        break;
+                    }
+                }
+            }
+        }
+        if (document.readyState === "loading") {
+            document.addEventListener("DOMContentLoaded", hideLegacyPill);
+        } else {
+            hideLegacyPill();
+        }
+        // Also catch it if dashboard.js renders it late
+        setTimeout(hideLegacyPill, 1000);
+        setTimeout(hideLegacyPill, 3000);
+    })();
+    </script>
+
     {% block scripts %}
 
     {% endblock %}
