@@ -39,7 +39,7 @@ client.load_extension("cogs.Logger")
 async def on_message(message):
     if message.guild is None and not message.author.bot:
         if message.content.lower() == "hi":
-            await message.channel.send("Hello 👋 I work in DMs too!")
+            await message.channel.send("Hello ð I work in DMs too!")
     await client.process_commands(message)  # let commands still run
 
 
@@ -55,48 +55,48 @@ async def change_status():
 
 @client.event
 async def on_ready():
-    # 🔍 Sanity check: syncing guild-specific commands fails with
+    # ð Sanity check: syncing guild-specific commands fails with
     # 403 Missing Access if the bot isn't actually in every guild
     # listed in GUILD_IDS. Warn about it instead of cryptic tracebacks.
     missing = [gid for gid in GUILD_IDS if client.get_guild(gid) is None]
     if missing:
-        print(f"⚠️ WARNING: the bot is not a member of these guilds from GUILD_IDS: {missing}")
+        print(f"â ï¸ WARNING: the bot is not a member of these guilds from GUILD_IDS: {missing}")
         print("   Guild slash commands will fail to sync (403 Missing Access).")
         print("   Invite the bot to those servers, or remove the IDs from GUILD_IDS in config.py.")
 
-    # ✅ Sync slash commands
+    # â Sync slash commands
     try:
         await client.sync_commands(force=True)
     except discord.Forbidden:
-        print("❌ Command sync failed: 403 Missing Access.")
+        print("â Command sync failed: 403 Missing Access.")
         print("   The bot is missing from a guild in GUILD_IDS, or a guild ID is wrong.")
         print("   Fix GUILD_IDS in config.py (or invite the bot), then restart.")
         return
 
     currentDT = DT.datetime.now()
 
-    print(f"✅ Logged in as {client.user} (id: {client.user.id}) Commands synced! Time: {currentDT.strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"â Logged in as {client.user} (id: {client.user.id}) Commands synced! Time: {currentDT.strftime('%Y-%m-%d %H:%M:%S')}")
 
-    # ✅ Start any background tasks
+    # â Start any background tasks
     client.loop.create_task(change_status())
 
-    # ✅ Start the web dashboard (Flask in a background thread)
+    # â Start the web dashboard (Flask in a background thread)
     if os.getenv("WEB_ENABLED", "true").lower() in ("1", "true", "yes"):
         try:
             import threading
             from web.app import create_app
+            from web.serve import run_server
             web_app = create_app(client)
             web_host = os.getenv("WEB_HOST", "0.0.0.0")
             web_port = int(os.getenv("WEB_PORT", "5000"))
             threading.Thread(
-                target=web_app.run,
-                kwargs={"host": web_host, "port": web_port,
-                        "debug": False, "use_reloader": False},
+                target=run_server,
+                args=(web_app, web_host, web_port),
                 daemon=True, name="web-ui",
             ).start()
-            print(f"🌐 Web dashboard running at http://{web_host}:{web_port}")
+            print(f"ð Web dashboard running at http://{web_host}:{web_port}")
         except Exception as e:
-            print(f"⚠️ Web dashboard failed to start: {e!r}")
+            print(f"â ï¸ Web dashboard failed to start: {e!r}")
 
 
 if __name__ == "__main__":
