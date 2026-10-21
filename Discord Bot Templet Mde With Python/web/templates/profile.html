@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+
+{% block title %}Profile — Kush Bush Dashboard{% endblock %}
+
+{% block body %}
+<div style="max-width: 640px; margin: 40px auto; padding: 0 16px;">
+    <div style="background: rgba(255,255,255,.03); border: 1px solid rgba(255,255,255,.08);
+        border-radius: 16px; padding: 32px; text-align: center;">
+        {% if user.avatar %}
+        <img src="https://cdn.discordapp.com/avatars/{{ user.id }}/{{ user.avatar }}.png"
+            alt="" style="width: 96px; height: 96px; border-radius: 50%; margin-bottom: 16px;">
+        {% else %}
+        <div style="width: 96px; height: 96px; border-radius: 50%; background: #5865f2;
+            display: inline-flex; align-items: center; justify-content: center;
+            font-size: 2.5rem; font-weight: 800; color: #fff; margin-bottom: 16px;">
+            {{ (user.global_name or user.username or "U")[0] }}
+        </div>
+        {% endif %}
+        <h2 style="margin: 0 0 4px;">{{ user.global_name or user.username }}</h2>
+        <div style="opacity: .55; font-size: .9rem; margin-bottom: 24px;">
+            @{{ user.username }} · ID: {{ user.id }}
+        </div>
+        <div style="opacity: .5; font-size: .85rem;">
+            More profile features coming soon.
+        </div>
+    </div>
+</div>
+{% endblock %}
