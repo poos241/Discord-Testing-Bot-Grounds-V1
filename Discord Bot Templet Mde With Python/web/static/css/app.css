@@ -940,6 +940,76 @@ a:hover {
 }
 
 
+.user-pill {
+
+    display: flex;
+
+    align-items: center;
+
+    gap: 10px;
+
+    padding: 6px 14px 6px 6px;
+
+    background: rgba(255,255,255,0.05);
+
+    border: 1px solid rgba(255,255,255,0.09);
+
+    border-radius: 99px;
+
+    cursor: pointer;
+
+    transition: background .12s, border-color .12s;
+
+    text-decoration: none;
+
+    color: inherit;
+
+}
+
+
+.user-pill:hover {
+
+    background: rgba(255,255,255,0.09);
+
+    border-color: rgba(255,255,255,0.16);
+
+}
+
+
+.user-pill .user-avatar,
+.user-pill .user-avatar-placeholder {
+
+    width: 32px;
+
+    height: 32px;
+
+}
+
+
+.user-pill-label {
+
+    font-size: .65rem;
+
+    opacity: .5;
+
+    letter-spacing: .04em;
+
+    line-height: 1;
+
+}
+
+
+.user-pill-name {
+
+    font-size: .85rem;
+
+    font-weight: 700;
+
+    line-height: 1.2;
+
+}
+
+
 .user-avatar {
 
     width: 34px;
