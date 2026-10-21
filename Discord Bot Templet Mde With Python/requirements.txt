@@ -6,3 +6,4 @@ aiosqlite
 aiohttp
 pillow
 Flask>=3.0
+waitress>=2.1
