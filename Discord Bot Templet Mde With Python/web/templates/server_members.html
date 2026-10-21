@@ -1962,11 +1962,19 @@ async function loadModPanel(memberId) {
         const tAv = document.getElementById("modpanel-case-target-avatar");
         const tName = document.getElementById("modpanel-case-target-name");
         const tId = document.getElementById("modpanel-case-target-id");
+        // Stash the raw avatar URL where the case renderer can read it safely
+        window._modpanelTargetAvatar = "";
+        window._modpanelTargetName = "";
+        window._modpanelTargetId = "";
         if (result.member) {
-            tAv.src = result.member.avatar_url || "";
-            tAv.style.display = result.member.avatar_url ? "" : "none";
-            tName.textContent = result.member.display_name || result.member.name || "";
-            tId.textContent = result.member.id ? `ID: ${result.member.id}` : "";
+            const avUrl = result.member.avatar || "";
+            window._modpanelTargetAvatar = avUrl;
+            window._modpanelTargetName = result.member.display_name || result.member.name || "";
+            window._modpanelTargetId = result.member.id || "";
+            tAv.src = avUrl;
+            tAv.style.display = avUrl ? "" : "none";
+            tName.textContent = window._modpanelTargetName;
+            tId.textContent = window._modpanelTargetId ? `ID: ${window._modpanelTargetId}` : "";
         }
 
         renderModpanelLists(result);
@@ -2031,13 +2039,10 @@ function renderModpanelLists(data) {
         add_xp: "⭐", remove_xp: "⭐",
     };
 
-    // Target user info for the ACTION BY / MEMBER cards
-    const targetAv = document.getElementById("modpanel-case-target-avatar");
-    const targetName = document.getElementById("modpanel-case-target-name");
-    const targetIdEl = document.getElementById("modpanel-case-target-id");
-    const tAvSrc = targetAv ? targetAv.src : "";
-    const tName = targetName ? targetName.textContent : "";
-    const tId = targetIdEl ? targetIdEl.textContent.replace(/^ID:\s*/, "") : "";
+    // Target user info for the ACTION BY / MEMBER cards (from stashed vars)
+    const tAvSrc = window._modpanelTargetAvatar || "";
+    const tName = window._modpanelTargetName || "";
+    const tId = window._modpanelTargetId || "";
 
     document.getElementById("modpanel-case-list").innerHTML =
         cases.length
