@@ -167,6 +167,51 @@
 
 </nav>
 
+    {% if session.get("user") %}
+    {% set _u = session.get("user") %}
+    <div id="welcome-banner" style="
+        margin: 0; padding: 14px 24px;
+        background: linear-gradient(135deg, rgba(88,101,242,.12), rgba(88,101,242,.03));
+        border-bottom: 1px solid rgba(255,255,255,.06);
+        display: flex; align-items: center; justify-content: space-between; gap: 16px;
+        flex-wrap: wrap;">
+        <div>
+            <div id="welcome-greeting" style="font-size: 1.15rem; font-weight: 800;">
+                Welcome back, {{ _u.global_name or _u.username }}!
+            </div>
+            <div style="font-size: .8rem; opacity: .6; margin-top: 2px;">
+                Here's what's happening in your servers today.
+            </div>
+        </div>
+        <div id="welcome-clock" style="text-align: right;">
+            <div id="welcome-time" style="font-size: 1.3rem; font-weight: 700; font-variant-numeric: tabular-nums;">--:--</div>
+            <div id="welcome-date" style="font-size: .8rem; opacity: .6;"></div>
+        </div>
+    </div>
+    <script>
+    (function() {
+        function updateWelcome() {
+            const now = new Date();
+            const h = now.getHours();
+            let greeting = "Good evening";
+            if (h >= 5 && h < 12) greeting = "Good morning";
+            else if (h >= 12 && h < 17) greeting = "Good afternoon";
+            else if (h >= 17 && h < 22) greeting = "Good evening";
+            else greeting = "Good night";
+            const name = {{ (_u.global_name or _u.username or "friend") | tojson }};
+            const gEl = document.getElementById("welcome-greeting");
+            if (gEl) gEl.textContent = greeting + ", " + name + "!";
+            const tEl = document.getElementById("welcome-time");
+            if (tEl) tEl.textContent = now.toLocaleTimeString([], {hour: "numeric", minute: "2-digit"});
+            const dEl = document.getElementById("welcome-date");
+            if (dEl) dEl.textContent = now.toLocaleDateString([], {weekday: "long", month: "long", day: "numeric", year: "numeric"});
+        }
+        updateWelcome();
+        setInterval(updateWelcome, 30000);
+    })();
+    </script>
+    {% endif %}
+
     <div class="container-fluid px-3 px-lg-4 py-3">
 
         {% block body %}
