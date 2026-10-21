@@ -5,72 +5,14 @@
             "notes": [],
             "cases": [
                 {
-                    "action": "warn",
-                    "reason": "this is a test to see if this will work or not",
-                    "mod_id": null,
-                    "mod_name": "Web dashboard",
-                    "ts": 1792338983.0582018,
-                    "extra": {}
-                },
-                {
-                    "action": "add_xp",
-                    "reason": "1000 XP",
-                    "mod_id": null,
-                    "mod_name": "Web dashboard",
-                    "ts": 1792341287.4485216,
-                    "extra": {}
-                },
-                {
-                    "action": "rename",
-                    "reason": "Nickname set to 'Pure Kush 2.0 Alt'",
-                    "mod_id": null,
-                    "mod_name": "Web dashboard",
-                    "ts": 1792414907.0429535,
-                    "extra": {}
-                },
-                {
-                    "action": "add_xp",
-                    "reason": "1000 XP",
-                    "mod_id": null,
-                    "mod_name": "Web dashboard",
-                    "ts": 1792414952.4642806,
-                    "extra": {}
-                },
-                {
-                    "action": "timeout",
-                    "reason": "this is a test to make sure the time out thing works. ",
-                    "mod_id": null,
-                    "mod_name": "poos241 (287282266261159937)",
-                    "ts": 1792415012.761389,
-                    "extra": {
-                        "duration": 600,
-                        "evidence": null,
-                        "dm_sent": true,
-                        "moderator_id": "287282266261159937",
-                        "moderator_avatar": "https://cdn.discordapp.com/avatars/287282266261159937/d840e7f04f8ec86089ae9bf2e92d8ae2.png"
-                    }
-                },
-                {
                     "action": "wipe",
                     "reason": "All data wiped via web dashboard (warns, notes, XP, watch, ban, timeout).",
-                    "mod_id": null,
-                    "mod_name": "Purekush (287282266261159937)",
-                    "ts": 1792419248.0072968,
-                    "extra": {}
-                },
-                {
-                    "action": "timeout",
-                    "reason": "this is a test to make sure this works ",
-                    "mod_id": null,
-                    "mod_name": "Purekush (287282266261159937)",
-                    "ts": 1792419311.9397817,
-                    "extra": {
-                        "duration": 600,
-                        "evidence": null,
-                        "dm_sent": true,
-                        "moderator_id": "287282266261159937",
-                        "moderator_avatar": "https://cdn.discordapp.com/avatars/287282266261159937/d840e7f04f8ec86089ae9bf2e92d8ae2.png"
-                    }
+                    "moderator": "Purekush",
+                    "moderator_id": "287282266261159937",
+                    "moderator_avatar": "https://cdn.discordapp.com/avatars/287282266261159937/d840e7f04f8ec86089ae9bf2e92d8ae2.png",
+                    "evidence": null,
+                    "dm_sent": false,
+                    "timestamp": "2026-10-19T14:42:45.527738+00:00"
                 }
             ]
         }
