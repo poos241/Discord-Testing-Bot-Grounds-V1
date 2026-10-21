@@ -121,28 +121,30 @@
 
             {% set user = session.get("user") %}
 
-            {% if user.avatar %}
+            <a href="{{ url_for('profile') }}" class="user-pill" title="View profile">
 
-                <img
-                    class="user-avatar"
-                    src="https://cdn.discordapp.com/avatars/{{ user.id }}/{{ user.avatar }}.png"
-                    alt="Discord Avatar"
-                >
+                {% if user.avatar %}
 
-            {% else %}
+                    <img
+                        class="user-avatar"
+                        src="https://cdn.discordapp.com/avatars/{{ user.id }}/{{ user.avatar }}.png"
+                        alt="Discord Avatar"
+                    >
 
-                <div class="user-avatar-placeholder">
-                    {{ (user.global_name or user.username or "U")[0] }}
+                {% else %}
+
+                    <div class="user-avatar-placeholder">
+                        {{ (user.global_name or user.username or "U")[0] }}
+                    </div>
+
+                {% endif %}
+
+                <div>
+                    <div class="user-pill-label">LOGGED IN AS</div>
+                    <div class="user-pill-name">{{ user.global_name or user.username }}</div>
                 </div>
 
-            {% endif %}
-
-
-            <span class="user-name">
-
-                {{ user.global_name or user.username }}
-
-            </span>
+            </a>
 
 
             <a
