@@ -23,8 +23,10 @@ import time
 import traceback
 from pathlib import Path
 
-import os
-import time
+try:
+    from config import GUILD_IDS
+except ImportError:
+    GUILD_IDS = None
 
 # --- Self-contained debug state (no dependency on web/ package) ---
 _FLAG_FILE = Path(__file__).resolve().parent.parent / "data" / ".debug_enabled"
@@ -70,7 +72,7 @@ class DebugCog(commands.Cog):
         if _debug_enabled():
             print("[DEBUG] DebugCog loaded — debug mode is ON", flush=True)
 
-    debug = SlashCommandGroup("debug", "Toggle debug mode")
+    debug = SlashCommandGroup("debug", "Toggle debug mode", guild_ids=GUILD_IDS)
 
     @debug.command(name="on", description="Enable debug logging")
     async def debug_on(self, ctx):
