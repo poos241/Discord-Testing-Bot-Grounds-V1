@@ -350,6 +350,30 @@ def setup(bot):
 2. Add `"cogs.my_cog"` to the `COGS` list at the top of `bot.py`.
 3. Restart the bot — your new slash command will sync on startup.
 
+## 🐛 Debug mode
+
+A shared debug system for the bot and the web dashboard. Off by default.
+
+**Enable at startup** — add to your `.env`:
+```
+DEBUG=1
+```
+
+**Toggle at runtime** (no restart needed):
+- Discord: `/debug on` · `/debug off` · `/debug status` (Manage Server permission required)
+- Web dashboard: click the 🐛 button (bottom-right, appears when logged in) to open
+  the debug panel, then hit **Enable Debug** / **Disable Debug**
+
+The runtime toggle is saved to `data/.debug_enabled` and persists across restarts
+until you change it again. Delete that file to go back to the `.env` setting.
+
+**What you get when it's on:**
+- Bot console: every slash command logged (who ran it, where, with what options),
+  plus full tracebacks on command errors
+- Web console: API requests logged with status code and timing; 4xx/5xx highlighted
+- Web debug panel: recent API requests with timing, plus any JavaScript errors
+  captured on the current page
+
 ## Troubleshooting
 
 - **`Improper token has been passed`** — your `.env` file is missing or

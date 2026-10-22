@@ -302,6 +302,130 @@
 
     <script src="{{ url_for('static', filename='js/lively.js') }}"></script>
 
+    {% if session.get("user") %}
+    <!-- Debug panel (toggle via /api/debug/toggle) -->
+    <style>
+        #dbg-fab {
+            position: fixed; bottom: 20px; right: 20px; z-index: 9999;
+            width: 44px; height: 44px; border-radius: 50%;
+            background: #2a2d34; border: 1px solid rgba(255,255,255,.15);
+            color: #fff; font-size: 1.2rem; cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            transition: background .15s;
+        }
+        #dbg-fab:hover { background: #3a3e47; }
+        #dbg-fab.on { background: #7a2e2e; border-color: #c0392b; }
+        #dbg-panel {
+            position: fixed; bottom: 74px; right: 20px; z-index: 9999;
+            width: 380px; max-height: 480px; overflow-y: auto;
+            background: #1e1f24; border: 1px solid rgba(255,255,255,.12);
+            border-radius: 12px; padding: 14px; display: none;
+            font-size: .8rem; box-shadow: 0 8px 32px rgba(0,0,0,.5);
+        }
+        #dbg-panel h4 { margin: 0 0 8px; font-size: .9rem; }
+        #dbg-panel .dbg-row {
+            padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,.05);
+            font-family: monospace; font-size: .72rem;
+            display: flex; justify-content: space-between; gap: 8px;
+        }
+        #dbg-panel .dbg-err { color: #ff7b7b; }
+        #dbg-panel .dbg-ok { color: #7dffa8; }
+        #dbg-toggle-btn {
+            width: 100%; padding: 8px; border: none; border-radius: 8px;
+            font-weight: 700; cursor: pointer; margin-bottom: 10px;
+        }
+        #dbg-toggle-btn.on { background: #c0392b; color: #fff; }
+        #dbg-toggle-btn.off { background: #27ae60; color: #fff; }
+    </style>
+    <button id="dbg-fab" title="Debug panel">🐛</button>
+    <div id="dbg-panel">
+        <h4>🐛 Debug Panel</h4>
+        <button id="dbg-toggle-btn" class="off">Enable Debug</button>
+        <div style="opacity:.6;margin-bottom:6px;">Recent requests:</div>
+        <div id="dbg-requests"><div style="opacity:.5;">No data yet.</div></div>
+    </div>
+    <script>
+    (function() {
+        var fab = document.getElementById("dbg-fab");
+        var panel = document.getElementById("dbg-panel");
+        var toggleBtn = document.getElementById("dbg-toggle-btn");
+        var reqList = document.getElementById("dbg-requests");
+        var csrfToken = null;
+
+        async function getCsrf() {
+            if (csrfToken) return csrfToken;
+            try {
+                var r = await fetch("/api/csrf", {credentials: "same-origin"});
+                var d = await r.json();
+                csrfToken = d.csrf_token || d.token || "";
+            } catch (e) {}
+            return csrfToken;
+        }
+
+        async function refreshStatus() {
+            try {
+                var r = await fetch("/api/debug/status", {credentials: "same-origin"});
+                var d = await r.json();
+                var on = !!(d.success && d.enabled);
+                fab.classList.toggle("on", on);
+                toggleBtn.textContent = on ? "Disable Debug" : "Enable Debug";
+                toggleBtn.className = on ? "on" : "off";
+                if (on) loadRequests();
+            } catch (e) {}
+        }
+
+        async function loadRequests() {
+            try {
+                var r = await fetch("/api/debug/requests", {credentials: "same-origin"});
+                var d = await r.json();
+                if (!d.success || !d.requests.length) {
+                    reqList.innerHTML = '<div style="opacity:.5;">No requests logged yet.</div>';
+                    return;
+                }
+                reqList.innerHTML = d.requests.slice(0, 30).map(function(req) {
+                    var cls = req.status >= 400 ? "dbg-err" : "dbg-ok";
+                    return '<div class="dbg-row"><span>' + req.method + ' ' +
+                        req.path.substring(0, 42) + '</span><span class="' + cls + '">' +
+                        req.status + ' · ' + req.ms + 'ms</span></div>';
+                }).join("");
+            } catch (e) {}
+        }
+
+        fab.addEventListener("click", function() {
+            panel.style.display = panel.style.display === "none" ? "block" : "none";
+            if (panel.style.display === "block") { refreshStatus(); }
+        });
+
+        toggleBtn.addEventListener("click", async function() {
+            var token = await getCsrf();
+            try {
+                var r = await fetch("/api/debug/toggle", {
+                    method: "POST",
+                    credentials: "same-origin",
+                    headers: {"Content-Type": "application/json", "X-CSRF-Token": token},
+                    body: JSON.stringify({})
+                });
+                await r.json();
+                csrfToken = null;
+                refreshStatus();
+            } catch (e) {}
+        });
+
+        // Capture JS errors into the panel when open
+        window.addEventListener("error", function(e) {
+            if (panel.style.display !== "block") return;
+            var div = document.createElement("div");
+            div.className = "dbg-row";
+            div.innerHTML = '<span class="dbg-err">JS: ' +
+                String(e.message).substring(0, 60) + '</span>';
+            reqList.prepend(div);
+        });
+
+        refreshStatus();
+    })();
+    </script>
+    {% endif %}
+
     {% block scripts %}
 
     {% endblock %}
