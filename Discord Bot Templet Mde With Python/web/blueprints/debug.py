@@ -9,7 +9,7 @@
 import time
 from collections import deque
 from pathlib import Path
-from flask import Blueprint, jsonify, request, session
+from flask import Blueprint, jsonify, request, session, render_template
 
 from web import debug as dbg
 from web.blueprints.auth import get_csrf_token
@@ -72,6 +72,33 @@ def init_request_logging(app):
                 "time": time.strftime("%H:%M:%S"),
             }
             _recent_requests.append(entry)
+        return response
+
+
+def init_panel_injection(app):
+    """Inject the debug panel into every HTML page (logged-in users only).
+
+    This runs after the response is built. If the page is HTML and doesn't
+    already have the panel, it's inserted before </body>. This covers
+    standalone pages that don't extend base.html.
+    """
+
+    @app.after_request
+    def _inject_dbg_panel(response):
+        try:
+            if not session.get("user"):
+                return response
+            ctype = response.content_type or ""
+            if "text/html" not in ctype:
+                return response
+            html = response.get_data(as_text=True)
+            if "</body>" not in html or 'id="dbg-fab"' in html:
+                return response
+            panel_html = render_template("debug_panel.html")
+            html = html.replace("</body>", panel_html + "\n</body>", 1)
+            response.set_data(html)
+        except Exception:
+            pass
         return response
 
 
