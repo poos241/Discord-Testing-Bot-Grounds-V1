@@ -341,6 +341,10 @@
     <div id="dbg-panel">
         <h4>🐛 Debug Panel</h4>
         <button id="dbg-toggle-btn" class="off">Enable Debug</button>
+        <div style="display:flex;gap:6px;margin-bottom:10px;">
+            <button id="dbg-clear-web" style="flex:1;padding:6px;border:none;border-radius:6px;background:#4a4e59;color:#fff;cursor:pointer;font-size:.75rem;">Clear Web Log</button>
+            <button id="dbg-clear-all" style="flex:1;padding:6px;border:none;border-radius:6px;background:#4a4e59;color:#fff;cursor:pointer;font-size:.75rem;">Clear All Logs</button>
+        </div>
         <div style="opacity:.6;margin-bottom:6px;">Recent requests:</div>
         <div id="dbg-requests"><div style="opacity:.5;">No data yet.</div></div>
         <div style="opacity:.6;margin:10px 0 6px;">Server log (data/web_debug.log):</div>
@@ -407,9 +411,21 @@
             } catch (e) {}
         }
 
+        var weblogTimer = null;
+
         fab.addEventListener("click", function() {
-            panel.style.display = panel.style.display === "none" ? "block" : "none";
-            if (panel.style.display === "block") { refreshStatus(); }
+            var isOpen = panel.style.display !== "block";
+            panel.style.display = isOpen ? "block" : "none";
+            if (isOpen) {
+                refreshStatus();
+                // Live-tail the server log every 3s while open
+                if (weblogTimer) clearInterval(weblogTimer);
+                weblogTimer = setInterval(function() {
+                    if (panel.style.display === "block") loadWeblog();
+                }, 3000);
+            } else {
+                if (weblogTimer) { clearInterval(weblogTimer); weblogTimer = null; }
+            }
         });
 
         toggleBtn.addEventListener("click", async function() {
@@ -436,6 +452,24 @@
                 String(e.message).substring(0, 60) + '</span>';
             reqList.prepend(div);
         });
+
+        async function clearLogs(which) {
+            var token = await getCsrf();
+            try {
+                var r = await fetch("/api/debug/clear-logs", {
+                    method: "POST",
+                    credentials: "same-origin",
+                    headers: {"Content-Type": "application/json", "X-CSRF-Token": token},
+                    body: JSON.stringify({which: which})
+                });
+                var d = await r.json();
+                csrfToken = null;
+                if (d.success) { loadWeblog(); loadRequests(); }
+            } catch (e) {}
+        }
+
+        document.getElementById("dbg-clear-web").addEventListener("click", function() { clearLogs("web"); });
+        document.getElementById("dbg-clear-all").addEventListener("click", function() { clearLogs("all"); });
 
         refreshStatus();
     })();
