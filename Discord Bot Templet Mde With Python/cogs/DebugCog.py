@@ -5,6 +5,7 @@
 #   /debug on      — enable verbose debug logging
 #   /debug off     — disable debug logging
 #   /debug status  — show current debug state
+#   /debug test    — force a test log line (verifies logging works)
 #
 # Toggle via env var at startup:  DEBUG=1
 # Toggle at runtime: /debug on|off  (persists via data/.debug_enabled)
@@ -55,6 +56,7 @@ def _set_debug(on: bool):
 
 
 def _dlog(category: str, message: str):
+    """Print a debug line. Respects the debug toggle."""
     if not _debug_enabled():
         return
     ts = time.strftime("%H:%M:%S")
@@ -69,8 +71,34 @@ def _is_admin(ctx):
 class DebugCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        # Register a bot-level before_invoke hook for application commands.
+        # This is more reliable than the on_application_command event.
+        try:
+            self.bot.before_invoke(self._before_any_command)
+        except Exception as e:
+            print(f"[DebugCog] before_invoke hook failed: {e}", flush=True)
         if _debug_enabled():
             print("[DEBUG] DebugCog loaded — debug mode is ON", flush=True)
+        else:
+            print("[DebugCog] loaded — debug mode is OFF", flush=True)
+
+    async def _before_any_command(self, ctx):
+        """Fires before any command (prefix or slash). Logs slash commands."""
+        if not _debug_enabled():
+            return
+        # Only log application (slash) commands here
+        try:
+            cmd_name = ctx.command.qualified_name if ctx.command else "unknown"
+            # ctx.interaction exists on ApplicationContext, not on prefix Context
+            if hasattr(ctx, "interaction"):
+                _dlog(
+                    "bot",
+                    f"/{cmd_name} by {ctx.author} "
+                    f"in #{ctx.channel} ({ctx.guild})",
+                )
+                ctx._dbg_logged = True
+        except Exception:
+            pass
 
     debug = SlashCommandGroup("debug", "Toggle debug mode", guild_ids=GUILD_IDS)
 
@@ -80,7 +108,10 @@ class DebugCog(commands.Cog):
             await ctx.respond("You need Manage Server permission.", ephemeral=True)
             return
         _set_debug(True)
-        await ctx.respond("🐛 Debug mode **enabled**.", ephemeral=True)
+        # Force a log line so the user can see it working immediately
+        ts = time.strftime("%H:%M:%S")
+        print(f"[DEBUG {ts}][bot] Debug mode ENABLED by {ctx.author}", flush=True)
+        await ctx.respond("🐛 Debug mode **enabled**. Check the bot console.", ephemeral=True)
 
     @debug.command(name="off", description="Disable debug logging")
     async def debug_off(self, ctx):
@@ -101,12 +132,33 @@ class DebugCog(commands.Cog):
             ephemeral=True,
         )
 
+    @debug.command(name="test", description="Print a test debug line to the console")
+    async def debug_test(self, ctx):
+        if not _is_admin(ctx):
+            await ctx.respond("You need Manage Server permission.", ephemeral=True)
+            return
+        ts = time.strftime("%H:%M:%S")
+        # Print regardless of toggle so we can verify console output works
+        print(f"[DEBUG {ts}][bot] TEST — debug_test by {ctx.author} in {ctx.guild}", flush=True)
+        _dlog("bot", f"test command confirmed debug is {'ON' if _debug_enabled() else 'OFF'}")
+        await ctx.respond(
+            "🐛 Test log line sent to the bot console. "
+            f"Debug is **{'ON' if _debug_enabled() else 'OFF'}**.",
+            ephemeral=True,
+        )
+
+    # Backup: event listener in case before_invoke doesn't catch something
     @commands.Cog.listener()
     async def on_application_command(self, ctx):
         if not _debug_enabled():
             return
-        cmd_name = ctx.command.qualified_name if ctx.command else "unknown"
         try:
+            cmd_name = ctx.command.qualified_name if ctx.command else "unknown"
+            # Only log via event if before_invoke didn't (avoid duplicates)
+            # We use a flag on the ctx to dedupe
+            if getattr(ctx, "_dbg_logged", False):
+                return
+            ctx._dbg_logged = True
             _dlog(
                 "bot",
                 f"/{cmd_name} by {ctx.author} "
@@ -117,7 +169,11 @@ class DebugCog(commands.Cog):
 
     @commands.Cog.listener()
     async def on_application_command_error(self, ctx, error):
-        cmd_name = ctx.command.qualified_name if ctx.command else "unknown"
+        cmd_name = "unknown"
+        try:
+            cmd_name = ctx.command.qualified_name if ctx.command else "unknown"
+        except Exception:
+            pass
         if _debug_enabled():
             ts = time.strftime("%H:%M:%S")
             print(f"[DEBUG {ts}][bot] EXCEPTION (/{cmd_name}): {error}", flush=True)
