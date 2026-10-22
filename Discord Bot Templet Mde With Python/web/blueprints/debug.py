@@ -64,12 +64,27 @@ def init_request_logging(app):
             print(log_line, flush=True)
             _write_web_log(log_line)
 
+            # Capture a snippet of the response body for the inspector
+            # (only for text/JSON, truncated to 2KB)
+            body_snippet = ""
+            try:
+                ctype = response.content_type or ""
+                if any(t in ctype for t in ("json", "text", "html")):
+                    raw_body = response.get_data(as_text=True)
+                    if raw_body:
+                        body_snippet = raw_body[:2048]
+                        if len(raw_body) > 2048:
+                            body_snippet += f"\n... [truncated, {len(raw_body)} chars total]"
+            except Exception:
+                pass
+
             entry = {
                 "method": request.method,
                 "path": request.path,
                 "status": response.status_code,
                 "ms": round(elapsed, 1),
                 "time": time.strftime("%H:%M:%S"),
+                "body": body_snippet,
             }
             _recent_requests.append(entry)
         return response
@@ -193,6 +208,106 @@ def debug_clear_logs():
     msg = f"Cleared logs: {', '.join(cleared) if cleared else 'none'}"
     print(f"[DEBUG][web] {msg}", flush=True)
     return jsonify({"success": True, "cleared": cleared})
+
+
+@debug_api.get("/api/debug/bot-status")
+def debug_bot_status():
+    """Check if the Discord bot is alive and responsive."""
+    if not session.get("user"):
+        return jsonify({"success": False, "error": "Not logged in."}), 401
+    status = {
+        "connected": False,
+        "latency_ms": None,
+        "guild_count": 0,
+        "guilds": [],
+        "user": None,
+    }
+    try:
+        from web.services.discord_state import discord_state
+        bot = discord_state.get_bot()
+        if bot is not None:
+            try:
+                status["connected"] = bool(bot.is_ready())
+            except Exception:
+                pass
+            try:
+                latency = getattr(bot, "latency", None)
+                if latency is not None:
+                    status["latency_ms"] = round(latency * 1000, 1)
+            except Exception:
+                pass
+            try:
+                guilds = list(getattr(bot, "guilds", []) or [])
+                status["guild_count"] = len(guilds)
+                status["guilds"] = [
+                    {"id": str(g.id), "name": g.name} for g in guilds[:20]
+                ]
+            except Exception:
+                pass
+            try:
+                u = getattr(bot, "user", None)
+                if u:
+                    status["user"] = str(u)
+            except Exception:
+                pass
+    except Exception as e:
+        status["error"] = str(e)
+    return jsonify({"success": True, **status})
+
+
+@debug_api.get("/api/debug/bundle")
+def debug_bundle():
+    """Build a copy-paste debug bundle: requests, errors, bot status, config."""
+    if not session.get("user"):
+        return jsonify({"success": False, "error": "Not logged in."}), 401
+    import os
+    lines = []
+    lines.append("=== DEBUG BUNDLE ===")
+    lines.append(f"Time: {time.strftime('%Y-%m-%d %H:%M:%S')}")
+    lines.append("")
+
+    # Bot status (reuse the logic)
+    try:
+        from web.services.discord_state import discord_state
+        bot = discord_state.get_bot()
+        if bot is not None and bot.is_ready():
+            lines.append(f"Bot: CONNECTED as {bot.user} (latency {round(bot.latency*1000,1)}ms)")
+            lines.append(f"Guilds: {len(list(bot.guilds or []))}")
+        else:
+            lines.append("Bot: NOT CONNECTED / NOT READY")
+    except Exception as e:
+        lines.append(f"Bot: check failed ({e})")
+    lines.append("")
+
+    # Config (non-secret)
+    lines.append("Config:")
+    for key in ("WEB_HOST", "WEB_PORT", "WEB_ENABLED", "DEBUG"):
+        lines.append(f"  {key}={os.environ.get(key, '(not set)')}")
+    lines.append("")
+
+    # Recent requests (errors first)
+    reqs = list(_recent_requests)[::-1]
+    errors = [r for r in reqs if r["status"] >= 400]
+    lines.append(f"Recent requests ({len(reqs)} total, {len(errors)} errors):")
+    for r in reqs[:30]:
+        flag = " SLOW" if r["ms"] > 1000 else ""
+        lines.append(f"  {r['method']} {r['path']} -> {r['status']} ({r['ms']}ms){flag}")
+        if r["status"] >= 400 and r.get("body"):
+            # Include first 500 chars of error body
+            body = r["body"][:500].replace("\n", " ")
+            lines.append(f"    Response: {body}")
+    lines.append("")
+
+    # Tail of web log
+    try:
+        log_lines = _LOG_FILE.read_text(encoding="utf-8").splitlines()
+        lines.append(f"Server log (last 20 of {len(log_lines)} lines):")
+        for ll in log_lines[-20:]:
+            lines.append(f"  {ll}")
+    except Exception:
+        lines.append("Server log: unavailable")
+
+    return jsonify({"success": True, "bundle": "\n".join(lines)})
 
 
 @debug_api.get("/api/debug/weblog")
