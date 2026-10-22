@@ -12,35 +12,66 @@
         #dbg-fab.on { background: #7a2e2e; border-color: #c0392b; }
         #dbg-panel {
             position: fixed; bottom: 74px; right: 20px; z-index: 9999;
-            width: 380px; max-height: 480px; overflow-y: auto;
+            width: 520px; max-width: 90vw;
+            height: 560px; max-height: 80vh;
+            overflow-y: auto;
+            resize: both;
             background: #1e1f24; border: 1px solid rgba(255,255,255,.12);
             border-radius: 12px; padding: 14px; display: none;
             font-size: .8rem; box-shadow: 0 8px 32px rgba(0,0,0,.5);
         }
-        #dbg-panel h4 { margin: 0 0 8px; font-size: .9rem; }
+        #dbg-panel h4 { margin: 0 0 8px; font-size: .9rem; display: flex; align-items: center; gap: 8px; }
+        #dbg-bot-dot {
+            width: 10px; height: 10px; border-radius: 50%;
+            background: #666; display: inline-block;
+        }
+        #dbg-bot-dot.ok { background: #2ecc71; box-shadow: 0 0 6px #2ecc71; }
+        #dbg-bot-dot.bad { background: #e74c3c; box-shadow: 0 0 6px #e74c3c; }
+        #dbg-bot-info { font-size: .72rem; opacity: .7; margin-bottom: 8px; }
         #dbg-panel .dbg-row {
             padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,.05);
             font-family: monospace; font-size: .72rem;
             display: flex; justify-content: space-between; gap: 8px;
+            cursor: pointer;
         }
+        #dbg-panel .dbg-row:hover { background: rgba(255,255,255,.04); }
         #dbg-panel .dbg-err { color: #ff7b7b; }
         #dbg-panel .dbg-ok { color: #7dffa8; }
+        #dbg-panel .dbg-slow { color: #f5a623; font-weight: bold; }
+        #dbg-panel .dbg-body {
+            display: none; font-family: monospace; font-size: .68rem;
+            background: #141518; border-radius: 6px; padding: 8px;
+            margin: 4px 0 8px; white-space: pre-wrap; word-break: break-all;
+            max-height: 200px; overflow-y: auto; color: #ccc;
+        }
+        #dbg-panel .dbg-body.open { display: block; }
         #dbg-toggle-btn {
             width: 100%; padding: 8px; border: none; border-radius: 8px;
             font-weight: 700; cursor: pointer; margin-bottom: 10px;
         }
         #dbg-toggle-btn.on { background: #c0392b; color: #fff; }
         #dbg-toggle-btn.off { background: #27ae60; color: #fff; }
+        .dbg-btn {
+            flex: 1; padding: 6px; border: none; border-radius: 6px;
+            background: #4a4e59; color: #fff; cursor: pointer; font-size: .75rem;
+        }
+        .dbg-btn:hover { background: #5a5e69; }
+        .dbg-filter { display: flex; align-items: center; gap: 6px; font-size: .75rem; margin: 8px 0; }
     </style>
     <button id="dbg-fab" title="Debug panel">🐛</button>
     <div id="dbg-panel">
-        <h4>🐛 Debug Panel</h4>
+        <h4>🐛 Debug Panel <span id="dbg-bot-dot" title="Bot status"></span></h4>
+        <div id="dbg-bot-info">Checking bot status...</div>
         <button id="dbg-toggle-btn" class="off">Enable Debug</button>
         <div style="display:flex;gap:6px;margin-bottom:10px;">
-            <button id="dbg-clear-web" style="flex:1;padding:6px;border:none;border-radius:6px;background:#4a4e59;color:#fff;cursor:pointer;font-size:.75rem;">Clear Web Log</button>
-            <button id="dbg-clear-all" style="flex:1;padding:6px;border:none;border-radius:6px;background:#4a4e59;color:#fff;cursor:pointer;font-size:.75rem;">Clear All Logs</button>
+            <button id="dbg-clear-web" class="dbg-btn">Clear Web Log</button>
+            <button id="dbg-clear-all" class="dbg-btn">Clear All Logs</button>
+            <button id="dbg-bundle" class="dbg-btn" title="Copy debug info to clipboard">📋 Bundle</button>
         </div>
-        <div style="opacity:.6;margin-bottom:6px;">Recent requests:</div>
+        <div class="dbg-filter">
+            <label><input type="checkbox" id="dbg-err-only"> Errors only</label>
+        </div>
+        <div style="opacity:.6;margin-bottom:6px;">Recent requests (click to inspect):</div>
         <div id="dbg-requests"><div style="opacity:.5;">No data yet.</div></div>
         <div style="opacity:.6;margin:10px 0 6px;">Server log (data/web_debug.log):</div>
         <div id="dbg-weblog" style="max-height:200px;overflow-y:auto;background:#141518;border-radius:6px;padding:6px;font-family:monospace;font-size:.68rem;white-space:pre-wrap;word-break:break-all;"><div style="opacity:.5;">No log lines yet.</div></div>
@@ -51,7 +82,18 @@
         var panel = document.getElementById("dbg-panel");
         var toggleBtn = document.getElementById("dbg-toggle-btn");
         var reqList = document.getElementById("dbg-requests");
+        var botDot = document.getElementById("dbg-bot-dot");
+        var botInfo = document.getElementById("dbg-bot-info");
+        var errOnly = document.getElementById("dbg-err-only");
         var csrfToken = null;
+        var cachedRequests = [];
+
+        // Restore open state across page navigation
+        try {
+            if (localStorage.getItem("dbg-panel-open") === "1") {
+                panel.style.display = "block";
+            }
+        } catch (e) {}
 
         async function getCsrf() {
             if (csrfToken) return csrfToken;
@@ -71,7 +113,71 @@
                 fab.classList.toggle("on", on);
                 toggleBtn.textContent = on ? "Disable Debug" : "Enable Debug";
                 toggleBtn.className = on ? "on" : "off";
-                if (on) { loadRequests(); loadWeblog(); }
+                if (on) { loadRequests(); loadWeblog(); checkBot(); }
+            } catch (e) {}
+        }
+
+        async function checkBot() {
+            try {
+                var r = await fetch("/api/debug/bot-status", {credentials: "same-origin"});
+                var d = await r.json();
+                if (!d.success) return;
+                if (d.connected) {
+                    botDot.className = "ok";
+                    var g = d.guild_count + " guild" + (d.guild_count === 1 ? "" : "s");
+                    var lat = d.latency_ms != null ? d.latency_ms + "ms" : "?";
+                    botInfo.textContent = "Bot: " + (d.user || "connected") + " · " + g + " · " + lat;
+                } else {
+                    botDot.className = "bad";
+                    botInfo.textContent = "Bot: NOT CONNECTED";
+                }
+            } catch (e) {
+                botDot.className = "bad";
+                botInfo.textContent = "Bot: status check failed";
+            }
+        }
+
+        function esc(s) {
+            return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        }
+
+        function renderRequests() {
+            var list = cachedRequests;
+            if (errOnly.checked) {
+                list = list.filter(function(req) { return req.status >= 400; });
+            }
+            if (!list.length) {
+                reqList.innerHTML = '<div style="opacity:.5;">No requests' +
+                    (errOnly.checked ? ' with errors' : '') + ' yet.</div>';
+                return;
+            }
+            reqList.innerHTML = list.slice(0, 30).map(function(req, i) {
+                var cls = req.status >= 400 ? "dbg-err" : "dbg-ok";
+                var slow = req.ms > 1000 ? ' <span class="dbg-slow">SLOW</span>' : "";
+                var body = req.body
+                    ? '<div class="dbg-body" id="dbg-body-' + i + '">' + esc(req.body) + '</div>'
+                    : "";
+                return '<div class="dbg-row" data-i="' + i + '"><span>' + req.method + ' ' +
+                    esc(req.path.substring(0, 48)) + '</span><span class="' + cls + '">' +
+                    req.status + ' · ' + req.ms + 'ms' + slow + '</span></div>' + body;
+            }).join("");
+            // Click to expand/collapse response body
+            reqList.querySelectorAll(".dbg-row").forEach(function(row) {
+                row.addEventListener("click", function() {
+                    var body = document.getElementById("dbg-body-" + row.dataset.i);
+                    if (body) body.classList.toggle("open");
+                });
+            });
+        }
+
+        async function loadRequests() {
+            try {
+                var r = await fetch("/api/debug/requests", {credentials: "same-origin"});
+                var d = await r.json();
+                if (d.success) {
+                    cachedRequests = d.requests || [];
+                    renderRequests();
+                }
             } catch (e) {}
         }
 
@@ -89,39 +195,35 @@
             } catch (e) {}
         }
 
-        async function loadRequests() {
-            try {
-                var r = await fetch("/api/debug/requests", {credentials: "same-origin"});
-                var d = await r.json();
-                if (!d.success || !d.requests.length) {
-                    reqList.innerHTML = '<div style="opacity:.5;">No requests logged yet.</div>';
-                    return;
-                }
-                reqList.innerHTML = d.requests.slice(0, 30).map(function(req) {
-                    var cls = req.status >= 400 ? "dbg-err" : "dbg-ok";
-                    return '<div class="dbg-row"><span>' + req.method + ' ' +
-                        req.path.substring(0, 42) + '</span><span class="' + cls + '">' +
-                        req.status + ' · ' + req.ms + 'ms</span></div>';
-                }).join("");
-            } catch (e) {}
-        }
+        errOnly.addEventListener("change", renderRequests);
 
         var weblogTimer = null;
 
-        fab.addEventListener("click", function() {
-            var isOpen = panel.style.display !== "block";
-            panel.style.display = isOpen ? "block" : "none";
-            if (isOpen) {
+        function setOpen(open) {
+            panel.style.display = open ? "block" : "none";
+            try { localStorage.setItem("dbg-panel-open", open ? "1" : "0"); } catch (e) {}
+            if (open) {
                 refreshStatus();
-                // Live-tail the server log every 3s while open
                 if (weblogTimer) clearInterval(weblogTimer);
                 weblogTimer = setInterval(function() {
-                    if (panel.style.display === "block") loadWeblog();
+                    if (panel.style.display === "block") { loadWeblog(); loadRequests(); }
                 }, 3000);
             } else {
                 if (weblogTimer) { clearInterval(weblogTimer); weblogTimer = null; }
             }
+        }
+
+        fab.addEventListener("click", function() {
+            setOpen(panel.style.display !== "block");
         });
+
+        // If restored open from last page, start the refresh loop
+        if (panel.style.display === "block") {
+            refreshStatus();
+            weblogTimer = setInterval(function() {
+                if (panel.style.display === "block") { loadWeblog(); loadRequests(); }
+            }, 3000);
+        }
 
         toggleBtn.addEventListener("click", async function() {
             var token = await getCsrf();
@@ -136,16 +238,6 @@
                 csrfToken = null;
                 refreshStatus();
             } catch (e) {}
-        });
-
-        // Capture JS errors into the panel when open
-        window.addEventListener("error", function(e) {
-            if (panel.style.display !== "block") return;
-            var div = document.createElement("div");
-            div.className = "dbg-row";
-            div.innerHTML = '<span class="dbg-err">JS: ' +
-                String(e.message).substring(0, 60) + '</span>';
-            reqList.prepend(div);
         });
 
         async function clearLogs(which) {
@@ -165,6 +257,30 @@
 
         document.getElementById("dbg-clear-web").addEventListener("click", function() { clearLogs("web"); });
         document.getElementById("dbg-clear-all").addEventListener("click", function() { clearLogs("all"); });
+
+        document.getElementById("dbg-bundle").addEventListener("click", async function() {
+            try {
+                var r = await fetch("/api/debug/bundle", {credentials: "same-origin"});
+                var d = await r.json();
+                if (d.success && navigator.clipboard) {
+                    await navigator.clipboard.writeText(d.bundle);
+                    var btn = document.getElementById("dbg-bundle");
+                    var orig = btn.textContent;
+                    btn.textContent = "Copied!";
+                    setTimeout(function() { btn.textContent = orig; }, 1500);
+                }
+            } catch (e) {}
+        });
+
+        // Capture JS errors into the panel when open
+        window.addEventListener("error", function(e) {
+            if (panel.style.display !== "block") return;
+            var div = document.createElement("div");
+            div.className = "dbg-row";
+            div.innerHTML = '<span class="dbg-err">JS: ' +
+                esc(String(e.message).substring(0, 60)) + '</span>';
+            reqList.prepend(div);
+        });
 
         refreshStatus();
     })();
