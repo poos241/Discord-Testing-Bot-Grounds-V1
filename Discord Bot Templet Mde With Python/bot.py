@@ -29,6 +29,7 @@ COGS = [
     "cogs.fun_cog",
     "cogs.Level_system",
     "cogs.WatchList",
+    "cogs.DebugCog",
 ]
 
 for cog in COGS:
