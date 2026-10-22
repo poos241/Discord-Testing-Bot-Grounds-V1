@@ -16,5 +16,33 @@
                 }
             ]
         }
+    },
+    "1298567950319489054": {
+        "765094342279954509": {
+            "warns": [],
+            "notes": [],
+            "cases": [
+                {
+                    "action": "wipe",
+                    "reason": "All data wiped via web dashboard (warns, notes, XP, watch, ban, timeout).",
+                    "moderator": "Purekush",
+                    "moderator_id": "287282266261159937",
+                    "moderator_avatar": "https://cdn.discordapp.com/avatars/287282266261159937/d840e7f04f8ec86089ae9bf2e92d8ae2.png",
+                    "evidence": null,
+                    "dm_sent": false,
+                    "timestamp": "2026-10-22T09:27:15.518550+00:00"
+                },
+                {
+                    "action": "rename",
+                    "reason": "Nickname set to 'Pure kush test alt'",
+                    "moderator": "Purekush",
+                    "moderator_id": "287282266261159937",
+                    "moderator_avatar": "https://cdn.discordapp.com/avatars/287282266261159937/d840e7f04f8ec86089ae9bf2e92d8ae2.png",
+                    "evidence": null,
+                    "dm_sent": false,
+                    "timestamp": "2026-10-22T09:29:15.487387+00:00"
+                }
+            ]
+        }
     }
 }
