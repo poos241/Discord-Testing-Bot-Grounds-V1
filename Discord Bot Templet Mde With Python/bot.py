@@ -61,27 +61,27 @@ async def on_ready():
     # listed in GUILD_IDS. Warn about it instead of cryptic tracebacks.
     missing = [gid for gid in GUILD_IDS if client.get_guild(gid) is None]
     if missing:
-        print(f"â ï¸ WARNING: the bot is not a member of these guilds from GUILD_IDS: {missing}")
+        print(f"[WARN] WARNING: the bot is not a member of these guilds from GUILD_IDS: {missing}")
         print("   Guild slash commands will fail to sync (403 Missing Access).")
         print("   Invite the bot to those servers, or remove the IDs from GUILD_IDS in config.py.")
 
-    # â Sync slash commands
+    # [OK] Sync slash commands
     try:
         await client.sync_commands(force=True)
     except discord.Forbidden:
-        print("â Command sync failed: 403 Missing Access.")
+        print("[ERROR] Command sync failed: 403 Missing Access.")
         print("   The bot is missing from a guild in GUILD_IDS, or a guild ID is wrong.")
         print("   Fix GUILD_IDS in config.py (or invite the bot), then restart.")
         return
 
     currentDT = DT.datetime.now()
 
-    print(f"â Logged in as {client.user} (id: {client.user.id}) Commands synced! Time: {currentDT.strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"[OK] Logged in as {client.user} (id: {client.user.id}) Commands synced! Time: {currentDT.strftime('%Y-%m-%d %H:%M:%S')}")
 
-    # â Start any background tasks
+    # [OK] Start any background tasks
     client.loop.create_task(change_status())
 
-    # â Start the web dashboard (Flask in a background thread)
+    # [OK] Start the web dashboard (Flask in a background thread)
     if os.getenv("WEB_ENABLED", "true").lower() in ("1", "true", "yes"):
         try:
             import threading
@@ -95,9 +95,9 @@ async def on_ready():
                 args=(web_app, web_host, web_port),
                 daemon=True, name="web-ui",
             ).start()
-            print(f"ð Web dashboard running at http://{web_host}:{web_port}")
+            print(f"[WEB] Web dashboard running at http://{web_host}:{web_port}")
         except Exception as e:
-            print(f"â ï¸ Web dashboard failed to start: {e!r}")
+            print(f"[WARN] Web dashboard failed to start: {e!r}")
 
 
 if __name__ == "__main__":
