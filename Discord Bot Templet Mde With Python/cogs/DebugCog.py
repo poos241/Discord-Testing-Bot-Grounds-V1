@@ -55,12 +55,22 @@ def _set_debug(on: bool):
         os.environ.pop("DEBUG", None)
 
 
+_LOG_FILE = Path(__file__).resolve().parent.parent / "data" / "debug.log"
+
+
 def _dlog(category: str, message: str):
-    """Print a debug line. Respects the debug toggle."""
+    """Print a debug line + append to data/debug.log. Respects the debug toggle."""
     if not _debug_enabled():
         return
     ts = time.strftime("%H:%M:%S")
-    print(f"[DEBUG {ts}][{category}] {message}", flush=True)
+    line = f"[DEBUG {ts}][{category}] {message}"
+    print(line, flush=True)
+    try:
+        _LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+        with open(_LOG_FILE, "a", encoding="utf-8") as f:
+            f.write(line + "\n")
+    except Exception:
+        pass
 
 
 def _is_admin(ctx):
@@ -139,10 +149,17 @@ class DebugCog(commands.Cog):
             return
         ts = time.strftime("%H:%M:%S")
         # Print regardless of toggle so we can verify console output works
-        print(f"[DEBUG {ts}][bot] TEST — debug_test by {ctx.author} in {ctx.guild}", flush=True)
+        test_line = f"[DEBUG {ts}][bot] TEST — debug_test by {ctx.author} in {ctx.guild}"
+        print(test_line, flush=True)
+        try:
+            _LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+            with open(_LOG_FILE, "a", encoding="utf-8") as f:
+                f.write(test_line + "\n")
+        except Exception:
+            pass
         _dlog("bot", f"test command confirmed debug is {'ON' if _debug_enabled() else 'OFF'}")
         await ctx.respond(
-            "🐛 Test log line sent to the bot console. "
+            "🐛 Test log line sent to console + `data/debug.log`. "
             f"Debug is **{'ON' if _debug_enabled() else 'OFF'}**.",
             ephemeral=True,
         )
