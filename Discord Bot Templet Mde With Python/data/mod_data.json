@@ -23,6 +23,16 @@
                     "evidence": null,
                     "dm_sent": false,
                     "timestamp": "2026-10-22T12:31:22.496731+00:00"
+                },
+                {
+                    "action": "rename",
+                    "reason": "Nickname set to 'pure kush test alt 2.0'",
+                    "moderator": "Purekush",
+                    "moderator_id": "287282266261159937",
+                    "moderator_avatar": "https://cdn.discordapp.com/avatars/287282266261159937/d840e7f04f8ec86089ae9bf2e92d8ae2.png",
+                    "evidence": null,
+                    "dm_sent": false,
+                    "timestamp": "2026-10-22T18:08:12.287032+00:00"
                 }
             ]
         }
