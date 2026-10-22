@@ -35,7 +35,7 @@ from web.blueprints.statistics import statistics_api
 
 from web.blueprints.moderation import moderation_api
 from web.blueprints.modpanel import modpanel_api
-from web.blueprints.debug import debug_api, init_request_logging
+from web.blueprints.debug import debug_api, init_request_logging, init_panel_injection
 from web.blueprints.leaderboard import leaderboard_api
 
 from web.blueprints.events import events_api
@@ -138,6 +138,7 @@ def create_app(bot):
     app.register_blueprint(modpanel_api)
     app.register_blueprint(debug_api)
     init_request_logging(app)
+    init_panel_injection(app)
     app.register_blueprint(leaderboard_api)
            
     app.register_blueprint(events_api)
