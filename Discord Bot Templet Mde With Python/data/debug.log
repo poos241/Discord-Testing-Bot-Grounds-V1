@@ -2,3 +2,5 @@
 [DEBUG 05:29:39][bot] TEST — debug_test by poos241 (Purekush) in test
 [DEBUG 05:29:39][bot] test command confirmed debug is ON
 [DEBUG 11:17:14][bot] /userinfo by poos241 (Purekush) in #bot-testing-gounds (test)
+[DEBUG 11:39:49][bot] /debug on by poos241 (Purekush) in #📜-message-logs (test)
+[DEBUG 11:39:50][bot] /debug on completed in 381ms
