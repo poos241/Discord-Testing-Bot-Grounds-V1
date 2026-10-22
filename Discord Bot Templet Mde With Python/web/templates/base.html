@@ -343,6 +343,8 @@
         <button id="dbg-toggle-btn" class="off">Enable Debug</button>
         <div style="opacity:.6;margin-bottom:6px;">Recent requests:</div>
         <div id="dbg-requests"><div style="opacity:.5;">No data yet.</div></div>
+        <div style="opacity:.6;margin:10px 0 6px;">Server log (data/web_debug.log):</div>
+        <div id="dbg-weblog" style="max-height:200px;overflow-y:auto;background:#141518;border-radius:6px;padding:6px;font-family:monospace;font-size:.68rem;white-space:pre-wrap;word-break:break-all;"><div style="opacity:.5;">No log lines yet.</div></div>
     </div>
     <script>
     (function() {
@@ -370,7 +372,21 @@
                 fab.classList.toggle("on", on);
                 toggleBtn.textContent = on ? "Disable Debug" : "Enable Debug";
                 toggleBtn.className = on ? "on" : "off";
-                if (on) loadRequests();
+                if (on) { loadRequests(); loadWeblog(); }
+            } catch (e) {}
+        }
+
+        async function loadWeblog() {
+            try {
+                var r = await fetch("/api/debug/weblog", {credentials: "same-origin"});
+                var d = await r.json();
+                var box = document.getElementById("dbg-weblog");
+                if (!d.success || !d.lines.length) {
+                    box.innerHTML = '<div style="opacity:.5;">No log lines yet.</div>';
+                    return;
+                }
+                box.textContent = d.lines.slice(-40).join("\n");
+                box.scrollTop = box.scrollHeight;
             } catch (e) {}
         }
 
