@@ -25,6 +25,7 @@ import time
 import traceback
 from pathlib import Path
 
+
 # Add web/ to path so we can use the shared debug module
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "web"))
 try:
