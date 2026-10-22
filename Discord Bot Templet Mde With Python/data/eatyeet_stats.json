@@ -1,6 +1,6 @@
 {
     "557680433245061130": {
-        "rounds": 21,
+        "rounds": 22,
         "users": {
             "287282266261159937": {
                 "majority": 10,
@@ -11,13 +11,6 @@
             }
         },
         "history": [
-            {
-                "food": "Moroccan Carrot Soup",
-                "verdict": "none",
-                "eats": 0,
-                "yeets": 0,
-                "ended_at": 1791642971.0122757
-            },
             {
                 "food": "Cambodian Waffles (Num Poum)",
                 "verdict": "eat",
@@ -80,6 +73,13 @@
                 "eats": 0,
                 "yeets": 0,
                 "ended_at": 1791984700.162135
+            },
+            {
+                "food": "Milanesa",
+                "verdict": "none",
+                "eats": 0,
+                "yeets": 0,
+                "ended_at": 1792671311.7549055
             }
         ]
     }
