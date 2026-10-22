@@ -1,13 +1,17 @@
 # ============================================================
 # Debug blueprint — toggle API + request logging + debug panel data
+#
+# When debug is on, EVERY request is logged in Flask dev-server style:
+#   192.168.1.129 - - [21/Oct/2026 16:29:46] "GET /servers HTTP/1.1" 200 -
+# to both the console and data/web_debug.log
 # ============================================================
 
 import time
 from collections import deque
+from pathlib import Path
 from flask import Blueprint, jsonify, request, session
 
 from web import debug as dbg
-from web.security.decorators import require_guild_access
 from web.blueprints.auth import get_csrf_token
 import secrets
 
@@ -15,6 +19,19 @@ debug_api = Blueprint("debug_api", __name__)
 
 # Ring buffer of recent requests (in-memory, last 100)
 _recent_requests = deque(maxlen=100)
+
+# Web debug log file (next to the bot's data/debug.log)
+_LOG_FILE = Path(__file__).resolve().parent.parent.parent / "data" / "web_debug.log"
+
+
+def _write_web_log(line: str):
+    """Append a line to data/web_debug.log."""
+    try:
+        _LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+        with open(_LOG_FILE, "a", encoding="utf-8") as f:
+            f.write(line + "\n")
+    except Exception:
+        pass
 
 
 def init_request_logging(app):
@@ -28,6 +45,24 @@ def init_request_logging(app):
     def _dbg_after(response):
         if dbg.is_enabled():
             elapsed = (time.time() - getattr(request, "_dbg_start", time.time())) * 1000
+
+            # Flask dev-server style log line
+            remote = request.remote_addr or "-"
+            ts = time.strftime("%d/%b/%Y %H:%M:%S")
+            proto = request.environ.get("SERVER_PROTOCOL", "HTTP/1.1")
+            # Strip query string for cleaner logs, but note if present
+            path = request.path
+            if request.query_string:
+                path = f"{path}?{request.query_string.decode('utf-8', 'replace')}"
+            size = response.content_length
+            size_str = str(size) if size is not None else "-"
+            log_line = (
+                f'{remote} - - [{ts}] "{request.method} {path} {proto}" '
+                f"{response.status_code} {size_str} ({elapsed:.1f}ms)"
+            )
+            print(log_line, flush=True)
+            _write_web_log(log_line)
+
             entry = {
                 "method": request.method,
                 "path": request.path,
@@ -36,10 +71,6 @@ def init_request_logging(app):
                 "time": time.strftime("%H:%M:%S"),
             }
             _recent_requests.append(entry)
-            # Only log API calls and errors to console (not every static file)
-            if request.path.startswith("/api/") or response.status_code >= 400:
-                dbg.log("web", f"{request.method} {request.path} -> "
-                               f"{response.status_code} ({elapsed:.1f}ms)")
         return response
 
 
@@ -74,7 +105,9 @@ def debug_toggle():
     else:
         on = not dbg.is_enabled()
     dbg.set_enabled(on)
-    dbg.log("web", f"Debug {'ENABLED' if on else 'DISABLED'} via web UI")
+    msg = f"Debug {'ENABLED' if on else 'DISABLED'} via web UI"
+    print(f"[DEBUG][web] {msg}", flush=True)
+    _write_web_log(f"[DEBUG][web] {msg}")
     return jsonify({"success": True, "enabled": on})
 
 
@@ -86,4 +119,21 @@ def debug_requests():
         "success": True,
         "enabled": dbg.is_enabled(),
         "requests": list(_recent_requests)[::-1],  # newest first
+    })
+
+
+@debug_api.get("/api/debug/weblog")
+def debug_weblog():
+    """Return the tail of data/web_debug.log for viewing in the panel."""
+    if not session.get("user"):
+        return jsonify({"success": False, "error": "Not logged in."}), 401
+    try:
+        lines = _LOG_FILE.read_text(encoding="utf-8").splitlines()
+        tail = lines[-100:]  # last 100 lines
+    except Exception:
+        tail = []
+    return jsonify({
+        "success": True,
+        "enabled": dbg.is_enabled(),
+        "lines": tail,
     })
