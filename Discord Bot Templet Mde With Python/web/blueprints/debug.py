@@ -22,6 +22,7 @@ _recent_requests = deque(maxlen=100)
 
 # Web debug log file (next to the bot's data/debug.log)
 _LOG_FILE = Path(__file__).resolve().parent.parent.parent / "data" / "web_debug.log"
+_BOT_LOG_FILE = Path(__file__).resolve().parent.parent.parent / "data" / "debug.log"
 
 
 def _write_web_log(line: str):
@@ -120,6 +121,27 @@ def debug_requests():
         "enabled": dbg.is_enabled(),
         "requests": list(_recent_requests)[::-1],  # newest first
     })
+
+
+@debug_api.post("/api/debug/clear-logs")
+def debug_clear_logs():
+    """Truncate both debug log files."""
+    if not session.get("user"):
+        return jsonify({"success": False, "error": "Not logged in."}), 401
+    denied = _check_csrf()
+    if denied:
+        return denied
+    cleared = []
+    for lf in (_LOG_FILE, _BOT_LOG_FILE):
+        try:
+            lf.parent.mkdir(parents=True, exist_ok=True)
+            lf.write_text("", encoding="utf-8")
+            cleared.append(lf.name)
+        except Exception:
+            pass
+    msg = f"Cleared logs: {', '.join(cleared) if cleared else 'none'}"
+    print(f"[DEBUG][web] {msg}", flush=True)
+    return jsonify({"success": True, "cleared": cleared})
 
 
 @debug_api.get("/api/debug/weblog")
