@@ -26,8 +26,6 @@ from pathlib import Path
 import os
 import time
 
-from config import GUILD_IDS
-
 # --- Self-contained debug state (no dependency on web/ package) ---
 _FLAG_FILE = Path(__file__).resolve().parent.parent / "data" / ".debug_enabled"
 _TRUE_VALUES = {"1", "true", "yes", "on"}
@@ -74,7 +72,7 @@ class DebugCog(commands.Cog):
 
     debug = SlashCommandGroup("debug", "Toggle debug mode")
 
-    @debug.command(name="on", description="Enable debug logging", guild_ids=GUILD_IDS)
+    @debug.command(name="on", description="Enable debug logging")
     async def debug_on(self, ctx):
         if not _is_admin(ctx):
             await ctx.respond("You need Manage Server permission.", ephemeral=True)
@@ -82,7 +80,7 @@ class DebugCog(commands.Cog):
         _set_debug(True)
         await ctx.respond("🐛 Debug mode **enabled**.", ephemeral=True)
 
-    @debug.command(name="off", description="Disable debug logging", guild_ids=GUILD_IDS)
+    @debug.command(name="off", description="Disable debug logging")
     async def debug_off(self, ctx):
         if not _is_admin(ctx):
             await ctx.respond("You need Manage Server permission.", ephemeral=True)
@@ -90,7 +88,7 @@ class DebugCog(commands.Cog):
         _set_debug(False)
         await ctx.respond("🐛 Debug mode **disabled**.", ephemeral=True)
 
-    @debug.command(name="status", description="Show debug status", guild_ids=GUILD_IDS)
+    @debug.command(name="status", description="Show debug status")
     async def debug_status(self, ctx):
         if not _is_admin(ctx):
             await ctx.respond("You need Manage Server permission.", ephemeral=True)
