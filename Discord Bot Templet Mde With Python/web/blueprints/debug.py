@@ -75,6 +75,21 @@ def init_request_logging(app):
         return response
 
 
+# Cache the panel HTML at startup (read once, no Jinja needed)
+_PANEL_HTML = None
+
+def _get_panel_html():
+    global _PANEL_HTML
+    if _PANEL_HTML is None:
+        try:
+            panel_path = Path(__file__).resolve().parent.parent / "templates" / "debug_panel.html"
+            _PANEL_HTML = panel_path.read_text(encoding="utf-8")
+        except Exception as e:
+            _PANEL_HTML = ""
+            print(f"[DEBUG][web] Failed to load debug panel: {e}", flush=True)
+    return _PANEL_HTML
+
+
 def init_panel_injection(app):
     """Inject the debug panel into every HTML page (logged-in users only).
 
@@ -94,11 +109,20 @@ def init_panel_injection(app):
             html = response.get_data(as_text=True)
             if "</body>" not in html or 'id="dbg-fab"' in html:
                 return response
-            panel_html = render_template("debug_panel.html")
+            panel_html = _get_panel_html()
+            if not panel_html:
+                _write_web_log("[DEBUG][web] Panel injection skipped: no panel HTML")
+                return response
             html = html.replace("</body>", panel_html + "\n</body>", 1)
             response.set_data(html)
-        except Exception:
-            pass
+            # Update content length since we modified the body
+            response.content_length = len(html.encode("utf-8"))
+        except Exception as e:
+            # Log instead of silently swallowing
+            try:
+                _write_web_log(f"[DEBUG][web] Panel injection error: {e}")
+            except Exception:
+                pass
         return response
 
 
