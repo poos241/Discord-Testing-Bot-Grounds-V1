@@ -87,6 +87,10 @@ class DebugCog(commands.Cog):
             self.bot.before_invoke(self._before_any_command)
         except Exception as e:
             print(f"[DebugCog] before_invoke hook failed: {e}", flush=True)
+        try:
+            self.bot.after_invoke(self._after_any_command)
+        except Exception as e:
+            print(f"[DebugCog] after_invoke hook failed: {e}", flush=True)
         if _debug_enabled():
             print("[DEBUG] DebugCog loaded — debug mode is ON", flush=True)
         else:
@@ -101,12 +105,25 @@ class DebugCog(commands.Cog):
             cmd_name = ctx.command.qualified_name if ctx.command else "unknown"
             # ctx.interaction exists on ApplicationContext, not on prefix Context
             if hasattr(ctx, "interaction"):
+                ctx._dbg_start_time = time.time()
                 _dlog(
                     "bot",
                     f"/{cmd_name} by {ctx.author} "
                     f"in #{ctx.channel} ({ctx.guild})",
                 )
                 ctx._dbg_logged = True
+        except Exception:
+            pass
+
+    async def _after_any_command(self, ctx):
+        """Fires after any command completes. Logs execution time."""
+        if not _debug_enabled():
+            return
+        try:
+            if hasattr(ctx, "interaction") and hasattr(ctx, "_dbg_start_time"):
+                elapsed = (time.time() - ctx._dbg_start_time) * 1000
+                cmd_name = ctx.command.qualified_name if ctx.command else "unknown"
+                _dlog("bot", f"/{cmd_name} completed in {elapsed:.0f}ms")
         except Exception:
             pass
 
