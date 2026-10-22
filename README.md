@@ -368,11 +368,14 @@ The runtime toggle is saved to `data/.debug_enabled` and persists across restart
 until you change it again. Delete that file to go back to the `.env` setting.
 
 **What you get when it's on:**
-- Bot console: every slash command logged (who ran it, where, with what options),
-  plus full tracebacks on command errors
-- Web console: API requests logged with status code and timing; 4xx/5xx highlighted
-- Web debug panel: recent API requests with timing, plus any JavaScript errors
-  captured on the current page
+- Bot console + `data/debug.log`: every slash command logged (who ran it, where,
+  with what options), plus full tracebacks on command errors
+- Web console + `data/web_debug.log`: every HTTP request in Flask dev-server style
+  (`192.168.1.129 - - [21/Oct/2026 16:29:46] "GET /servers HTTP/1.1" 200 -`)
+  with response time — replaces the request logging lost when switching to waitress
+- Web debug panel (🐛 button): enable/disable toggle, recent API requests with
+  timing, server log viewer (last 40 lines of `web_debug.log`), plus any
+  JavaScript errors captured on the current page
 
 ## Troubleshooting
 
