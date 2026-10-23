@@ -78,6 +78,7 @@
             <button id="dbg-clear-web" class="dbg-btn">Clear Web Log</button>
             <button id="dbg-clear-all" class="dbg-btn">Clear All Logs</button>
             <button id="dbg-bundle" class="dbg-btn" title="Copy debug info to clipboard">📋 Bundle</button>
+            <button id="dbg-reset-pos" class="dbg-btn" title="Reset panel position and size">⌖ Reset</button>
         </div>
         <div class="dbg-filter">
             <label><input type="checkbox" id="dbg-err-only"> Errors only</label>
@@ -378,6 +379,18 @@
                 if (d.success) { loadWeblog(); loadRequests(); }
             } catch (e) {}
         }
+
+        document.getElementById("dbg-reset-pos").addEventListener("click", function() {
+            try { localStorage.removeItem("dbg-panel-geo"); } catch (e) {}
+            panel.style.left = "auto";
+            panel.style.top = "auto";
+            panel.style.right = "20px";
+            panel.style.bottom = "74px";
+            panel.style.width = "520px";
+            panel.style.height = "560px";
+            panel.style.maxWidth = "90vw";
+            panel.style.maxHeight = "80vh";
+        });
 
         document.getElementById("dbg-clear-web").addEventListener("click", function() { clearLogs("web"); });
         document.getElementById("dbg-clear-all").addEventListener("click", function() { clearLogs("all"); });
