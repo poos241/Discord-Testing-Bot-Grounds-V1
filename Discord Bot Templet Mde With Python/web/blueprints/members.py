@@ -3,7 +3,7 @@ from flask import Blueprint, jsonify, request
 from web.services.discord_state import discord_state
 from web.services.member_service import MemberService
 from web.blueprints.channels import get_bot
-from web.security.decorators import require_guild_manage, require_login, require_guild_member
+from web.security.decorators import require_guild_manage, require_login, require_guild_moderator
 
 
 members_api = Blueprint(
@@ -266,7 +266,7 @@ def get_member(user_id):
 @members_api.get(
     "/servers/<int:guild_id>/members/<int:user_id>"
 )
-@require_guild_member
+@require_guild_moderator
 def get_server_member(
     guild_id,
     user_id
@@ -330,7 +330,7 @@ def get_server_member(
 @members_api.get(
     "/servers/<int:guild_id>/members"
 )
-@require_guild_member
+@require_guild_moderator
 def get_server_members(guild_id):
 
     bot, error, status = check_bot()
@@ -401,7 +401,7 @@ def get_server_members(guild_id):
 @members_api.get(
     "/servers/<int:guild_id>/members/summary"
 )
-@require_guild_member
+@require_guild_moderator
 def member_summary(guild_id):
 
     service = get_service()
@@ -503,7 +503,7 @@ def member_summary(guild_id):
 @members_api.get(
     "/servers/<int:guild_id>/members/search"
 )
-@require_guild_member
+@require_guild_moderator
 def search_server_members(guild_id):
 
     query = request.args.get(
