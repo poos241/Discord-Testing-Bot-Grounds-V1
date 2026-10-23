@@ -111,7 +111,45 @@ def create_app(bot):
     @app.context_processor
     def inject_security_helpers():
         from web.blueprints.auth import get_csrf_token
-        return {"csrf_token": get_csrf_token}
+        from web.services.permissions import (
+            get_access_level,
+            has_access,
+        )
+
+        def can(level, guild_id=None):
+            gid = guild_id or session.get("selected_guild_id")
+            if not gid:
+                return False
+            return has_access(gid, level)
+
+        def selected_guild_level():
+            gid = session.get("selected_guild_id")
+            if not gid:
+                return "none"
+            return get_access_level(gid) or "none"
+
+        def can_any(level):
+            """True when the user meets the level on at least one guild."""
+            from web.blueprints.auth import get_user_guilds
+
+            for guild in get_user_guilds():
+                if has_access(guild.get("id"), level):
+                    return True
+            return False
+
+        return {
+            "csrf_token": get_csrf_token,
+            "can": can,
+            "can_any": can_any,
+            "selected_guild_level": selected_guild_level,
+        }
+
+    @app.errorhandler(403)
+    def forbidden(_error):
+        return render_template(
+            "403.html",
+            guild_id=session.get("selected_guild_id"),
+        ), 403
 
     @app.after_request
     def add_security_headers(response):
@@ -235,8 +273,8 @@ def create_app(bot):
     @app.get("/servers/<int:guild_id>/dashboard")
     def server_dashboard(guild_id):
 
-        from web.blueprints.auth import (
-            user_can_manage_guild
+        from web.services.permissions import (
+            is_guild_member
         )
 
         if not session.get("user"):
@@ -245,16 +283,13 @@ def create_app(bot):
                 url_for("auth.login")
             )
 
-        if not user_can_manage_guild(
+        if not is_guild_member(
             guild_id
         ):
 
             return render_template(
-                "auth/login.html",
-                error=(
-                    "You do not have permission "
-                    "to manage this Discord server."
-                )
+                "403.html",
+                guild_id=guild_id,
             ), 403
 
         # Remember the server for this login session.
@@ -299,8 +334,8 @@ def create_app(bot):
     @app.get("/servers/<int:guild_id>")
     def server_page(guild_id):
 
-        from web.blueprints.auth import (
-            user_can_manage_guild
+        from web.services.permissions import (
+            is_guild_member
         )
 
         if not session.get("user"):
@@ -309,17 +344,18 @@ def create_app(bot):
                 url_for("auth.login")
             )
 
-        if not user_can_manage_guild(
+        if not is_guild_member(
             guild_id
         ):
 
             return render_template(
-                "auth/login.html",
-                error=(
-                    "You do not have permission "
-                    "to manage this Discord server."
-                )
+                "403.html",
+                guild_id=guild_id,
             ), 403
+
+        session["selected_guild_id"] = str(
+            guild_id
+        )
 
         return render_template(
             "server.html",
@@ -334,8 +370,8 @@ def create_app(bot):
     @app.get("/servers/<int:guild_id>/members")
     def server_members_page(guild_id):
 
-        from web.blueprints.auth import (
-            user_can_manage_guild
+        from web.services.permissions import (
+            is_guild_member
         )
 
         if not session.get("user"):
@@ -344,17 +380,18 @@ def create_app(bot):
                 url_for("auth.login")
             )
 
-        if not user_can_manage_guild(
+        if not is_guild_member(
             guild_id
         ):
 
             return render_template(
-                "auth/login.html",
-                error=(
-                    "You do not have permission "
-                    "to manage this Discord server."
-                )
+                "403.html",
+                guild_id=guild_id,
             ), 403
+
+        session["selected_guild_id"] = str(
+            guild_id
+        )
 
         return render_template(
             "server_members.html",
@@ -373,8 +410,8 @@ def create_app(bot):
         guild_id
     ):
 
-        from web.blueprints.auth import (
-            user_can_manage_guild
+        from web.services.permissions import (
+            is_guild_member
         )
 
 
@@ -385,17 +422,18 @@ def create_app(bot):
             )
 
 
-        if not user_can_manage_guild(
+        if not is_guild_member(
             guild_id
         ):
 
             return render_template(
-                "auth/login.html",
-                error=(
-                    "You do not have permission "
-                    "to view this Discord server."
-                )
+                "403.html",
+                guild_id=guild_id,
             ), 403
+
+        session["selected_guild_id"] = str(
+            guild_id
+        )
 
 
         return render_template(
@@ -417,8 +455,8 @@ def create_app(bot):
         channel_id
     ):
 
-        from web.blueprints.auth import (
-            user_can_manage_guild
+        from web.services.permissions import (
+            is_guild_member
         )
 
 
@@ -429,17 +467,18 @@ def create_app(bot):
             )
 
 
-        if not user_can_manage_guild(
+        if not is_guild_member(
             guild_id
         ):
 
             return render_template(
-                "auth/login.html",
-                error=(
-                    "You do not have permission "
-                    "to view this Discord server."
-                )
+                "403.html",
+                guild_id=guild_id,
             ), 403
+
+        session["selected_guild_id"] = str(
+            guild_id
+        )
 
 
         return render_template(
@@ -528,8 +567,8 @@ def create_app(bot):
     )
     def server_activity_page(guild_id):
 
-        from web.blueprints.auth import (
-            user_can_manage_guild
+        from web.services.permissions import (
+            is_guild_member
         )
 
         if not session.get("user"):
@@ -538,17 +577,18 @@ def create_app(bot):
                 url_for("auth.login")
             )
 
-        if not user_can_manage_guild(
+        if not is_guild_member(
             guild_id
         ):
 
             return render_template(
-                "auth/login.html",
-                error=(
-                    "You do not have permission "
-                    "to view this server."
-                )
+                "403.html",
+                guild_id=guild_id,
             ), 403
+
+        session["selected_guild_id"] = str(
+            guild_id
+        )
 
         return render_template(
             "server_activity.html",
@@ -616,8 +656,8 @@ def create_app(bot):
         guild_id
     ):
 
-        from web.blueprints.auth import (
-            user_can_manage_guild
+        from web.services.permissions import (
+            is_guild_member
         )
 
 
@@ -630,20 +670,18 @@ def create_app(bot):
             )
 
 
-        if not user_can_manage_guild(
+        if not is_guild_member(
             guild_id
         ):
 
             return render_template(
-
-                "auth/login.html",
-
-                error=(
-                    "You do not have permission "
-                    "to manage this Discord server."
-                )
-
+                "403.html",
+                guild_id=guild_id,
             ), 403
+
+        session["selected_guild_id"] = str(
+            guild_id
+        )
 
 
         return render_template(
@@ -669,8 +707,8 @@ def create_app(bot):
         guild_id
     ):
 
-        from web.blueprints.auth import (
-            user_can_manage_guild
+        from web.services.permissions import (
+            is_guild_member
         )
 
 
@@ -681,17 +719,18 @@ def create_app(bot):
             )
 
 
-        if not user_can_manage_guild(
+        if not is_guild_member(
             guild_id
         ):
 
             return render_template(
-                "auth/login.html",
-                error=(
-                    "You do not have permission "
-                    "to view this Discord server."
-                )
+                "403.html",
+                guild_id=guild_id,
             ), 403
+
+        session["selected_guild_id"] = str(
+            guild_id
+        )
 
 
         return render_template(
@@ -706,8 +745,8 @@ def create_app(bot):
     @app.get("/servers/<int:guild_id>/events/<int:event_id>")
     def event_details_page(guild_id, event_id):
 
-        from web.blueprints.auth import (
-            user_can_manage_guild
+        from web.services.permissions import (
+            is_guild_member
         )
 
         if not session.get("user"):
@@ -716,17 +755,18 @@ def create_app(bot):
                 url_for("auth.login")
             )
 
-        if not user_can_manage_guild(
+        if not is_guild_member(
             guild_id
         ):
 
             return render_template(
-                "auth/login.html",
-                error=(
-                    "You do not have permission "
-                    "to view this server."
-                )
+                "403.html",
+                guild_id=guild_id,
             ), 403
+
+        session["selected_guild_id"] = str(
+            guild_id
+        )
 
         return render_template(
             "event_details.html",
