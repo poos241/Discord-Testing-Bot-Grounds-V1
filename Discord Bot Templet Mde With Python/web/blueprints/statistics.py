@@ -1,7 +1,7 @@
 from flask import Blueprint, jsonify
 
 from web.services.statistics import StatisticsService
-from web.security.decorators import require_guild_manage, require_login, require_guild_member
+from web.security.decorators import require_guild_manage, require_login, require_guild_moderator
 
 
 statistics_api = Blueprint(
@@ -14,7 +14,7 @@ statistics_api = Blueprint(
 @statistics_api.get(
     "/servers/<int:guild_id>/statistics"
 )
-@require_guild_member
+@require_guild_moderator
 def server_statistics(guild_id):
 
     data = StatisticsService.get(
