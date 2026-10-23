@@ -124,12 +124,12 @@
         </div>
 
         <h3>
-            No manageable servers
+            No servers found
         </h3>
 
         <p>
             We couldn't find any Discord servers
-            where you have permission to manage the server.
+            you're a member of that have this bot.
         </p>
 
     </div>
@@ -495,7 +495,7 @@ function createServerCard(server) {
     ===================================================== */
 
     let permissionLabel =
-        "Manage Server";
+        "Member";
 
 
     if (isOwner) {
@@ -515,7 +515,7 @@ function createServerCard(server) {
     else if (canManage) {
 
         permissionLabel =
-            "Manage Server";
+            "Moderator";
 
     }
 
