@@ -103,12 +103,14 @@
             Servers
         </a>
 
+        {% if can_any("admin") %}
         <a
             href="{{ url_for('logger') }}"
             class="nav-link-item"
         >
             Logger
         </a>
+        {% endif %}
 
         {% endif %}
 
