@@ -7,7 +7,7 @@ from flask import (
 
 from web.services.discord_state import discord_state
 from web.services.event_store import event_store
-from web.security.decorators import require_guild_manage, require_login, require_guild_member
+from web.security.decorators import require_guild_manage, require_login, require_guild_moderator
 
 
 event_stats_api = Blueprint(
@@ -19,7 +19,7 @@ event_stats_api = Blueprint(
 @event_stats_api.get(
     "/api/servers/<int:guild_id>/event-stats"
 )
-@require_guild_member
+@require_guild_moderator
 def event_stats(
     guild_id
 ):
