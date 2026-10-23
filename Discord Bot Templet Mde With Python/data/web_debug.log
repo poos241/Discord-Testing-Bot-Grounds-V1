@@ -12,3 +12,27 @@
 192.168.1.129 - - [22/Oct/2026 17:51:58] "GET /api/debug/requests HTTP/1.1" 200 68792 (1.0ms)
 192.168.1.129 - - [22/Oct/2026 17:51:59] "GET /api/csrf HTTP/1.1" 200 76 (0.4ms)
 [DEBUG][web] Debug DISABLED via web UI
+[DEBUG][web] Debug ENABLED via web UI
+192.168.1.129 - - [23/Oct/2026 01:13:26] "POST /api/debug/toggle HTTP/1.1" 200 32 (14.5ms)
+192.168.1.129 - - [23/Oct/2026 01:13:26] "GET /api/debug/status HTTP/1.1" 200 32 (0.6ms)
+192.168.1.129 - - [23/Oct/2026 01:13:26] "GET /api/debug/requests HTTP/1.1" 200 309 (6.6ms)
+192.168.1.129 - - [23/Oct/2026 01:13:26] "GET /api/debug/bot-status HTTP/1.1" 200 216 (5.5ms)
+192.168.1.129 - - [23/Oct/2026 01:13:26] "GET /api/debug/weblog HTTP/1.1" 200 1489 (6.9ms)
+192.168.1.129 - - [23/Oct/2026 01:13:29] "GET /api/debug/requests HTTP/1.1" 200 2804 (8.1ms)
+192.168.1.129 - - [23/Oct/2026 01:13:29] "GET /api/debug/weblog HTTP/1.1" 200 1778 (9.3ms)
+192.168.1.129 - - [23/Oct/2026 01:13:32] "GET /api/debug/weblog HTTP/1.1" 200 1970 (3.9ms)
+
+192.168.1.129 - - [23/Oct/2026 01:13:35] "GET /api/debug/requests HTTP/1.1" 200 11899 (1.7ms)
+192.168.1.129 - - [23/Oct/2026 01:13:35] "GET /api/debug/weblog HTTP/1.1" 200 2068 (2.5ms)
+192.168.1.129 - - [23/Oct/2026 01:13:38] "GET /api/debug/requests HTTP/1.1" 200 16631 (1.5ms)
+192.168.1.129 - - [23/Oct/2026 01:13:38] "GET /api/debug/weblog HTTP/1.1" 200 2261 (2.1ms)
+192.168.1.129 - - [23/Oct/2026 01:13:41] "GET /api/debug/requests HTTP/1.1" 200 21363 (0.9ms)
+192.168.1.129 - - [23/Oct/2026 01:13:41] "GET /api/debug/weblog HTTP/1.1" 200 2454 (1.3ms)
+192.168.1.129 - - [23/Oct/2026 01:13:44] "GET /api/debug/requests HTTP/1.1" 200 26095 (2.5ms)
+192.168.1.129 - - [23/Oct/2026 01:13:44] "GET /api/debug/weblog HTTP/1.1" 200 2647 (3.2ms)
+192.168.1.129 - - [23/Oct/2026 01:13:47] "GET /api/debug/requests HTTP/1.1" 200 30827 (2.3ms)
+192.168.1.129 - - [23/Oct/2026 01:13:47] "GET /api/debug/weblog HTTP/1.1" 200 2840 (2.8ms)
+192.168.1.129 - - [23/Oct/2026 01:13:50] "GET /api/debug/requests HTTP/1.1" 200 35559 (0.9ms)
+192.168.1.129 - - [23/Oct/2026 01:13:50] "GET /api/debug/weblog HTTP/1.1" 200 3033 (1.3ms)
+192.168.1.129 - - [23/Oct/2026 01:13:52] "GET /api/csrf HTTP/1.1" 200 76 (0.5ms)
+[DEBUG][web] Debug DISABLED via web UI
