@@ -1,7 +1,7 @@
 from flask import Blueprint, jsonify
 
 from web.services.discord_state import discord_state
-from web.security.decorators import require_guild_manage, require_login, require_guild_member
+from web.security.decorators import require_guild_manage, require_login, require_guild_moderator
 
 
 member_stats_api = Blueprint(
@@ -13,7 +13,7 @@ member_stats_api = Blueprint(
 @member_stats_api.get(
     "/api/servers/<int:guild_id>/members/stats"
 )
-@require_guild_member
+@require_guild_moderator
 def member_stats(guild_id):
 
     bot = discord_state.bot
