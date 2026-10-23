@@ -15,12 +15,23 @@
             width: 520px; max-width: 90vw;
             height: 560px; max-height: 80vh;
             overflow-y: auto;
-            resize: both;
             background: #1e1f24; border: 1px solid rgba(255,255,255,.12);
             border-radius: 12px; padding: 14px; display: none;
             font-size: .8rem; box-shadow: 0 8px 32px rgba(0,0,0,.5);
         }
-        #dbg-panel h4 { margin: 0 0 8px; font-size: .9rem; display: flex; align-items: center; gap: 8px; }
+        #dbg-panel h4 {
+            margin: 0 0 8px; font-size: .9rem; display: flex; align-items: center; gap: 8px;
+            cursor: move; user-select: none; -webkit-user-select: none;
+        }
+        .dbg-resize { position: absolute; z-index: 10001; }
+        .dbg-resize-n  { top: -5px; left: 10px; right: 10px; height: 10px; cursor: ns-resize; }
+        .dbg-resize-s  { bottom: -5px; left: 10px; right: 10px; height: 10px; cursor: ns-resize; }
+        .dbg-resize-e  { right: -5px; top: 10px; bottom: 10px; width: 10px; cursor: ew-resize; }
+        .dbg-resize-w  { left: -5px; top: 10px; bottom: 10px; width: 10px; cursor: ew-resize; }
+        .dbg-resize-ne { top: -6px; right: -6px; width: 14px; height: 14px; cursor: nesw-resize; }
+        .dbg-resize-nw { top: -6px; left: -6px; width: 14px; height: 14px; cursor: nwse-resize; }
+        .dbg-resize-se { bottom: -6px; right: -6px; width: 14px; height: 14px; cursor: nwse-resize; }
+        .dbg-resize-sw { bottom: -6px; left: -6px; width: 14px; height: 14px; cursor: nesw-resize; }
         #dbg-bot-dot {
             width: 10px; height: 10px; border-radius: 50%;
             background: #666; display: inline-block;
@@ -88,12 +99,125 @@
         var csrfToken = null;
         var cachedRequests = [];
 
-        // Restore open state across page navigation
+        // Restore open state + geometry across page navigation
         try {
             if (localStorage.getItem("dbg-panel-open") === "1") {
                 panel.style.display = "block";
             }
+            var geo = JSON.parse(localStorage.getItem("dbg-panel-geo") || "null");
+            if (geo) {
+                panel.style.left = geo.left + "px";
+                panel.style.top = geo.top + "px";
+                panel.style.width = geo.width + "px";
+                panel.style.height = geo.height + "px";
+                panel.style.right = "auto";
+                panel.style.bottom = "auto";
+            }
         } catch (e) {}
+
+        function saveGeo() {
+            try {
+                var rect = panel.getBoundingClientRect();
+                localStorage.setItem("dbg-panel-geo", JSON.stringify({
+                    left: rect.left, top: rect.top,
+                    width: rect.width, height: rect.height
+                }));
+            } catch (e) {}
+        }
+
+        function anchorToLeftTop() {
+            var rect = panel.getBoundingClientRect();
+            panel.style.left = rect.left + "px";
+            panel.style.top = rect.top + "px";
+            panel.style.width = rect.width + "px";
+            panel.style.height = rect.height + "px";
+            panel.style.right = "auto";
+            panel.style.bottom = "auto";
+            panel.style.maxWidth = "none";
+            panel.style.maxHeight = "none";
+            return rect;
+        }
+
+        // --- Drag the panel by its header ---
+        (function() {
+            var header = panel.querySelector("h4");
+            var drag = null;
+            header.addEventListener("mousedown", function(e) {
+                if (e.button !== 0) return;
+                var rect = anchorToLeftTop();
+                drag = { offX: e.clientX - rect.left, offY: e.clientY - rect.top };
+                e.preventDefault();
+            });
+            document.addEventListener("mousemove", function(e) {
+                if (!drag) return;
+                var rect = panel.getBoundingClientRect();
+                var x = e.clientX - drag.offX;
+                var y = e.clientY - drag.offY;
+                x = Math.max(-rect.width + 60, Math.min(window.innerWidth - 60, x));
+                y = Math.max(0, Math.min(window.innerHeight - 40, y));
+                panel.style.left = x + "px";
+                panel.style.top = y + "px";
+            });
+            document.addEventListener("mouseup", function() {
+                if (drag) { drag = null; saveGeo(); }
+            });
+        })();
+
+        // --- Resize from any edge or corner ---
+        (function() {
+            var dirs = ["n", "s", "e", "w", "ne", "nw", "se", "sw"];
+            var rs = null;
+            dirs.forEach(function(dir) {
+                var h = document.createElement("div");
+                h.className = "dbg-resize dbg-resize-" + dir;
+                panel.appendChild(h);
+                h.addEventListener("mousedown", function(e) {
+                    if (e.button !== 0) return;
+                    var rect = anchorToLeftTop();
+                    rs = {
+                        dir: dir,
+                        startX: e.clientX, startY: e.clientY,
+                        left: rect.left, top: rect.top,
+                        width: rect.width, height: rect.height
+                    };
+                    e.preventDefault();
+                    e.stopPropagation();
+                });
+            });
+            document.addEventListener("mousemove", function(e) {
+                if (!rs) return;
+                var dx = e.clientX - rs.startX;
+                var dy = e.clientY - rs.startY;
+                var dir = rs.dir;
+                var minW = 320, minH = 220;
+                var left = rs.left, top = rs.top;
+                var width = rs.width, height = rs.height;
+                if (dir.indexOf("e") >= 0) width = rs.width + dx;
+                if (dir.indexOf("s") >= 0) height = rs.height + dy;
+                if (dir.indexOf("w") >= 0) { width = rs.width - dx; left = rs.left + dx; }
+                if (dir.indexOf("n") >= 0) { height = rs.height - dy; top = rs.top + dy; }
+                if (width < minW) {
+                    if (dir.indexOf("w") >= 0) left -= (minW - width);
+                    width = minW;
+                }
+                if (height < minH) {
+                    if (dir.indexOf("n") >= 0) top -= (minH - height);
+                    height = minH;
+                }
+                // Keep the whole panel inside the viewport so it can never clip off-screen
+                width = Math.min(width, window.innerWidth - 16);
+                height = Math.min(height, window.innerHeight - 16);
+                left = Math.max(-width + 60, Math.min(window.innerWidth - 60, left));
+                top = Math.max(0, Math.min(window.innerHeight - 40, top));
+                panel.style.left = left + "px";
+                panel.style.top = top + "px";
+                panel.style.width = width + "px";
+                panel.style.height = height + "px";
+            });
+            document.addEventListener("mouseup", function() {
+                if (rs) { rs = null; saveGeo(); }
+            });
+        })();
 
         async function getCsrf() {
             if (csrfToken) return csrfToken;
