@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+
+{% block title %}{{ info.name }} — Server Info{% endblock %}
+
+{% block body %}
+<div style="max-width:640px;margin:6vh auto 0;padding:24px;">
+    <div style="display:flex;align-items:center;gap:16px;margin-bottom:24px;">
+        {% if info.icon %}
+        <img src="{{ info.icon }}" alt="Server icon"
+             style="width:72px;height:72px;border-radius:50%;object-fit:cover;">
+        {% else %}
+        <div style="width:72px;height:72px;border-radius:50%;background:#2b2d31;
+                    display:grid;place-items:center;font-size:1.6rem;font-weight:800;">
+            {{ info.name[:2] | upper }}
+        </div>
+        {% endif %}
+        <div>
+            <h1 style="margin:0;">{{ info.name }}</h1>
+            {% if info.description %}
+            <p style="opacity:.7;margin:4px 0 0;">{{ info.description }}</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;">
+        <div style="background:#1e1f24;border:1px solid rgba(255,255,255,.08);
+                    border-radius:12px;padding:16px;text-align:center;">
+            <div style="font-size:1.6rem;font-weight:800;">{{ info.member_count }}</div>
+            <div style="opacity:.6;font-size:.8rem;">Members</div>
+        </div>
+        <div style="background:#1e1f24;border:1px solid rgba(255,255,255,.08);
+                    border-radius:12px;padding:16px;text-align:center;">
+            <div style="font-size:1.6rem;font-weight:800;">{{ info.channel_count }}</div>
+            <div style="opacity:.6;font-size:.8rem;">Channels</div>
+        </div>
+        <div style="background:#1e1f24;border:1px solid rgba(255,255,255,.08);
+                    border-radius:12px;padding:16px;text-align:center;">
+            <div style="font-size:1.6rem;font-weight:800;">{{ info.role_count }}</div>
+            <div style="opacity:.6;font-size:.8rem;">Roles</div>
+        </div>
+    </div>
+
+    <p style="opacity:.5;font-size:.8rem;margin-top:20px;">
+        Server created {{ info.created_at }}
+    </p>
+
+    <p style="opacity:.7;margin-top:24px;">
+        More features for members are coming soon. Moderation tools and
+        detailed stats are only available to server moderators and admins.
+    </p>
+</div>
+{% endblock %}
