@@ -1,7 +1,7 @@
 from flask import Blueprint, jsonify, request
 
 from web.services.event_store import event_store
-from web.security.decorators import require_guild_access, require_guild_manage, require_login
+from web.security.decorators import require_guild_manage, require_login, require_guild_member
 
 
 events_api = Blueprint(
@@ -156,7 +156,7 @@ def get_events():
 @events_api.get(
     "/servers/<int:guild_id>/events"
 )
-@require_guild_access
+@require_guild_member
 def get_server_events(
     guild_id
 ):
