@@ -5,7 +5,7 @@
 from flask import Blueprint, jsonify
 
 from web.services.discord_state import discord_state, run_coro_threadsafe
-from web.security.decorators import require_guild_member
+from web.security.decorators import require_guild_moderator
 
 
 leaderboard_api = Blueprint(
@@ -16,7 +16,7 @@ leaderboard_api = Blueprint(
 
 
 @leaderboard_api.get("/servers/<int:guild_id>/leaderboard")
-@require_guild_member
+@require_guild_moderator
 def get_leaderboard(guild_id):
     bot = discord_state.bot
     if bot is None or not discord_state.ready:
