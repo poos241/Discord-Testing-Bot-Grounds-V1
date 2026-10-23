@@ -74,9 +74,39 @@ def require_guild_manage(func):
     return wrapper
 
 
+def _request_guild_id():
+    """Read the target guild id from view args, query args, or JSON body."""
+    from flask import request
+
+    guild_id = None
+    if request.view_args:
+        guild_id = request.view_args.get(
+            "guild_id",
+            request.view_args.get("gid")
+        )
+    if guild_id is None:
+        guild_id = request.args.get(
+            "guild_id",
+            request.args.get("gid")
+        )
+    if guild_id is None and request.is_json:
+        try:
+            guild_id = (
+                request.get_json(silent=True) or {}
+            ).get("guild_id")
+        except Exception:
+            pass
+    return guild_id
+
+
 def require_permission(
-    permission
+    level
 ):
+    """Page-style gate: abort 401/403 unless the user meets the access level.
+
+    ``level`` is one of "viewer", "moderator", "admin".
+    Connected to web.services.permissions.PermissionService.
+    """
 
     def decorator(func):
 
@@ -92,8 +122,25 @@ def require_permission(
 
                 abort(401)
 
-            # We'll connect this to
-            # PermissionService next.
+            from web.services.permissions import (
+                has_access,
+            )
+
+            guild_id = _request_guild_id()
+
+            # No guild in the request: login alone is enough.
+            if guild_id is None:
+                return func(
+                    *args,
+                    **kwargs
+                )
+
+            if not has_access(
+                guild_id,
+                level
+            ):
+
+                abort(403)
 
             return func(
                 *args,
@@ -103,6 +150,62 @@ def require_permission(
         return wrapper
 
     return decorator
+
+
+def _api_guild_gate(level):
+    """Shared logic for the JSON API guild decorators below."""
+
+    def decorator(func):
+
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            from flask import jsonify
+
+            from web.services.permissions import (
+                has_access,
+            )
+
+            if not session.get("user"):
+                return jsonify({
+                    "success": False,
+                    "error": "Authentication required.",
+                }), 401
+
+            guild_id = _request_guild_id()
+
+            # No guild in the request: login alone is enough.
+            if guild_id is None:
+                return func(*args, **kwargs)
+
+            if not has_access(guild_id, level):
+                messages = {
+                    "viewer": "You must be a member of this server.",
+                    "moderator": "Moderator permissions required.",
+                    "admin": "No permission for this server.",
+                }
+                return jsonify({
+                    "success": False,
+                    "error": messages.get(
+                        level,
+                        "No permission for this server."
+                    ),
+                }), 403
+
+            return func(*args, **kwargs)
+
+        return wrapper
+
+    return decorator
+
+
+def require_guild_member(func):
+    """API gate: login + guild membership (viewer tier or higher)."""
+    return _api_guild_gate("viewer")(func)
+
+
+def require_guild_moderator(func):
+    """API gate: login + moderator tier or higher on the guild."""
+    return _api_guild_gate("moderator")(func)
 
 
 def require_guild_access(func):
