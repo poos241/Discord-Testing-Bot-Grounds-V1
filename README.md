@@ -377,6 +377,30 @@ until you change it again. Delete that file to go back to the `.env` setting.
   timing, server log viewer (last 40 lines of `web_debug.log`), plus any
   JavaScript errors captured on the current page
 
+## 🔐 Web dashboard permissions
+
+The web dashboard uses tiered access based on each person's Discord
+permissions in the server — no extra setup needed.
+
+| Tier | Who | What they can do |
+|------|-----|------------------|
+| **viewer** | Any server member | View dashboard, members, channels, roles, leaderboard, activity |
+| **moderator** | Has Kick / Ban / Manage Messages / Timeout Members | Everything above, plus warn, timeout, kick, ban, unban, clear messages, notes, watch |
+| **admin** | Has Manage Server / Administrator, or is the server owner | Everything above, plus logger settings and server configuration |
+
+How it works:
+- Login is via Discord OAuth; your permission flags come from Discord's
+  `/users/@me/guilds` endpoint (cached for 60s, so no extra API spam).
+- Pages and API routes are gated with decorators from
+  `web/security/decorators.py`: `require_guild_member` (viewer+),
+  `require_guild_moderator` (moderator+), `require_guild_access` (admin).
+  The old `require_permission(level)` stub is now wired to the
+  `PermissionService` in `web/services/permissions.py`.
+- Hitting something above your tier shows a friendly 403 page instead of
+  an error dump. The Logger nav link is hidden from non-admins.
+- Templates can check access with `can("moderator")` / `can("admin")`
+  (uses the selected server) or `can_any("admin")` (any server).
+
 ## Troubleshooting
 
 - **`Improper token has been passed`** — your `.env` file is missing or

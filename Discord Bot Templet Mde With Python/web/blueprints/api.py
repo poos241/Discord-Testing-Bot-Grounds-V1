@@ -18,7 +18,7 @@ from web.services.server_service import ServerService
 from web.services.event_store import publish_event
 
 from web.blueprints.auth import (get_auth_session, user_can_manage_guild, get_csrf_token)
-from web.security.decorators import require_guild_access, require_guild_manage, require_login
+from web.security.decorators import require_guild_manage, require_login, require_guild_member
 
 
 api = Blueprint(
@@ -324,7 +324,7 @@ def stats():
 # =========================================================
 
 @api.route("/servers/<int:guild_id>")
-@require_guild_access
+@require_guild_member
 def server_info(guild_id):
 
     bot = discord_state.bot
@@ -374,7 +374,7 @@ def server_info(guild_id):
 # =========================================================
 
 @api.get("/servers/<int:guild_id>/overview")
-@require_guild_access
+@require_guild_member
 def server_overview(guild_id):
 
     bot = discord_state.bot
@@ -557,7 +557,7 @@ def server_overview(guild_id):
 @api.route(
     "/servers/<int:guild_id>/events"
 )
-@require_guild_access
+@require_guild_member
 def server_events(guild_id):
 
     search = request.args.get(
@@ -642,7 +642,7 @@ def server_events(guild_id):
 @api.route(
     "/servers/<int:guild_id>/events/<int:event_id>"
 )
-@require_guild_access
+@require_guild_member
 def event_details(
     guild_id,
     event_id
@@ -670,7 +670,7 @@ def event_details(
 @api.get(
     "/servers/<int:guild_id>/channels/<int:channel_id>"
 )
-@require_guild_access
+@require_guild_member
 def server_channel(
     guild_id,
     channel_id
@@ -791,7 +791,7 @@ def server_channel(
 @api.get(
     "/servers/<int:guild_id>/channels/summary"
 )
-@require_guild_access
+@require_guild_member
 def server_channels_summary(guild_id):
 
     bot = discord_state.bot
@@ -933,7 +933,7 @@ def _require_logger_management(guild_id):
 
 
 @api.route("/servers/<int:guild_id>/logging", methods=["GET"])
-@require_guild_access
+@require_guild_member
 def server_logging(guild_id):
     denied = _require_logger_management(guild_id)
     if denied:
@@ -948,7 +948,7 @@ def server_logging(guild_id):
 
 
 @api.route("/servers/<int:guild_id>/logging/channels", methods=["GET"])
-@require_guild_access
+@require_guild_member
 def logger_channels(guild_id):
     denied = _require_logger_management(guild_id)
     if denied:
@@ -977,7 +977,7 @@ def logger_channels(guild_id):
 
 
 @api.route("/servers/<int:guild_id>/logging", methods=["POST"])
-@require_guild_access
+@require_guild_member
 def save_server_logging(guild_id):
     denied = _require_logger_management(guild_id)
     if denied:
@@ -1035,7 +1035,7 @@ def save_server_logging(guild_id):
 @api.route(
     "/servers/<int:guild_id>/view"
 )
-@require_guild_access
+@require_guild_member
 def server_page_view(
     guild_id
 ):
@@ -1056,7 +1056,7 @@ def server_page_view(
 @api.route(
     "/servers/<int:guild_id>/members/view"
 )
-@require_guild_access
+@require_guild_member
 def server_members_page(guild_id):
 
     return render_template(
@@ -1069,7 +1069,7 @@ def server_members_page(guild_id):
 # =========================================================
 
 @api.get("/servers/<int:guild_id>/dashboard")
-@require_guild_access
+@require_guild_member
 def server_dashboard_data(guild_id):
 
     bot = discord_state.bot
@@ -1288,7 +1288,7 @@ def get_events():
 @api.get(
     "/servers/<int:guild_id>/health"
 )
-@require_guild_access
+@require_guild_member
 def server_health(
     guild_id
 ):
@@ -1512,7 +1512,7 @@ def server_health(
 # =========================================================
 
 @api.get("/servers/<int:guild_id>/channels/<int:channel_id>")
-@require_guild_access
+@require_guild_member
 def channel_details(guild_id, channel_id):
 
     bot = discord_state.bot
@@ -1596,7 +1596,7 @@ def channel_details(guild_id, channel_id):
 # =========================================================
 
 @api.get("/servers/<int:guild_id>/channels/summary")
-@require_guild_access
+@require_guild_member
 def channel_summary(guild_id):
 
     bot = discord_state.bot
@@ -1677,7 +1677,7 @@ def channel_summary(guild_id):
 # =========================================================
 
 @api.get("/servers/<int:guild_id>/roles/<int:role_id>")
-@require_guild_access
+@require_guild_member
 def role_details(guild_id, role_id):
 
     bot = discord_state.bot
@@ -1885,7 +1885,7 @@ def api_info():
 # =========================================================
 
 @api.get("/servers/<int:guild_id>/statistics")
-@require_guild_access
+@require_guild_member
 def server_statistics(guild_id):
 
     bot = discord_state.bot
@@ -1924,7 +1924,7 @@ def server_statistics(guild_id):
 # =========================================================
 
 @api.get("/servers/<int:guild_id>/activity")
-@require_guild_access
+@require_guild_member
 def server_activity(guild_id):
 
     bot = discord_state.bot
@@ -2110,7 +2110,7 @@ def server_activity(guild_id):
 @api.get(
     "/servers/<int:guild_id>/activity/summary"
 )
-@require_guild_access
+@require_guild_member
 def server_activity_summary(
     guild_id
 ):
@@ -2261,7 +2261,7 @@ def test_event_system():
 @api.get(
     "/servers/<int:guild_id>/analytics"
 )
-@require_guild_access
+@require_guild_member
 def server_analytics(
     guild_id
 ):

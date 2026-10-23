@@ -13,7 +13,10 @@ import secrets
 from flask import session
 
 from web.services.discord_state import discord_state, run_coro_threadsafe
-from web.security.decorators import require_guild_access
+from web.security.decorators import (
+    require_guild_member,
+    require_guild_moderator,
+)
 from web.blueprints.auth import get_csrf_token
 
 
@@ -155,7 +158,7 @@ def _xp_for(guild_id, user_id):
 @modpanel_api.get(
     "/servers/<int:guild_id>/members/<int:user_id>/modpanel"
 )
-@require_guild_access
+@require_guild_member
 def get_modpanel(guild_id, user_id):
     guild, member = _get_member(guild_id, user_id)
     if guild is None:
@@ -216,6 +219,8 @@ def get_modpanel(guild_id, user_id):
         except Exception:
             pass
 
+    from web.services.permissions import get_access_level
+
     return jsonify({
         "success": True,
         "member": minfo,
@@ -226,6 +231,8 @@ def get_modpanel(guild_id, user_id):
         "watch_info": watch_info,
         "xp": xp,
         "level": level,
+        # Lets the frontend hide mod-action buttons from non-moderators.
+        "access_level": get_access_level(guild_id) or "none",
     })
 
 
@@ -238,7 +245,7 @@ def get_modpanel(guild_id, user_id):
 @modpanel_api.post(
     "/servers/<int:guild_id>/members/<int:user_id>/warn"
 )
-@require_guild_access
+@require_guild_moderator
 def modpanel_warn(guild_id, user_id):
     denied = _check_csrf()
     if denied:
@@ -299,7 +306,7 @@ def modpanel_warn(guild_id, user_id):
 @modpanel_api.post(
     "/servers/<int:guild_id>/members/<int:user_id>/notes"
 )
-@require_guild_access
+@require_guild_moderator
 def modpanel_add_note(guild_id, user_id):
     denied = _check_csrf()
     if denied:
@@ -331,7 +338,7 @@ def modpanel_add_note(guild_id, user_id):
 @modpanel_api.delete(
     "/servers/<int:guild_id>/members/<int:user_id>/notes/<int:index>"
 )
-@require_guild_access
+@require_guild_moderator
 def modpanel_delete_note(guild_id, user_id, index):
     denied = _check_csrf()
     if denied:
@@ -361,7 +368,7 @@ def modpanel_delete_note(guild_id, user_id, index):
 @modpanel_api.post(
     "/servers/<int:guild_id>/members/<int:user_id>/watch"
 )
-@require_guild_access
+@require_guild_moderator
 def modpanel_watch(guild_id, user_id):
     denied = _check_csrf()
     if denied:
@@ -402,7 +409,7 @@ def modpanel_watch(guild_id, user_id):
 @modpanel_api.delete(
     "/servers/<int:guild_id>/members/<int:user_id>/watch"
 )
-@require_guild_access
+@require_guild_moderator
 def modpanel_unwatch(guild_id, user_id):
     denied = _check_csrf()
     if denied:
@@ -434,7 +441,7 @@ def modpanel_unwatch(guild_id, user_id):
 @modpanel_api.post(
     "/servers/<int:guild_id>/members/<int:user_id>/xp"
 )
-@require_guild_access
+@require_guild_moderator
 def modpanel_xp(guild_id, user_id):
     denied = _check_csrf()
     if denied:
@@ -478,7 +485,7 @@ def modpanel_xp(guild_id, user_id):
 @modpanel_api.post(
     "/servers/<int:guild_id>/members/<int:user_id>/rename"
 )
-@require_guild_access
+@require_guild_moderator
 def modpanel_rename(guild_id, user_id):
     denied = _check_csrf()
     if denied:
@@ -514,7 +521,7 @@ def modpanel_rename(guild_id, user_id):
 @modpanel_api.post(
     "/servers/<int:guild_id>/members/<int:user_id>/strip-roles"
 )
-@require_guild_access
+@require_guild_moderator
 def modpanel_strip_roles(guild_id, user_id):
     denied = _check_csrf()
     if denied:
@@ -553,7 +560,7 @@ def modpanel_strip_roles(guild_id, user_id):
 @modpanel_api.post(
     "/servers/<int:guild_id>/members/<int:user_id>/clear"
 )
-@require_guild_access
+@require_guild_moderator
 def modpanel_clear(guild_id, user_id):
     denied = _check_csrf()
     if denied:
@@ -611,7 +618,7 @@ def modpanel_clear(guild_id, user_id):
 @modpanel_api.post(
     "/servers/<int:guild_id>/members/<int:user_id>/tempban"
 )
-@require_guild_access
+@require_guild_moderator
 def modpanel_tempban(guild_id, user_id):
     denied = _check_csrf()
     if denied:
@@ -692,7 +699,7 @@ def modpanel_tempban(guild_id, user_id):
 @modpanel_api.post(
     "/servers/<int:guild_id>/members/<int:user_id>/wipe"
 )
-@require_guild_access
+@require_guild_moderator
 def modpanel_wipe(guild_id, user_id):
     denied = _check_csrf()
     if denied:

@@ -1,7 +1,7 @@
 from flask import Blueprint, jsonify
 
 from web.services.discord_state import discord_state
-from web.security.decorators import require_guild_access, require_guild_manage, require_login
+from web.security.decorators import require_guild_manage, require_login, require_guild_member
 
 
 server_overview_api = Blueprint(
@@ -13,7 +13,7 @@ server_overview_api = Blueprint(
 @server_overview_api.get(
     "/api/servers/<int:guild_id>/quick-overview"
 )
-@require_guild_access
+@require_guild_member
 def quick_overview(guild_id):
 
     bot = discord_state.get_bot()

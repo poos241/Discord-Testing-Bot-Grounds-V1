@@ -1,7 +1,7 @@
 from flask import Blueprint, jsonify
 
 from web.services.discord_state import discord_state
-from web.security.decorators import require_guild_access, require_guild_manage, require_login
+from web.security.decorators import require_guild_manage, require_login, require_guild_member
 
 
 channels_api = Blueprint(
@@ -37,7 +37,7 @@ def get_guild(guild_id):
 @channels_api.get(
     "/api/servers/<int:guild_id>/channels"
 )
-@require_guild_access
+@require_guild_member
 def get_server_channels(guild_id):
 
     bot = get_bot()
@@ -157,7 +157,7 @@ def get_server_channels(guild_id):
 @channels_api.get(
     "/api/servers/<int:guild_id>/channels/summary"
 )
-@require_guild_access
+@require_guild_member
 def channel_summary(guild_id):
 
     bot = get_bot()
