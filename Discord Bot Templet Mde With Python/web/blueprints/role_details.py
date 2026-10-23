@@ -5,7 +5,7 @@ from web.services.discord_state import discord_state
 from web.blueprints.auth import (
     user_can_manage_guild
 )
-from web.security.decorators import require_guild_manage, require_login, require_guild_member
+from web.security.decorators import require_guild_manage, require_login, require_guild_moderator
 
 role_details_api = Blueprint(
     "role_details",
@@ -16,7 +16,7 @@ role_details_api = Blueprint(
 @role_details_api.get(
     "/api/servers/<int:guild_id>/roles/<int:role_id>/details"
 )
-@require_guild_member
+@require_guild_moderator
 def role_details(
     guild_id,
     role_id
