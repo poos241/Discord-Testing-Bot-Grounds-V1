@@ -5,8 +5,9 @@ from flask import (
 
 from web.services.discord_state import discord_state
 
-from web.blueprints.auth import (
-    get_manageable_guilds,
+from web.services.permissions import (
+    get_access_level,
+    is_guild_owner,
 )
 from web.security.decorators import require_guild_manage, require_login, require_guild_moderator
 
@@ -72,58 +73,10 @@ def servers():
 
 
     # =====================================================
-    # USER PERMISSIONS
-    # =====================================================
-
-    try:
-
-        manageable_guilds = (
-            get_manageable_guilds()
-        )
-
-    except Exception as exc:
-
-        print(
-            "[Servers API] "
-            f"Permission lookup failed: {exc}"
-        )
-
-        return jsonify({
-
-            "success":
-                False,
-
-            "error":
-                "Unable to determine "
-                "server permissions.",
-
-            "servers":
-                [],
-
-            "count":
-                0,
-
-        }), 500
-
-
-    manageable_map = {
-
-        str(
-            guild.get("id")
-        ):
-            guild
-
-        for guild
-        in manageable_guilds
-
-        if guild.get("id") is not None
-
-    }
-
-
-    # =====================================================
     # BUILD SERVER LIST
     # =====================================================
+    # Show every server the user is a member of, tagged with
+    # their access level (viewer / moderator / admin).
 
     result = []
 
@@ -135,15 +88,13 @@ def servers():
         )
 
 
-        access = (
-            manageable_map.get(
-                guild_id
-            )
+        level = get_access_level(
+            guild_id
         )
 
 
-        # User cannot manage this server.
-        if access is None:
+        # User is not a member of this server.
+        if level is None:
 
             continue
 
@@ -209,27 +160,24 @@ def servers():
                         else None
                     ),
 
+                "access_level":
+                    level,
+
                 "can_manage":
-                    bool(
-                        access.get(
-                            "can_manage",
-                            False
-                        )
+                    level
+                    in (
+                        "moderator",
+                        "admin",
                     ),
 
                 "is_admin":
-                    bool(
-                        access.get(
-                            "is_admin",
-                            False
-                        )
-                    ),
+                    level
+                    == "admin",
 
                 "owner":
                     bool(
-                        access.get(
-                            "owner",
-                            False
+                        is_guild_owner(
+                            guild_id
                         )
                     ),
 
