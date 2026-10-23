@@ -4,7 +4,7 @@ from flask import (
 )
 
 from web.services.discord_state import discord_state
-from web.security.decorators import require_guild_manage, require_login, require_guild_member
+from web.security.decorators import require_guild_manage, require_login, require_guild_moderator
 
 
 roles_api = Blueprint(
@@ -129,7 +129,7 @@ def serialize_role(
 @roles_api.get(
     "/api/servers/<int:guild_id>/roles"
 )
-@require_guild_member
+@require_guild_moderator
 def get_server_roles(
     guild_id
 ):

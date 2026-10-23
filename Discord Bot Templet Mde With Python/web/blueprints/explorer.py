@@ -2,7 +2,7 @@ from flask import Blueprint, jsonify, request
 
 from web.services.discord_state import discord_state
 from web.services.event_store import event_store
-from web.security.decorators import require_guild_manage, require_login, require_guild_member
+from web.security.decorators import require_guild_manage, require_login, require_guild_moderator
 
 
 explorer_api = Blueprint(
@@ -56,7 +56,7 @@ def get_guild(guild_id):
 @explorer_api.get(
     "/api/servers/<int:guild_id>/search"
 )
-@require_guild_member
+@require_guild_moderator
 def server_search(guild_id):
 
     guild, error = get_guild(
@@ -330,7 +330,7 @@ def server_search(guild_id):
 @explorer_api.get(
     "/api/servers/<int:guild_id>/permissions"
 )
-@require_guild_member
+@require_guild_moderator
 def server_permissions(guild_id):
 
     guild, error = get_guild(
@@ -469,7 +469,7 @@ def server_permissions(guild_id):
 @explorer_api.get(
     "/api/servers/<int:guild_id>/activity"
 )
-@require_guild_member
+@require_guild_moderator
 def server_activity(guild_id):
 
     guild, error = get_guild(
@@ -583,7 +583,7 @@ def server_activity(guild_id):
 @explorer_api.get(
     "/api/servers/<int:guild_id>/members/top"
 )
-@require_guild_member
+@require_guild_moderator
 def top_members(guild_id):
 
     guild, error = get_guild(

@@ -14,7 +14,6 @@ from flask import session
 
 from web.services.discord_state import discord_state, run_coro_threadsafe
 from web.security.decorators import (
-    require_guild_member,
     require_guild_moderator,
 )
 from web.blueprints.auth import get_csrf_token
@@ -158,7 +157,7 @@ def _xp_for(guild_id, user_id):
 @modpanel_api.get(
     "/servers/<int:guild_id>/members/<int:user_id>/modpanel"
 )
-@require_guild_member
+@require_guild_moderator
 def get_modpanel(guild_id, user_id):
     guild, member = _get_member(guild_id, user_id)
     if guild is None:

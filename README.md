@@ -384,9 +384,13 @@ permissions in the server — no extra setup needed.
 
 | Tier | Who | What they can do |
 |------|-----|------------------|
-| **viewer** | Any server member | View dashboard, members, channels, roles, leaderboard, activity |
-| **moderator** | Has Kick / Ban / Manage Messages / Timeout Members | Everything above, plus warn, timeout, kick, ban, unban, clear messages, notes, watch |
+| **viewer** | Any server member | Server list, profile, and a basic server info screen (name, member/channel/role counts) |
+| **moderator** | Has Kick / Ban / Manage Messages / Timeout Members | All server pages (dashboard, members, channels, roles, leaderboard, activity), plus warn, timeout, kick, ban, unban, clear messages, notes, watch |
 | **admin** | Has Manage Server / Administrator, or is the server owner | Everything above, plus logger settings and server configuration |
+
+> Regular members (no roles) cannot open any of the current server pages —
+> they see the basic info screen instead, and direct links to restricted
+> pages show a "no access" message telling them to contact the IT team.
 
 How it works:
 - Login is via Discord OAuth; your permission flags come from Discord's
@@ -394,6 +398,7 @@ How it works:
 - Pages and API routes are gated with decorators from
   `web/security/decorators.py`: `require_guild_member` (viewer+),
   `require_guild_moderator` (moderator+), `require_guild_access` (admin).
+  All server pages and their APIs require moderator or higher.
   The old `require_permission(level)` stub is now wired to the
   `PermissionService` in `web/services/permissions.py`.
 - Hitting something above your tier shows a friendly 403 page instead of

@@ -2,7 +2,7 @@ from flask import Blueprint, jsonify
 
 from web.services.server_service import ServerService
 from web.services.discord_state import discord_state
-from web.security.decorators import require_guild_manage, require_login, require_guild_member
+from web.security.decorators import require_guild_manage, require_login, require_guild_moderator
 
 
 dashboard_api = Blueprint(
@@ -29,7 +29,7 @@ def get_bot():
 @dashboard_api.get(
     "/api/servers/<int:guild_id>/dashboard"
 )
-@require_guild_member
+@require_guild_moderator
 def server_dashboard(
     guild_id
 ):

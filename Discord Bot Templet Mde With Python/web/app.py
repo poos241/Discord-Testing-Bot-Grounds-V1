@@ -274,8 +274,10 @@ def create_app(bot):
     def server_dashboard(guild_id):
 
         from web.services.permissions import (
-            is_guild_member
+            get_access_level,
+            has_access,
         )
+        from web.services.discord_state import discord_state
 
         if not session.get("user"):
 
@@ -283,9 +285,9 @@ def create_app(bot):
                 url_for("auth.login")
             )
 
-        if not is_guild_member(
-            guild_id
-        ):
+        level = get_access_level(guild_id)
+
+        if level is None:
 
             return render_template(
                 "403.html",
@@ -297,9 +299,31 @@ def create_app(bot):
             guild_id
         )
 
+        # Moderators and admins get the full dashboard.
+        if has_access(guild_id, "moderator"):
+
+            return render_template(
+                "dashboard.html",
+                guild_id=guild_id
+            )
+
+        # Regular members get a basic server info screen.
+        bot = discord_state.get_bot()
+        guild = bot.get_guild(int(guild_id)) if bot else None
+        info = {
+            "name": guild.name if guild else "Unknown server",
+            "icon": str(guild.icon.url) if guild and guild.icon else None,
+            "member_count": guild.member_count if guild else 0,
+            "channel_count": len(guild.channels) if guild else 0,
+            "role_count": len(guild.roles) if guild else 0,
+            "created_at": guild.created_at.strftime("%B %d, %Y") if guild and guild.created_at else "Unknown",
+            "description": guild.description or "",
+        }
+
         return render_template(
-            "dashboard.html",
-            guild_id=guild_id
+            "server_basic.html",
+            guild_id=guild_id,
+            info=info,
         )
 
     @app.route("/servers")
@@ -335,7 +359,7 @@ def create_app(bot):
     def server_page(guild_id):
 
         from web.services.permissions import (
-            is_guild_member
+            has_access
         )
 
         if not session.get("user"):
@@ -344,8 +368,9 @@ def create_app(bot):
                 url_for("auth.login")
             )
 
-        if not is_guild_member(
-            guild_id
+        if not has_access(
+            guild_id,
+            "moderator"
         ):
 
             return render_template(
@@ -371,7 +396,7 @@ def create_app(bot):
     def server_members_page(guild_id):
 
         from web.services.permissions import (
-            is_guild_member
+            has_access
         )
 
         if not session.get("user"):
@@ -380,8 +405,9 @@ def create_app(bot):
                 url_for("auth.login")
             )
 
-        if not is_guild_member(
-            guild_id
+        if not has_access(
+            guild_id,
+            "moderator"
         ):
 
             return render_template(
@@ -411,7 +437,7 @@ def create_app(bot):
     ):
 
         from web.services.permissions import (
-            is_guild_member
+            has_access
         )
 
 
@@ -422,8 +448,9 @@ def create_app(bot):
             )
 
 
-        if not is_guild_member(
-            guild_id
+        if not has_access(
+            guild_id,
+            "moderator"
         ):
 
             return render_template(
@@ -456,7 +483,7 @@ def create_app(bot):
     ):
 
         from web.services.permissions import (
-            is_guild_member
+            has_access
         )
 
 
@@ -467,8 +494,9 @@ def create_app(bot):
             )
 
 
-        if not is_guild_member(
-            guild_id
+        if not has_access(
+            guild_id,
+            "moderator"
         ):
 
             return render_template(
@@ -568,7 +596,7 @@ def create_app(bot):
     def server_activity_page(guild_id):
 
         from web.services.permissions import (
-            is_guild_member
+            has_access
         )
 
         if not session.get("user"):
@@ -577,8 +605,9 @@ def create_app(bot):
                 url_for("auth.login")
             )
 
-        if not is_guild_member(
-            guild_id
+        if not has_access(
+            guild_id,
+            "moderator"
         ):
 
             return render_template(
@@ -657,7 +686,7 @@ def create_app(bot):
     ):
 
         from web.services.permissions import (
-            is_guild_member
+            has_access
         )
 
 
@@ -670,8 +699,9 @@ def create_app(bot):
             )
 
 
-        if not is_guild_member(
-            guild_id
+        if not has_access(
+            guild_id,
+            "moderator"
         ):
 
             return render_template(
@@ -708,7 +738,7 @@ def create_app(bot):
     ):
 
         from web.services.permissions import (
-            is_guild_member
+            has_access
         )
 
 
@@ -719,8 +749,9 @@ def create_app(bot):
             )
 
 
-        if not is_guild_member(
-            guild_id
+        if not has_access(
+            guild_id,
+            "moderator"
         ):
 
             return render_template(
@@ -746,7 +777,7 @@ def create_app(bot):
     def event_details_page(guild_id, event_id):
 
         from web.services.permissions import (
-            is_guild_member
+            has_access
         )
 
         if not session.get("user"):
@@ -755,8 +786,9 @@ def create_app(bot):
                 url_for("auth.login")
             )
 
-        if not is_guild_member(
-            guild_id
+        if not has_access(
+            guild_id,
+            "moderator"
         ):
 
             return render_template(
