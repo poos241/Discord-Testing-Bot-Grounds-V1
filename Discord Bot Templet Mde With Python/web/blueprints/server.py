@@ -8,7 +8,7 @@ from web.services.discord_state import discord_state
 from web.blueprints.auth import (
     get_manageable_guilds,
 )
-from web.security.decorators import require_guild_manage, require_login, require_guild_member
+from web.security.decorators import require_guild_manage, require_login, require_guild_moderator
 
 
 servers_api = Blueprint(
@@ -270,7 +270,7 @@ def servers():
 @servers_api.get(
     "/servers/<int:guild_id>/channels"
 )
-@require_guild_member
+@require_guild_moderator
 def get_server_channels(
     guild_id
 ):
