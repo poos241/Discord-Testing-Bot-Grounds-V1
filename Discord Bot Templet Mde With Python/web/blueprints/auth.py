@@ -2,6 +2,7 @@ import json
 import secrets
 import urllib.parse
 import urllib.request
+import urllib.error
 import threading
 import time
 
@@ -76,6 +77,10 @@ _PENDING_OAUTH = {}
 _GUILD_CACHE = {}
 GUILD_CACHE_TTL = 60
 GUILD_CACHE_STALE_TTL = 300
+# Session IDs with a Discord guild fetch currently in flight.
+# Prevents concurrent page/API requests from bursting Discord with
+# duplicate calls (which is what triggers the 429s).
+_GUILD_FETCH_INFLIGHT = set()
 
 
 AUTH_SESSION_MAX_AGE = 60 * 60 * 24 * 7
@@ -749,6 +754,11 @@ def current_user():
 # GET CURRENT USER'S DISCORD GUILDS
 # =========================================================
 
+def _guild_cache_backoff_seconds():
+    """Fallback wait before retrying guild fetches after a 429."""
+    return 5
+
+
 def get_user_guilds(force_refresh=False):
 
     auth_data = get_auth_session()
@@ -764,10 +774,36 @@ def get_user_guilds(force_refresh=False):
 
     with _AUTH_LOCK:
         cached = _GUILD_CACHE.get(session_id)
-        if cached and not force_refresh:
-            age = now - cached.get("fetched_at", 0)
-            if age <= GUILD_CACHE_TTL:
+        if cached:
+            # If Discord rate-limited us, respect its retry_after and serve
+            # the last known list instead of hammering the endpoint again.
+            if now < cached.get("retry_after", 0):
                 return list(cached.get("guilds", []))
+            if not force_refresh:
+                age = now - cached.get("fetched_at", 0)
+                if age <= GUILD_CACHE_TTL:
+                    return list(cached.get("guilds", []))
+        # If another thread is already refreshing, wait for it instead of
+        # firing a duplicate request (bursts are what trigger the 429s).
+        if session_id in _GUILD_FETCH_INFLIGHT:
+            wait_for_other = True
+        else:
+            _GUILD_FETCH_INFLIGHT.add(session_id)
+            wait_for_other = False
+
+    if wait_for_other:
+        for _ in range(30):  # up to ~3s
+            time.sleep(0.1)
+            with _AUTH_LOCK:
+                cached = _GUILD_CACHE.get(session_id)
+                if cached:
+                    age = time.time() - cached.get("fetched_at", 0)
+                    if age <= GUILD_CACHE_TTL:
+                        return list(cached.get("guilds", []))
+        # The other fetch didn't finish in time; try ourselves.
+        with _AUTH_LOCK:
+            _GUILD_FETCH_INFLIGHT.discard(session_id)
+            _GUILD_FETCH_INFLIGHT.add(session_id)
 
     try:
         guilds = discord_request(
@@ -781,19 +817,59 @@ def get_user_guilds(force_refresh=False):
         with _AUTH_LOCK:
             _GUILD_CACHE[session_id] = {
                 "guilds": guilds,
-                "fetched_at": now,
+                "fetched_at": time.time(),
+                "retry_after": 0,
             }
 
         return list(guilds)
 
+    except urllib.error.HTTPError as exc:
+        # Discord is rate limiting us: honor its retry_after so we stop
+        # immediately instead of retrying into the limit on every request.
+        retry_after = _guild_cache_backoff_seconds()
+        if exc.code == 429:
+            try:
+                body = exc.read().decode("utf-8")
+                data = json.loads(body)
+                retry_after = float(data.get("retry_after", retry_after))
+            except Exception:
+                pass
+            retry_after = min(max(retry_after, 1), 300)
+            print(
+                "[Web Auth] Discord rate limited (429); "
+                f"backing off guild fetches for {retry_after:.1f}s"
+            )
+        else:
+            print(f"[Web Auth] Failed to retrieve Discord guilds: {exc}")
+
+        with _AUTH_LOCK:
+            _GUILD_FETCH_INFLIGHT.discard(session_id)
+            cached = _GUILD_CACHE.get(session_id) or {}
+            if exc.code == 429:
+                cached["retry_after"] = time.time() + retry_after + 1
+            if "fetched_at" not in cached:
+                cached["fetched_at"] = 0
+            if "guilds" not in cached:
+                cached["guilds"] = []
+            _GUILD_CACHE[session_id] = cached
+            now2 = time.time()
+            if cached.get("guilds") and now2 - cached.get("fetched_at", 0) <= GUILD_CACHE_STALE_TTL:
+                # A temporary 429/network failure must not turn a valid
+                # logged-in user into a 403 if we have a recently known
+                # permission snapshot.
+                return list(cached.get("guilds", []))
+
+        return []
+
     except Exception as exc:
         print(f"[Web Auth] Failed to retrieve Discord guilds: {exc}")
 
-        # A temporary 429/network failure must not turn a valid logged-in
-        # user into a 403 if we have a recently known permission snapshot.
         with _AUTH_LOCK:
+            _GUILD_FETCH_INFLIGHT.discard(session_id)
+            # A temporary 429/network failure must not turn a valid logged-in
+            # user into a 403 if we have a recently known permission snapshot.
             cached = _GUILD_CACHE.get(session_id)
-            if cached and now - cached.get("fetched_at", 0) <= GUILD_CACHE_STALE_TTL:
+            if cached and time.time() - cached.get("fetched_at", 0) <= GUILD_CACHE_STALE_TTL:
                 return list(cached.get("guilds", []))
 
         return []
