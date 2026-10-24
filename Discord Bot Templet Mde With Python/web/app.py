@@ -219,15 +219,16 @@ def create_app(bot):
     @app.route("/")
     def home():
 
-        if not session.get("user"):
+        # Logged-in users go straight to the server list.
+        if session.get("user"):
 
-            return render_template(
-                "auth/login.html"
+            return redirect(
+                url_for("servers")
             )
 
-        
-        return redirect(
-            url_for("servers")
+        # Visitors get the public landing page.
+        return render_template(
+            "home.html"
         )
 
 
