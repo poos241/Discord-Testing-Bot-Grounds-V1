@@ -395,6 +395,19 @@ External links in the nav bar:
   permissions in at least one server. The landing page also has a
   Resources section with the two public links.
 
+### 👤 User profiles
+
+Every logged-in user gets a profile page (`/profile`):
+
+- Discord avatar, display name, username, and user ID.
+- A **My servers** list with access-level badges, linking to each
+  server's dashboard (or basic info screen for regular members).
+- **Customization** — a bio (up to 500 characters) and an accent color
+  (color picker + preset swatches) that tints the profile banner and
+  save button. Settings are saved per Discord user ID via
+  `GET/POST /api/profile` (CSRF-protected) to `data/profiles.json`,
+  which is created at runtime and never committed.
+
 The web dashboard uses tiered access based on each person's Discord
 permissions in the server — no extra setup needed.
 
