@@ -65,6 +65,7 @@ from web.blueprints.auth import auth_api
 from web.config import SECRET_KEY
 
 from web.blueprints.roles import roles_api
+from web.blueprints.profiles import profiles_api
 
 from web.blueprints.logger import logger_api
 from web.blueprints.dashboard import dashboard_api
@@ -207,6 +208,7 @@ def create_app(bot):
     app.register_blueprint(role_details_api)
     
     app.register_blueprint(roles_api)
+    app.register_blueprint(profiles_api)
     
     app.register_blueprint(auth_api)
     
