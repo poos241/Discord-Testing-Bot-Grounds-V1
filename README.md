@@ -379,6 +379,14 @@ until you change it again. Delete that file to go back to the `.env` setting.
 
 ## 🔐 Web dashboard permissions
 
+The site has a public front and gated dashboard areas:
+
+- **Public** — the landing page at `/` needs no login. It describes the
+  bot, its features, and how to get started.
+- **Gated** — the server list, server pages, and APIs need a Discord login
+  plus the right tier (see below). Nav links only appear when you can
+  actually use them.
+
 The web dashboard uses tiered access based on each person's Discord
 permissions in the server — no extra setup needed.
 
