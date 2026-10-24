@@ -57,7 +57,7 @@
     <div class="brand-area">
 
         <a
-            href="{{ url_for('dashboard') }}"
+            href="{{ url_for('home') }}"
             class="brand-link"
         >
 
@@ -86,6 +86,13 @@
 
 
     <div class="nav-links">
+
+        <a
+            href="{{ url_for('home') }}"
+            class="nav-link-item"
+        >
+            Home
+        </a>
 
         {% if session.get("user") %}
 
