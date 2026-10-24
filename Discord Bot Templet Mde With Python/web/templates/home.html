@@ -1,17 +1,102 @@
-{% extends "layout.html" %}
+{% extends "base.html" %}
+
+{% block title %}Kush Bush — Discord Bot{% endblock %}
 
 {% block body %}
+<div style="max-width:900px;margin:0 auto;padding:48px 24px 64px;">
 
-<h1>
+    <!-- HERO -->
+    <div style="text-align:center;padding:48px 0 32px;">
+        <div style="font-size:4rem;margin-bottom:8px;">🌿</div>
+        <h1 style="margin:0 0 8px;font-size:2.4rem;">Kush Bush</h1>
+        <p style="opacity:.75;font-size:1.15rem;margin:0 0 28px;">
+            A Discord bot for community, games, and moderation —
+            with a live web dashboard for your server.
+        </p>
+        <a href="{{ url_for('auth.login') }}"
+           style="display:inline-block;padding:14px 28px;border-radius:10px;
+                  background:#5865F2;color:#fff;text-decoration:none;
+                  font-weight:700;font-size:1.05rem;">
+            Login with Discord
+        </a>
+        <p style="opacity:.55;font-size:.85rem;margin-top:14px;">
+            Server moderators get the full dashboard. Regular members
+            get a basic view of their server.
+        </p>
+    </div>
 
-Welcome
+    <!-- FEATURES -->
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px;margin-top:16px;">
 
-</h1>
+        <div style="background:#1e1f24;border:1px solid rgba(255,255,255,.08);
+                    border-radius:14px;padding:22px;">
+            <div style="font-size:1.8rem;">🛡️</div>
+            <h3 style="margin:10px 0 6px;">Moderation</h3>
+            <p style="opacity:.7;margin:0;font-size:.95rem;line-height:1.5;">
+                Warn, timeout, kick, and ban from Discord or the web panel —
+                with case history, evidence, and DM notifications.
+            </p>
+        </div>
 
-<p>
+        <div style="background:#1e1f24;border:1px solid rgba(255,255,255,.08);
+                    border-radius:14px;padding:22px;">
+            <div style="font-size:1.8rem;">⭐</div>
+            <h3 style="margin:10px 0 6px;">Level System</h3>
+            <p style="opacity:.7;margin:0;font-size:.95rem;line-height:1.5;">
+                XP, ranks, role rewards, and daily streaks that keep
+                your community active and coming back.
+            </p>
+        </div>
 
-The dashboard is running.
+        <div style="background:#1e1f24;border:1px solid rgba(255,255,255,.08);
+                    border-radius:14px;padding:22px;">
+            <div style="font-size:1.8rem;">🎮</div>
+            <h3 style="margin:10px 0 6px;">Eat It or Yeet It</h3>
+            <p style="opacity:.7;margin:0;font-size:.95rem;line-height:1.5;">
+                The party game where your server votes on wild foods —
+                with rematches, stats, and live countdowns.
+            </p>
+        </div>
 
-</p>
+        <div style="background:#1e1f24;border:1px solid rgba(255,255,255,.08);
+                    border-radius:14px;padding:22px;">
+            <div style="font-size:1.8rem;">📊</div>
+            <h3 style="margin:10px 0 6px;">Web Dashboard</h3>
+            <p style="opacity:.7;margin:0;font-size:.95rem;line-height:1.5;">
+                Live member lists, channel stats, leaderboards, and
+                activity — all auto-refreshing, no reload needed.
+            </p>
+        </div>
 
+    </div>
+
+    <!-- HOW IT WORKS -->
+    <div style="margin-top:48px;text-align:center;">
+        <h2 style="margin:0 0 16px;">How it works</h2>
+        <div style="display:flex;flex-wrap:wrap;gap:12px;justify-content:center;">
+            <div style="background:#1e1f24;border:1px solid rgba(255,255,255,.08);
+                        border-radius:12px;padding:16px 22px;max-width:220px;">
+                <div style="font-weight:800;font-size:1.2rem;">1. Login</div>
+                <div style="opacity:.7;font-size:.9rem;margin-top:4px;">
+                    Sign in with your Discord account.
+                </div>
+            </div>
+            <div style="background:#1e1f24;border:1px solid rgba(255,255,255,.08);
+                        border-radius:12px;padding:16px 22px;max-width:220px;">
+                <div style="font-weight:800;font-size:1.2rem;">2. Pick a server</div>
+                <div style="opacity:.7;font-size:.9rem;margin-top:4px;">
+                    Choose any server you're a member of.
+                </div>
+            </div>
+            <div style="background:#1e1f24;border:1px solid rgba(255,255,255,.08);
+                        border-radius:12px;padding:16px 22px;max-width:220px;">
+                <div style="font-weight:800;font-size:1.2rem;">3. Get to work</div>
+                <div style="opacity:.7;font-size:.9rem;margin-top:4px;">
+                    Mods get the full toolkit. Members get the basics.
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
 {% endblock %}
