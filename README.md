@@ -387,6 +387,14 @@ The site has a public front and gated dashboard areas:
   plus the right tier (see below). Nav links only appear when you can
   actually use them.
 
+External links in the nav bar:
+
+- **GitHub** (public) — the bot's repo.
+- **Handbook** (public) — the Bot Developer Handbook.
+- **Staff Handbook** (moderator+) — only shown to users with moderator
+  permissions in at least one server. The landing page also has a
+  Resources section with the two public links.
+
 The web dashboard uses tiered access based on each person's Discord
 permissions in the server — no extra setup needed.
 
