@@ -3,26 +3,194 @@
 {% block title %}Profile — Kush Bush Dashboard{% endblock %}
 
 {% block body %}
-<div style="max-width: 640px; margin: 40px auto; padding: 0 16px;">
-    <div style="background: rgba(255,255,255,.03); border: 1px solid rgba(255,255,255,.08);
-        border-radius: 16px; padding: 32px; text-align: center;">
-        {% if user.avatar %}
-        <img src="https://cdn.discordapp.com/avatars/{{ user.id }}/{{ user.avatar }}.png"
-            alt="" style="width: 96px; height: 96px; border-radius: 50%; margin-bottom: 16px;">
-        {% else %}
-        <div style="width: 96px; height: 96px; border-radius: 50%; background: #5865f2;
-            display: inline-flex; align-items: center; justify-content: center;
-            font-size: 2.5rem; font-weight: 800; color: #fff; margin-bottom: 16px;">
-            {{ (user.global_name or user.username or "U")[0] }}
-        </div>
-        {% endif %}
-        <h2 style="margin: 0 0 4px;">{{ user.global_name or user.username }}</h2>
-        <div style="opacity: .55; font-size: .9rem; margin-bottom: 24px;">
-            @{{ user.username }} · ID: {{ user.id }}
-        </div>
-        <div style="opacity: .5; font-size: .85rem;">
-            More profile features coming soon.
+<div style="max-width:760px;margin:40px auto;padding:0 16px;">
+
+    <!-- HEADER CARD -->
+    <div id="profile-card" style="background:rgba(255,255,255,.03);
+        border:1px solid rgba(255,255,255,.08);border-radius:16px;
+        overflow:hidden;">
+        <div id="profile-banner" style="height:90px;background:#5865F2;"></div>
+        <div style="padding:0 32px 32px;margin-top:-48px;">
+            {% if user.avatar %}
+            <img src="https://cdn.discordapp.com/avatars/{{ user.id }}/{{ user.avatar }}.png"
+                alt="" style="width:96px;height:96px;border-radius:50%;
+                border:4px solid #1e1f24;background:#1e1f24;">
+            {% else %}
+            <div style="width:96px;height:96px;border-radius:50%;background:#5865F2;
+                border:4px solid #1e1f24;display:inline-flex;align-items:center;
+                justify-content:center;font-size:2.5rem;font-weight:800;color:#fff;">
+                {{ (user.global_name or user.username or "U")[0] }}
+            </div>
+            {% endif %}
+            <h2 style="margin:12px 0 4px;">{{ user.global_name or user.username }}</h2>
+            <div style="opacity:.55;font-size:.9rem;">
+                @{{ user.username }} · ID: {{ user.id }}
+            </div>
+            <p id="profile-bio-display" style="opacity:.8;margin:16px 0 0;line-height:1.5;">
+                No bio yet.
+            </p>
         </div>
     </div>
+
+    <!-- CUSTOMIZE -->
+    <div style="background:rgba(255,255,255,.03);
+        border:1px solid rgba(255,255,255,.08);border-radius:16px;
+        padding:24px 32px;margin-top:20px;">
+        <h3 style="margin:0 0 16px;">Customize your profile</h3>
+
+        <label style="display:block;font-size:.85rem;opacity:.7;margin-bottom:6px;"
+            for="bio-input">Bio</label>
+        <textarea id="bio-input" rows="3" maxlength="500"
+            placeholder="Tell people a little about yourself..."
+            style="width:100%;box-sizing:border-box;background:#1e1f24;
+            border:1px solid rgba(255,255,255,.12);border-radius:10px;
+            color:#fff;padding:12px;font-family:inherit;resize:vertical;"></textarea>
+        <div style="text-align:right;font-size:.8rem;opacity:.5;margin-top:4px;">
+            <span id="bio-count">0</span>/500
+        </div>
+
+        <label style="display:block;font-size:.85rem;opacity:.7;
+            margin:16px 0 6px;">Accent color</label>
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+            <input id="accent-input" type="color" value="#5865F2"
+                style="width:48px;height:40px;padding:2px;border:1px solid
+                rgba(255,255,255,.12);border-radius:8px;background:#1e1f24;cursor:pointer;">
+            <div id="accent-swatches" style="display:flex;gap:8px;flex-wrap:wrap;">
+                <!-- filled by JS -->
+            </div>
+        </div>
+
+        <div style="display:flex;gap:12px;align-items:center;margin-top:20px;">
+            <button id="save-btn"
+                style="padding:10px 24px;border:none;border-radius:10px;
+                background:#5865F2;color:#fff;font-weight:700;cursor:pointer;">
+                Save profile
+            </button>
+            <span id="save-status" style="font-size:.9rem;opacity:.7;"></span>
+        </div>
+    </div>
+
+    <!-- MY SERVERS -->
+    <div style="margin-top:20px;">
+        <h3 style="margin:0 0 12px;padding:0 8px;">My servers</h3>
+        <div id="server-list" style="display:grid;gap:12px;">
+            <div style="opacity:.5;padding:12px 8px;">Loading servers...</div>
+        </div>
+    </div>
+
 </div>
+
+<script>
+(function() {
+    var ACCENTS = ["#5865F2", "#57F287", "#FEE75C", "#EB459E", "#ED4245", "#E67E22", "#9B59B6", "#1ABC9C"];
+    var bioInput = document.getElementById("bio-input");
+    var bioCount = document.getElementById("bio-count");
+    var accentInput = document.getElementById("accent-input");
+    var banner = document.getElementById("profile-banner");
+    var bioDisplay = document.getElementById("profile-bio-display");
+    var saveBtn = document.getElementById("save-btn");
+    var saveStatus = document.getElementById("save-status");
+
+    // Swatches
+    var swWrap = document.getElementById("accent-swatches");
+    ACCENTS.forEach(function(c) {
+        var b = document.createElement("button");
+        b.type = "button";
+        b.title = c;
+        b.style.cssText = "width:32px;height:32px;border-radius:50%;border:2px solid rgba(255,255,255,.2);background:" + c + ";cursor:pointer;";
+        b.addEventListener("click", function() { setAccent(c); });
+        swWrap.appendChild(b);
+    });
+
+    function setAccent(c) {
+        accentInput.value = c;
+        banner.style.background = c;
+        saveBtn.style.background = c;
+    }
+
+    accentInput.addEventListener("input", function() { setAccent(accentInput.value); });
+
+    bioInput.addEventListener("input", function() {
+        bioCount.textContent = bioInput.value.length;
+    });
+
+    function applyProfile(p) {
+        bioInput.value = p.bio || "";
+        bioCount.textContent = bioInput.value.length;
+        setAccent(p.accent || "#5865F2");
+        bioDisplay.textContent = p.bio ? p.bio : "No bio yet.";
+    }
+
+    // Load saved profile
+    fetch("/api/profile", {credentials: "same-origin"})
+        .then(function(r) { return r.ok ? r.json() : null; })
+        .then(function(data) {
+            if (data && data.profile) applyProfile(data.profile);
+        })
+        .catch(function() {});
+
+    // Save
+    saveBtn.addEventListener("click", function() {
+        saveStatus.textContent = "Saving...";
+        fetch("/api/csrf", {credentials: "same-origin"})
+            .then(function(r) { return r.json(); })
+            .then(function(csrf) {
+                var token = csrf.token || csrf.csrf_token || "";
+                return fetch("/api/profile", {
+                    method: "POST",
+                    credentials: "same-origin",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "X-CSRF-Token": token
+                    },
+                    body: JSON.stringify({
+                        bio: bioInput.value,
+                        accent: accentInput.value
+                    })
+                });
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data && data.success) {
+                    applyProfile(data.profile);
+                    saveStatus.textContent = "Saved!";
+                } else {
+                    saveStatus.textContent = (data && data.error) || "Could not save.";
+                }
+                setTimeout(function() { saveStatus.textContent = ""; }, 3000);
+            })
+            .catch(function() {
+                saveStatus.textContent = "Could not save.";
+            });
+    });
+
+    // My servers
+    var list = document.getElementById("server-list");
+    fetch("/api/servers", {credentials: "same-origin"})
+        .then(function(r) { return r.ok ? r.json() : null; })
+        .then(function(data) {
+            var servers = (data && data.servers) || [];
+            if (!servers.length) {
+                list.innerHTML = '<div style="opacity:.5;padding:12px 8px;">No servers found.</div>';
+                return;
+            }
+            var labelFor = {viewer: "Member", moderator: "Moderator", admin: "Administrator"};
+            list.innerHTML = servers.map(function(s) {
+                var label = s.owner ? "Server Owner" : (labelFor[s.access_level] || "Member");
+                var icon = s.icon
+                    ? '<img src="' + s.icon + '" alt="" style="width:44px;height:44px;border-radius:50%;object-fit:cover;">'
+                    : '<div style="width:44px;height:44px;border-radius:50%;background:#2b2d31;display:grid;place-items:center;font-weight:800;">' + (s.name || "?").slice(0, 2).toUpperCase() + "</div>";
+                return '<a href="/servers/' + encodeURIComponent(s.id) + '/dashboard" style="display:flex;gap:14px;align-items:center;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:14px 18px;text-decoration:none;color:inherit;">'
+                    + icon
+                    + '<div style="flex:1;min-width:0;"><div style="font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + s.name + '</div>'
+                    + '<div style="opacity:.55;font-size:.85rem;">' + (s.member_count || 0) + " members</div></div>"
+                    + '<span style="font-size:.8rem;opacity:.8;border:1px solid rgba(255,255,255,.15);border-radius:20px;padding:4px 12px;white-space:nowrap;">' + label + "</span>"
+                    + "</a>";
+            }).join("");
+        })
+        .catch(function() {
+            list.innerHTML = '<div style="opacity:.5;padding:12px 8px;">Could not load servers.</div>';
+        });
+})();
+</script>
 {% endblock %}
