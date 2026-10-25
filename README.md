@@ -397,43 +397,15 @@ External links in the nav bar:
 
 ### 👤 User profiles
 
-Every logged-in user gets a profile page (`/profile`):
+The profile page (`/profile`) is a customizable end-user page: Discord avatar/name/ID, bio (500 chars), accent color (picker + 8 swatches) tinting the banner and save button, a status message, a banner image URL (falls back to the accent color), and social links (Twitch, YouTube, Twitter/X, website). It also lists the user's servers (from `/api/servers`, with access-level badges) linking to each dashboard/basic page.
 
-- Discord avatar, display name, username, and user ID.
-- A **My servers** list with access-level badges, linking to each
-  server's dashboard (or basic info screen for regular members).
-- **Customization** — a bio (up to 500 characters) and an accent color
-  (color picker + preset swatches) that tints the profile banner and
-  save button. Settings are saved per Discord user ID via
-  `GET/POST /api/profile` (CSRF-protected) to `data/profiles.json`,
-  which is created at runtime and never committed.
+**Bot stats** — the profile shows live stats pulled from the bot: level, total XP, daily streak, games played, game points, and majority votes, with a per-server breakdown (level, XP, rank, games, points). Stats aggregate across every server the bot is in where the user has level data.
 
-The web dashboard uses tiered access based on each person's Discord
-permissions in the server — no extra setup needed.
+**Achievements** — badges derived from stats: Level 5/10/25/50, First Game, Regular Player (25 rounds), Century Club (100 points), 7-Day Streak, and Crowd Favorite (10 majority votes). Earned badges are highlighted; unearned ones show dimmed on your own profile.
 
-| Tier | Who | What they can do |
-|------|-----|------------------|
-| **viewer** | Any server member | Server list, profile, and a basic server info screen (name, member/channel/role counts) |
-| **moderator** | Has Kick / Ban / Manage Messages / Timeout Members | All server pages (dashboard, members, channels, roles, leaderboard, activity), plus warn, timeout, kick, ban, unban, clear messages, notes, watch |
-| **admin** | Has Manage Server / Administrator, or is the server owner | Everything above, plus logger settings and server configuration |
+**Public profiles** — users can opt in with "Make my profile public" to get a shareable link (`/profile/<user-id>`) anyone can view without logging in. Public profiles show bio, status, socials, stats, and earned badges only — the server list is never shown publicly. Public profiles are off by default; private profiles show a locked message to visitors.
 
-> Regular members (no roles) cannot open any of the current server pages —
-> they see the basic info screen instead, and direct links to restricted
-> pages show a "no access" message telling them to contact the IT team.
-
-How it works:
-- Login is via Discord OAuth; your permission flags come from Discord's
-  `/users/@me/guilds` endpoint (cached for 60s, so no extra API spam).
-- Pages and API routes are gated with decorators from
-  `web/security/decorators.py`: `require_guild_member` (viewer+),
-  `require_guild_moderator` (moderator+), `require_guild_access` (admin).
-  All server pages and their APIs require moderator or higher.
-  The old `require_permission(level)` stub is now wired to the
-  `PermissionService` in `web/services/permissions.py`.
-- Hitting something above your tier shows a friendly 403 page instead of
-  an error dump. The Logger nav link is hidden from non-admins.
-- Templates can check access with `can("moderator")` / `can("admin")`
-  (uses the selected server) or `can_any("admin")` (any server).
+Profile settings are stored per Discord user ID in `data/profiles.json` (created at runtime, never committed); the API is `GET/POST /api/profile` (login + CSRF), `GET /api/profile/stats` (login), and `GET /api/profile/public/<user-id>` (public).
 
 ## Troubleshooting
 
