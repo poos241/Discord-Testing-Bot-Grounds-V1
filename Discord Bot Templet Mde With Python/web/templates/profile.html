@@ -9,7 +9,8 @@
     <div id="profile-card" style="background:rgba(255,255,255,.03);
         border:1px solid rgba(255,255,255,.08);border-radius:16px;
         overflow:hidden;">
-        <div id="profile-banner" style="height:90px;background:#5865F2;"></div>
+        <div id="profile-banner" style="height:140px;background:#5865F2;
+            background-size:cover;background-position:center;"></div>
         <div style="padding:0 32px 32px;margin-top:-48px;">
             {% if user.avatar %}
             <img src="https://cdn.discordapp.com/avatars/{{ user.id }}/{{ user.avatar }}.png"
@@ -26,9 +27,40 @@
             <div style="opacity:.55;font-size:.9rem;">
                 @{{ user.username }} · ID: {{ user.id }}
             </div>
-            <p id="profile-bio-display" style="opacity:.8;margin:16px 0 0;line-height:1.5;">
+            <p id="profile-status-display" style="opacity:.9;margin:12px 0 0;
+                font-style:italic;display:none;"></p>
+            <p id="profile-bio-display" style="opacity:.8;margin:12px 0 0;line-height:1.5;">
                 No bio yet.
             </p>
+            <div id="profile-socials-display" style="display:flex;gap:10px;
+                flex-wrap:wrap;margin-top:14px;"></div>
+            <div id="profile-public-link" style="margin-top:14px;display:none;">
+                <span style="font-size:.85rem;opacity:.6;">Public profile: </span>
+                <a id="profile-public-url" href="#" target="_blank" rel="noopener"
+                    style="font-size:.85rem;color:#8ea2ff;"></a>
+            </div>
+        </div>
+    </div>
+
+    <!-- STATS -->
+    <div style="background:rgba(255,255,255,.03);
+        border:1px solid rgba(255,255,255,.08);border-radius:16px;
+        padding:24px 32px;margin-top:20px;">
+        <h3 style="margin:0 0 16px;">Bot stats</h3>
+        <div id="stats-grid" style="display:grid;
+            grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:12px;">
+            <div style="opacity:.5;">Loading stats...</div>
+        </div>
+        <div id="stats-guilds" style="margin-top:16px;display:grid;gap:10px;"></div>
+    </div>
+
+    <!-- BADGES -->
+    <div style="background:rgba(255,255,255,.03);
+        border:1px solid rgba(255,255,255,.08);border-radius:16px;
+        padding:24px 32px;margin-top:20px;">
+        <h3 style="margin:0 0 16px;">Achievements</h3>
+        <div id="badge-grid" style="display:flex;gap:12px;flex-wrap:wrap;">
+            <div style="opacity:.5;">Loading badges...</div>
         </div>
     </div>
 
@@ -50,15 +82,52 @@
         </div>
 
         <label style="display:block;font-size:.85rem;opacity:.7;
+            margin:16px 0 6px;" for="status-input">Status</label>
+        <input id="status-input" type="text" maxlength="120"
+            placeholder="A short status message..."
+            style="width:100%;box-sizing:border-box;background:#1e1f24;
+            border:1px solid rgba(255,255,255,.12);border-radius:10px;
+            color:#fff;padding:12px;font-family:inherit;">
+
+        <label style="display:block;font-size:.85rem;opacity:.7;
+            margin:16px 0 6px;" for="banner-input">Banner image URL</label>
+        <input id="banner-input" type="url" maxlength="500"
+            placeholder="https://... (leave empty to use your accent color)"
+            style="width:100%;box-sizing:border-box;background:#1e1f24;
+            border:1px solid rgba(255,255,255,.12);border-radius:10px;
+            color:#fff;padding:12px;font-family:inherit;">
+
+        <label style="display:block;font-size:.85rem;opacity:.7;
             margin:16px 0 6px;">Accent color</label>
         <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
             <input id="accent-input" type="color" value="#5865F2"
                 style="width:48px;height:40px;padding:2px;border:1px solid
                 rgba(255,255,255,.12);border-radius:8px;background:#1e1f24;cursor:pointer;">
-            <div id="accent-swatches" style="display:flex;gap:8px;flex-wrap:wrap;">
-                <!-- filled by JS -->
-            </div>
+            <div id="accent-swatches" style="display:flex;gap:8px;flex-wrap:wrap;"></div>
         </div>
+
+        <label style="display:block;font-size:.85rem;opacity:.7;
+            margin:16px 0 6px;">Social links</label>
+        <div style="display:grid;gap:10px;">
+            <input id="social-twitch" type="url" maxlength="500" placeholder="Twitch URL"
+                style="background:#1e1f24;border:1px solid rgba(255,255,255,.12);
+                border-radius:10px;color:#fff;padding:10px 12px;font-family:inherit;">
+            <input id="social-youtube" type="url" maxlength="500" placeholder="YouTube URL"
+                style="background:#1e1f24;border:1px solid rgba(255,255,255,.12);
+                border-radius:10px;color:#fff;padding:10px 12px;font-family:inherit;">
+            <input id="social-twitter" type="url" maxlength="500" placeholder="Twitter / X URL"
+                style="background:#1e1f24;border:1px solid rgba(255,255,255,.12);
+                border-radius:10px;color:#fff;padding:10px 12px;font-family:inherit;">
+            <input id="social-website" type="url" maxlength="500" placeholder="Website URL"
+                style="background:#1e1f24;border:1px solid rgba(255,255,255,.12);
+                border-radius:10px;color:#fff;padding:10px 12px;font-family:inherit;">
+        </div>
+
+        <label style="display:flex;gap:10px;align-items:center;margin-top:20px;
+            cursor:pointer;">
+            <input id="public-toggle" type="checkbox" style="width:18px;height:18px;">
+            <span>Make my profile public (shareable link, no server list)</span>
+        </label>
 
         <div style="display:flex;gap:12px;align-items:center;margin-top:20px;">
             <button id="save-btn"
@@ -83,15 +152,22 @@
 <script>
 (function() {
     var ACCENTS = ["#5865F2", "#57F287", "#FEE75C", "#EB459E", "#ED4245", "#E67E22", "#9B59B6", "#1ABC9C"];
+    var SOCIAL_LABELS = {twitch: "Twitch", youtube: "YouTube", twitter: "Twitter / X", website: "Website"};
     var bioInput = document.getElementById("bio-input");
     var bioCount = document.getElementById("bio-count");
+    var statusInput = document.getElementById("status-input");
+    var bannerInput = document.getElementById("banner-input");
     var accentInput = document.getElementById("accent-input");
     var banner = document.getElementById("profile-banner");
     var bioDisplay = document.getElementById("profile-bio-display");
+    var statusDisplay = document.getElementById("profile-status-display");
+    var socialsDisplay = document.getElementById("profile-socials-display");
+    var publicToggle = document.getElementById("public-toggle");
+    var publicLinkBox = document.getElementById("profile-public-link");
+    var publicUrl = document.getElementById("profile-public-url");
     var saveBtn = document.getElementById("save-btn");
     var saveStatus = document.getElementById("save-status");
 
-    // Swatches
     var swWrap = document.getElementById("accent-swatches");
     ACCENTS.forEach(function(c) {
         var b = document.createElement("button");
@@ -104,24 +180,70 @@
 
     function setAccent(c) {
         accentInput.value = c;
-        banner.style.background = c;
+        if (!bannerInput.value) banner.style.background = c;
         saveBtn.style.background = c;
     }
 
-    accentInput.addEventListener("input", function() { setAccent(accentInput.value); });
+    function refreshBanner() {
+        banner.style.background = bannerInput.value
+            ? "url(" + bannerInput.value + ") center / cover"
+            : accentInput.value;
+    }
 
+    accentInput.addEventListener("input", function() { setAccent(accentInput.value); });
+    bannerInput.addEventListener("input", refreshBanner);
     bioInput.addEventListener("input", function() {
         bioCount.textContent = bioInput.value.length;
     });
 
+    function esc(s) {
+        return String(s == null ? "" : s).replace(/[&<>"']/g, function(c) {
+            return {"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c];
+        });
+    }
+
+    function renderSocials(socials) {
+        var html = "";
+        Object.keys(SOCIAL_LABELS).forEach(function(key) {
+            if (socials[key]) {
+                html += '<a href="' + esc(socials[key]) + '" target="_blank" rel="noopener" '
+                    + 'style="font-size:.85rem;border:1px solid rgba(255,255,255,.15);'
+                    + 'border-radius:20px;padding:5px 14px;color:#fff;text-decoration:none;">'
+                    + SOCIAL_LABELS[key] + "</a>";
+            }
+        });
+        socialsDisplay.innerHTML = html;
+    }
+
     function applyProfile(p) {
         bioInput.value = p.bio || "";
         bioCount.textContent = bioInput.value.length;
+        statusInput.value = p.status || "";
+        bannerInput.value = p.banner || "";
         setAccent(p.accent || "#5865F2");
+        refreshBanner();
         bioDisplay.textContent = p.bio ? p.bio : "No bio yet.";
+        if (p.status) {
+            statusDisplay.textContent = "\u201C" + p.status + "\u201D";
+            statusDisplay.style.display = "";
+        } else {
+            statusDisplay.style.display = "none";
+        }
+        renderSocials(p.socials || {});
+        publicToggle.checked = !!p.public;
+        var uid = "{{ user.id }}";
+        if (p.public) {
+            publicUrl.href = "/profile/" + encodeURIComponent(uid);
+            publicUrl.textContent = window.location.origin + "/profile/" + uid;
+            publicLinkBox.style.display = "";
+        } else {
+            publicLinkBox.style.display = "none";
+        }
+        ["twitch", "youtube", "twitter", "website"].forEach(function(key) {
+            document.getElementById("social-" + key).value = (p.socials && p.socials[key]) || "";
+        });
     }
 
-    // Load saved profile
     fetch("/api/profile", {credentials: "same-origin"})
         .then(function(r) { return r.ok ? r.json() : null; })
         .then(function(data) {
@@ -129,9 +251,13 @@
         })
         .catch(function() {});
 
-    // Save
     saveBtn.addEventListener("click", function() {
         saveStatus.textContent = "Saving...";
+        var socials = {};
+        ["twitch", "youtube", "twitter", "website"].forEach(function(key) {
+            var v = document.getElementById("social-" + key).value.trim();
+            if (v) socials[key] = v;
+        });
         fetch("/api/csrf", {credentials: "same-origin"})
             .then(function(r) { return r.json(); })
             .then(function(csrf) {
@@ -145,7 +271,11 @@
                     },
                     body: JSON.stringify({
                         bio: bioInput.value,
-                        accent: accentInput.value
+                        status: statusInput.value,
+                        banner: bannerInput.value,
+                        accent: accentInput.value,
+                        socials: socials,
+                        public: publicToggle.checked
                     })
                 });
             })
@@ -164,6 +294,51 @@
             });
     });
 
+    // Stats + badges
+    fetch("/api/profile/stats", {credentials: "same-origin"})
+        .then(function(r) { return r.ok ? r.json() : null; })
+        .then(function(data) {
+            if (!data) return;
+            var t = (data.stats && data.stats.totals) || {};
+            var cells = [
+                ["Level", t.level || 0],
+                ["Total XP", (t.xp || 0).toLocaleString()],
+                ["Daily streak", (t.daily_streak || 0) + " days"],
+                ["Games played", t.played || 0],
+                ["Game points", t.points || 0],
+                ["Majority votes", t.majority || 0]
+            ];
+            document.getElementById("stats-grid").innerHTML = cells.map(function(c) {
+                return '<div style="background:#1e1f24;border:1px solid rgba(255,255,255,.08);'
+                    + 'border-radius:12px;padding:14px;text-align:center;">'
+                    + '<div style="font-size:1.4rem;font-weight:800;">' + c[1] + "</div>"
+                    + '<div style="opacity:.6;font-size:.8rem;">' + c[0] + "</div></div>";
+            }).join("");
+            var guilds = (data.stats && data.stats.per_guild) || [];
+            document.getElementById("stats-guilds").innerHTML = guilds.map(function(g) {
+                return '<div style="display:flex;gap:12px;align-items:center;'
+                    + 'background:#1e1f24;border:1px solid rgba(255,255,255,.08);'
+                    + 'border-radius:12px;padding:12px 16px;">'
+                    + '<div style="flex:1;"><div style="font-weight:700;">' + esc(g.guild_name) + "</div>"
+                    + '<div style="opacity:.6;font-size:.85rem;">Level ' + g.level + " · "
+                    + g.xp.toLocaleString() + " XP"
+                    + (g.rank ? " · Rank #" + g.rank : "") + "</div></div>"
+                    + '<div style="opacity:.6;font-size:.85rem;text-align:right;">'
+                    + g.played + " games · " + g.points + " pts</div></div>";
+            }).join("");
+            var badges = data.badges || [];
+            document.getElementById("badge-grid").innerHTML = badges.map(function(b) {
+                var style = b.earned
+                    ? "background:#1e1f24;border:1px solid rgba(255,255,255,.15);opacity:1;"
+                    : "background:#1e1f24;border:1px solid rgba(255,255,255,.08);opacity:.35;";
+                return '<div title="' + esc(b.description) + '" style="' + style
+                    + 'border-radius:12px;padding:12px 16px;text-align:center;min-width:90px;">'
+                    + '<div style="font-size:1.6rem;">' + b.icon + "</div>"
+                    + '<div style="font-size:.8rem;font-weight:700;margin-top:4px;">' + esc(b.name) + "</div></div>";
+            }).join("");
+        })
+        .catch(function() {});
+
     // My servers
     var list = document.getElementById("server-list");
     fetch("/api/servers", {credentials: "same-origin"})
@@ -178,11 +353,11 @@
             list.innerHTML = servers.map(function(s) {
                 var label = s.owner ? "Server Owner" : (labelFor[s.access_level] || "Member");
                 var icon = s.icon
-                    ? '<img src="' + s.icon + '" alt="" style="width:44px;height:44px;border-radius:50%;object-fit:cover;">'
-                    : '<div style="width:44px;height:44px;border-radius:50%;background:#2b2d31;display:grid;place-items:center;font-weight:800;">' + (s.name || "?").slice(0, 2).toUpperCase() + "</div>";
+                    ? '<img src="' + esc(s.icon) + '" alt="" style="width:44px;height:44px;border-radius:50%;object-fit:cover;">'
+                    : '<div style="width:44px;height:44px;border-radius:50%;background:#2b2d31;display:grid;place-items:center;font-weight:800;">' + esc((s.name || "?").slice(0, 2).toUpperCase()) + "</div>";
                 return '<a href="/servers/' + encodeURIComponent(s.id) + '/dashboard" style="display:flex;gap:14px;align-items:center;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:14px 18px;text-decoration:none;color:inherit;">'
                     + icon
-                    + '<div style="flex:1;min-width:0;"><div style="font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + s.name + '</div>'
+                    + '<div style="flex:1;min-width:0;"><div style="font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(s.name) + '</div>'
                     + '<div style="opacity:.55;font-size:.85rem;">' + (s.member_count || 0) + " members</div></div>"
                     + '<span style="font-size:.8rem;opacity:.8;border:1px solid rgba(255,255,255,.15);border-radius:20px;padding:4px 12px;white-space:nowrap;">' + label + "</span>"
                     + "</a>";
