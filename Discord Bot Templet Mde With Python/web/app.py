@@ -358,6 +358,17 @@ def create_app(bot):
         )
 
 
+    @app.route("/profile/<user_id>")
+    def public_profile_page(user_id):
+
+        # Data loads client-side from /api/profile/public/<user_id>;
+        # private or missing profiles show a locked message.
+        return render_template(
+            "profile_public.html",
+            user_id=str(user_id),
+        )
+
+
     @app.get("/servers/<int:guild_id>")
     def server_page(guild_id):
 
