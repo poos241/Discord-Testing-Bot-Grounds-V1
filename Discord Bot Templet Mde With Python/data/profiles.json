@@ -1,6 +1,10 @@
 {
   "287282266261159937": {
     "bio": "this is a test to see if this works.",
-    "accent": "#eb459e"
+    "accent": "#eb459e",
+    "banner": "https://cdn.discordapp.com/attachments/1298617179427700806/1374658345516138557/Untitled_design_24.png?ex=6adfb199&is=6ade6019&hm=77e19d9b0ec3215b539fe5f9868c6195f3bc7c55b34d24a6a31bd6faef49c8b7&",
+    "status": "",
+    "socials": {},
+    "public": true
   }
 }
