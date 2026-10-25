@@ -1,0 +1,146 @@
+{% extends "base.html" %}
+
+{% block title %}Profile — Kush Bush{% endblock %}
+
+{% block body %}
+<div style="max-width:760px;margin:40px auto;padding:0 16px;">
+
+    <div id="public-card" style="display:none;background:rgba(255,255,255,.03);
+        border:1px solid rgba(255,255,255,.08);border-radius:16px;overflow:hidden;">
+        <div id="public-banner" style="height:140px;background:#5865F2;
+            background-size:cover;background-position:center;"></div>
+        <div style="padding:0 32px 32px;margin-top:-48px;">
+            <img id="public-avatar" src="" alt=""
+                style="width:96px;height:96px;border-radius:50%;
+                border:4px solid #1e1f24;background:#1e1f24;display:none;">
+            <div id="public-avatar-fallback" style="width:96px;height:96px;border-radius:50%;
+                background:#5865F2;border:4px solid #1e1f24;display:none;
+                align-items:center;justify-content:center;
+                font-size:2.5rem;font-weight:800;color:#fff;">?</div>
+            <h2 id="public-name" style="margin:12px 0 4px;"></h2>
+            <p id="public-status" style="opacity:.9;margin:12px 0 0;
+                font-style:italic;display:none;"></p>
+            <p id="public-bio" style="opacity:.8;margin:12px 0 0;line-height:1.5;"></p>
+            <div id="public-socials" style="display:flex;gap:10px;
+                flex-wrap:wrap;margin-top:14px;"></div>
+        </div>
+    </div>
+
+    <div id="public-stats" style="display:none;background:rgba(255,255,255,.03);
+        border:1px solid rgba(255,255,255,.08);border-radius:16px;
+        padding:24px 32px;margin-top:20px;">
+        <h3 style="margin:0 0 16px;">Bot stats</h3>
+        <div id="public-stats-grid" style="display:grid;
+            grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:12px;"></div>
+    </div>
+
+    <div id="public-badges" style="display:none;background:rgba(255,255,255,.03);
+        border:1px solid rgba(255,255,255,.08);border-radius:16px;
+        padding:24px 32px;margin-top:20px;">
+        <h3 style="margin:0 0 16px;">Achievements</h3>
+        <div id="public-badge-grid" style="display:flex;gap:12px;flex-wrap:wrap;"></div>
+    </div>
+
+    <div id="public-error" style="display:none;text-align:center;padding:64px 24px;">
+        <div style="font-size:3rem;">🔒</div>
+        <h2>This profile isn't public</h2>
+        <p style="opacity:.7;">The user hasn't shared their profile, or it doesn't exist.</p>
+        <a href="{{ url_for('home') }}"
+            style="display:inline-block;margin-top:12px;padding:10px 20px;
+            border-radius:8px;background:#5865F2;color:#fff;text-decoration:none;
+            font-weight:600;">Back home</a>
+    </div>
+
+</div>
+
+<script>
+(function() {
+    var SOCIAL_LABELS = {twitch: "Twitch", youtube: "YouTube", twitter: "Twitter / X", website: "Website"};
+    var userId = "{{ user_id }}";
+
+    function esc(s) {
+        return String(s == null ? "" : s).replace(/[&<>"']/g, function(c) {
+            return {"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c];
+        });
+    }
+
+    fetch("/api/profile/public/" + encodeURIComponent(userId), {credentials: "same-origin"})
+        .then(function(r) { return r.ok ? r.json() : null; })
+        .then(function(data) {
+            if (!data || !data.success) {
+                document.getElementById("public-error").style.display = "";
+                return;
+            }
+            var p = data.profile || {};
+            var u = data.user || {};
+            document.getElementById("public-card").style.display = "";
+            document.getElementById("public-stats").style.display = "";
+            document.getElementById("public-badges").style.display = "";
+
+            var banner = document.getElementById("public-banner");
+            banner.style.background = p.banner
+                ? "url(" + p.banner + ") center / cover"
+                : p.accent;
+
+            var name = u.display_name || ("User " + userId);
+            document.getElementById("public-name").textContent = name;
+            if (u.avatar_url) {
+                var img = document.getElementById("public-avatar");
+                img.src = u.avatar_url;
+                img.style.display = "";
+            } else {
+                var fb = document.getElementById("public-avatar-fallback");
+                fb.textContent = (name[0] || "?").toUpperCase();
+                fb.style.display = "flex";
+            }
+            if (p.status) {
+                var st = document.getElementById("public-status");
+                st.textContent = "\u201C" + p.status + "\u201D";
+                st.style.display = "";
+            }
+            document.getElementById("public-bio").textContent = p.bio || "No bio yet.";
+
+            var socialsHtml = "";
+            Object.keys(SOCIAL_LABELS).forEach(function(key) {
+                if (p.socials && p.socials[key]) {
+                    socialsHtml += '<a href="' + esc(p.socials[key]) + '" target="_blank" rel="noopener" '
+                        + 'style="font-size:.85rem;border:1px solid rgba(255,255,255,.15);'
+                        + 'border-radius:20px;padding:5px 14px;color:#fff;text-decoration:none;">'
+                        + SOCIAL_LABELS[key] + "</a>";
+                }
+            });
+            document.getElementById("public-socials").innerHTML = socialsHtml;
+
+            var t = (data.stats && data.stats.totals) || {};
+            var cells = [
+                ["Level", t.level || 0],
+                ["Total XP", (t.xp || 0).toLocaleString()],
+                ["Daily streak", (t.daily_streak || 0) + " days"],
+                ["Games played", t.played || 0],
+                ["Game points", t.points || 0],
+                ["Majority votes", t.majority || 0]
+            ];
+            document.getElementById("public-stats-grid").innerHTML = cells.map(function(c) {
+                return '<div style="background:#1e1f24;border:1px solid rgba(255,255,255,.08);'
+                    + 'border-radius:12px;padding:14px;text-align:center;">'
+                    + '<div style="font-size:1.4rem;font-weight:800;">' + c[1] + "</div>"
+                    + '<div style="opacity:.6;font-size:.8rem;">' + c[0] + "</div></div>";
+            }).join("");
+
+            var badges = (data.badges || []).filter(function(b) { return b.earned; });
+            document.getElementById("public-badge-grid").innerHTML = badges.length
+                ? badges.map(function(b) {
+                    return '<div title="' + esc(b.description) + '" style="background:#1e1f24;'
+                        + 'border:1px solid rgba(255,255,255,.15);border-radius:12px;'
+                        + 'padding:12px 16px;text-align:center;min-width:90px;">'
+                        + '<div style="font-size:1.6rem;">' + b.icon + "</div>"
+                        + '<div style="font-size:.8rem;font-weight:700;margin-top:4px;">' + esc(b.name) + "</div></div>";
+                }).join("")
+                : '<div style="opacity:.5;">No achievements yet.</div>';
+        })
+        .catch(function() {
+            document.getElementById("public-error").style.display = "";
+        });
+})();
+</script>
+{% endblock %}
