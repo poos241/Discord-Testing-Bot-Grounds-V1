@@ -85,7 +85,7 @@
             </div>
             </div>
             <div style="text-align:center;flex-shrink:0;padding-top:8px;">
-                <div style="position:relative;width:96px;height:96px;margin:0 auto;">
+                <div id="header-level-wrap" style="position:relative;width:96px;height:96px;margin:0 auto;">
                     <svg width="96" height="96" viewBox="0 0 96 96">
                         <circle cx="48" cy="48" r="42" fill="none" stroke="rgba(255,255,255,.12)" stroke-width="5"/>
                         <circle id="header-level-ring" cx="48" cy="48" r="42" fill="none" stroke="#5865F2" stroke-width="5" stroke-linecap="round" transform="rotate(-90 48 48)" stroke-dasharray="263.9" stroke-dashoffset="263.9"/>
@@ -139,6 +139,7 @@
         <div id="badge-grid" style="display:flex;gap:12px;flex-wrap:wrap;">
             <div style="opacity:.5;">Loading badges...</div>
         </div>
+        <div id="next-badge-box" style="margin-top:16px;"></div>
     </div>
 
     <!-- ACTIVITY -->
@@ -156,6 +157,14 @@
         border:1px solid rgba(255,255,255,.08);border-radius:16px;
         padding:24px 32px;margin-top:20px;" id="customize-section">
         <h3 style="margin:0 0 16px;">Customize your profile</h3>
+        <div id="completion-box" style="margin:-4px 0 20px;display:none;">
+            <div style="display:flex;justify-content:space-between;font-size:.85rem;opacity:.8;">
+                <span>Profile completion</span><span id="completion-text"></span>
+            </div>
+            <div style="height:8px;background:rgba(255,255,255,.08);border-radius:99px;overflow:hidden;margin-top:6px;">
+                <div id="completion-bar" style="height:100%;width:0%;background:#57F287;border-radius:99px;"></div>
+            </div>
+        </div>
 
         <label style="display:block;font-size:.85rem;opacity:.7;margin-bottom:6px;"
             for="display-name-input">Display name</label>
@@ -345,6 +354,11 @@
                 : "linear-gradient(135deg, " + p.accent + ", #14141f)");
     }
 
+    function hexA(hex, a) {
+        var n = parseInt(hex.slice(1), 16);
+        return "rgba(" + ((n >> 16) & 255) + "," + ((n >> 8) & 255) + "," + (n & 255) + "," + a + ")";
+    }
+
     function setAccent(c) {
         accentInput.value = c;
         saveBtn.style.background = c;
@@ -352,6 +366,9 @@
         $("progress-bar").style.background = c;
         avatarImg.style.boxShadow = "0 0 0 3px " + c + ", 0 0 24px rgba(0,0,0,.6)";
         avatarFallback.style.boxShadow = "0 0 0 3px " + c + ", 0 0 24px rgba(0,0,0,.6)";
+        document.querySelectorAll("#stats-section > h3, #badges-section > h3, #activity-section > h3, #featured-box > h3, #customize-section > h3, #servers-section > h3").forEach(function(h) {
+            h.style.background = "linear-gradient(90deg, " + hexA(c, .45) + ", " + hexA(c, 0) + ")";
+        });
         refreshBanner({banner: bannerInput.value, accent: c});
     }
 
@@ -361,6 +378,49 @@
     });
     bioInput.addEventListener("input", function() {
         bioCount.textContent = bioInput.value.length;
+        bioDisplay.textContent = bioInput.value ? bioInput.value : "No bio yet.";
+    });
+    statusInput.addEventListener("input", function() {
+        if (statusInput.value) {
+            statusDisplay.textContent = "\u201C" + statusInput.value + "\u201D";
+            statusDisplay.style.display = "";
+        } else {
+            statusDisplay.style.display = "none";
+        }
+    });
+    $("display-name-input").addEventListener("input", function() {
+        nameEl.textContent = $("display-name-input").value || DISCORD_NAME;
+    });
+    $("pronouns-input").addEventListener("input", function() {
+        pronounsEl.textContent = $("pronouns-input").value ? "(" + $("pronouns-input").value + ")" : "";
+    });
+    $("tags-input").addEventListener("input", function() {
+        renderTags($("tags-input").value.split(",").map(function(t) { return t.trim(); }).filter(function(t) { return t; }));
+    });
+    avatarInput.addEventListener("input", function() {
+        if (avatarInput.value) {
+            avatarImg.src = avatarInput.value;
+            avatarImg.style.display = "";
+            avatarFallback.style.display = "none";
+        } else if (DISCORD_AVATAR) {
+            avatarImg.src = DISCORD_AVATAR;
+            avatarImg.style.display = "";
+            avatarFallback.style.display = "none";
+        } else {
+            avatarFallback.textContent = (DISCORD_NAME[0] || "?").toUpperCase();
+            avatarFallback.style.display = "flex";
+            avatarImg.style.display = "none";
+        }
+    });
+    backgroundInput.addEventListener("input", function() {
+        if (backgroundInput.value) {
+            pageBg.style.backgroundImage = "url(" + backgroundInput.value + ")";
+            pageBg.style.display = "";
+            pageBgOverlay.style.display = "";
+        } else {
+            pageBg.style.display = "none";
+            pageBgOverlay.style.display = "none";
+        }
     });
 
     function renderSocials(socials) {
@@ -445,6 +505,14 @@
             var opt = document.querySelector('#featured-badge-input option[value="' + p.featured_badge + '"]');
             if (opt) $("featured-badge-input").value = p.featured_badge;
         }
+        var compChecks = [!!p.bio, !!p.status, !!p.pronouns, !!(p.tags && p.tags.length),
+            !!p.avatar_url, !!(p.banner || p.background_url),
+            !!(p.featured_badge || p.featured_stat),
+            !!(p.socials && Object.keys(p.socials).some(function(k) { return p.socials[k]; }))];
+        var compDone = compChecks.filter(function(v) { return v; }).length;
+        $("completion-text").textContent = compDone + " / " + compChecks.length;
+        $("completion-bar").style.width = Math.round(compDone / compChecks.length * 100) + "%";
+        $("completion-box").style.display = "";
     }
 
     function activityText(a) {
@@ -505,6 +573,9 @@
                 if (data && data.success) {
                     applyProfile(data.profile);
                     saveStatus.textContent = "Saved!";
+                    var oldLabel = saveBtn.textContent;
+                    saveBtn.textContent = "Saved!";
+                    setTimeout(function() { saveBtn.textContent = oldLabel; }, 1500);
                 } else {
                     saveStatus.textContent = (data && data.error) || "Could not save.";
                 }
@@ -546,6 +617,7 @@
             $("header-level-number").textContent = prog ? prog.level : (t.level || 0);
             $("header-level-xp").textContent = (t.xp || 0).toLocaleString() + " XP";
             $("header-level-ring").style.strokeDashoffset = 263.9 * (1 - (prog ? prog.progress_pct : 0) / 100);
+            $("header-level-wrap").title = prog ? (prog.xp.toLocaleString() + " / " + prog.xp_needed.toLocaleString() + " XP to level " + (prog.level + 1)) : "";
 
             if (data.stats && data.stats.member_since) {
                 $("profile-member-since").textContent = "Member since " + new Date(data.stats.member_since).toLocaleDateString();
@@ -576,6 +648,28 @@
                     + '<div style="font-size:1.6rem;">' + b.icon + "</div>"
                     + '<div style="font-size:.8rem;font-weight:700;margin-top:4px;">' + esc(b.name) + "</div></div>";
             }).join("");
+
+            var badgeGoals = {
+                "Level 5": [t.level || 0, 5, "Level"], "Level 10": [t.level || 0, 10, "Level"],
+                "Level 25": [t.level || 0, 25, "Level"], "Level 50": [t.level || 0, 50, "Level"],
+                "First Game": [t.played || 0, 1, "game"], "Regular Player": [t.played || 0, 25, "rounds"],
+                "Century Club": [t.points || 0, 100, "points"], "7-Day Streak": [t.daily_streak || 0, 7, "days"],
+                "Crowd Favorite": [t.majority || 0, 10, "votes"]
+            };
+            var nextBadge = null, nextPct = -1;
+            badges.forEach(function(b) {
+                if (b.earned) return;
+                var g = badgeGoals[b.name];
+                if (!g) return;
+                var pct = Math.min(100, Math.round(g[0] / g[1] * 100));
+                if (pct > nextPct) { nextPct = pct; nextBadge = {name: b.name, icon: b.icon, cur: g[0], need: g[1], unit: g[2], pct: pct}; }
+            });
+            $("next-badge-box").innerHTML = nextBadge
+                ? '<div style="background:#1e1f24;border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:12px 16px;">'
+                    + '<div style="font-size:.85rem;opacity:.7;">Next up: <span style="font-size:1.1rem;">' + nextBadge.icon + '</span> <b style="opacity:1;">' + esc(nextBadge.name) + '</b> \u2014 ' + nextBadge.cur + '/' + nextBadge.need + ' ' + nextBadge.unit + '</div>'
+                    + '<div style="height:8px;background:rgba(255,255,255,.08);border-radius:99px;overflow:hidden;margin-top:8px;">'
+                    + '<div style="height:100%;width:' + nextBadge.pct + '%;background:' + accentInput.value + ';border-radius:99px;"></div></div></div>'
+                : '<div style="opacity:.6;font-size:.9rem;">All badges earned!</div>';
 
             var badgeSelect = $("featured-badge-input");
             badges.filter(function(b) { return b.earned; }).forEach(function(b) {
