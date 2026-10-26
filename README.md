@@ -397,15 +397,21 @@ External links in the nav bar:
 
 ### 👤 User profiles
 
-The profile page (`/profile`) is a customizable end-user page: Discord avatar/name/ID, bio (500 chars), accent color (picker + 8 swatches) tinting the banner and save button, a status message, a banner image URL (falls back to the accent color), and social links (Twitch, YouTube, Twitter/X, website). It also lists the user's servers (from `/api/servers`, with access-level badges) linking to each dashboard/basic page.
+The profile page (`/profile`) is a customizable end-user page. Profile settings live in the bot's SQLite database (`data/bot.db`, `profiles` table) — migrated from the old `data/profiles.json` on first read, with the JSON kept as a `profiles.json.migrated` backup. The API is `GET/POST /api/profile` (login + CSRF), `GET /api/profile/stats` (login), and `GET /api/profile/public/<user-id>` (public).
 
-**Bot stats** — the profile shows live stats pulled from the bot: level, total XP, daily streak, games played, game points, and majority votes, with a per-server breakdown (level, XP, rank, games, points). Stats aggregate across every server the bot is in where the user has level data.
+**Customization** — bio (500 chars), accent color (picker + 8 swatches) tinting the banner and save button, status message, social links (Twitch, YouTube, Twitter/X, website), pronouns, and a custom display name (falls back to the Discord name). Interest tags (comma-separated, up to 10) render as chips.
 
-**Achievements** — badges derived from stats: Level 5/10/25/50, First Game, Regular Player (25 rounds), Century Club (100 points), 7-Day Streak, and Crowd Favorite (10 majority votes). Earned badges are highlighted; unearned ones show dimmed on your own profile.
+**Pictures** — custom profile picture URL and banner image URL. By default both fall back to Discord: the Discord avatar, and the Discord banner (stored in the login session from `/users/@me`; animated banners use the `.gif` URL). If no Discord banner exists, the accent color shows. A custom background image URL renders behind the whole profile page (with a dark overlay for readability).
 
-**Public profiles** — users can opt in with "Make my profile public" to get a shareable link (`/profile/<user-id>`) anyone can view without logging in. Public profiles show bio, status, socials, stats, and earned badges only — the server list is never shown publicly. Public profiles are off by default; private profiles show a locked message to visitors.
+**Bot stats** — live stats pulled from the bot: level, total XP, daily streak, games played, game points, and majority votes, with a per-server breakdown (level, XP, rank, games, points, join date). A progress bar shows XP toward the next level (each level needs `level × 100` XP). Stats aggregate across every server the bot is in where the user has level data. "Member since" shows the earliest server join date.
 
-Profile settings are stored per Discord user ID in `data/profiles.json` (created at runtime, never committed); the API is `GET/POST /api/profile` (login + CSRF), `GET /api/profile/stats` (login), and `GET /api/profile/public/<user-id>` (public).
+**Achievements** — badges derived from stats: Level 5/10/25/50, First Game, Regular Player (25 rounds), Century Club (100 points), 7-Day Streak, and Crowd Favorite (10 majority votes). Earned badges are highlighted; unearned ones show dimmed on your own profile. A featured badge and a featured stat can be pinned to a showcase section.
+
+**Recent activity** — a feed of the last 20 events, logged going forward by the bot: level-ups and daily claims (Level system cog) and Eat It or Yeet It rounds played (`profile_activity` table, unix timestamps).
+
+**Public profiles** — users can opt in with "Make my profile public" to get a shareable link (`/profile/<user-id>`) anyone can view without logging in. Public profiles show bio, status, socials, tags, stats totals, best-level progress, member since, earned badges, featured items, and activity only — per-server details are never shown publicly (guild names would reveal membership). Public profiles are off by default; private profiles show a locked message to visitors.
+
+The profile page also lists the user's servers (from `/api/servers`, with access-level badges) linking to each dashboard/basic page.
 
 ## Troubleshooting
 
