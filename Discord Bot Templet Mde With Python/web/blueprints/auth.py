@@ -567,6 +567,9 @@ def callback():
             "avatar":
                 user.get("avatar"),
 
+            "banner":
+                user.get("banner"),
+
             "discriminator":
                 user.get("discriminator"),
 
