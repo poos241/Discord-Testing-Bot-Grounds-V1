@@ -358,6 +358,21 @@ def create_app(bot):
         )
 
 
+    @app.route("/profile/edit")
+    def profile_edit():
+
+        if not session.get("user"):
+
+            return redirect(
+                url_for("auth.login")
+            )
+
+        return render_template(
+            "profile_edit.html",
+            user=session.get("user"),
+        )
+
+
     @app.route("/profile/<user_id>")
     def public_profile_page(user_id):
 
