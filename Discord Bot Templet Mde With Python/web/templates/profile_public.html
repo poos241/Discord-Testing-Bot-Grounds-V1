@@ -3,6 +3,12 @@
 {% block title %}Profile — Kush Bush{% endblock %}
 
 {% block body %}
+<!-- Custom profile background (fixed, behind everything) -->
+<div id="public-page-bg" style="display:none;position:fixed;inset:0;z-index:-1;
+    background-size:cover;background-position:center;"></div>
+<div id="public-page-bg-overlay" style="display:none;position:fixed;inset:0;z-index:-1;
+    background:rgba(0,0,0,.55);"></div>
+
 <div style="max-width:760px;margin:40px auto;padding:0 16px;">
 
     <div id="public-card" style="display:none;background:rgba(255,255,255,.03);
@@ -17,13 +23,27 @@
                 background:#5865F2;border:4px solid #1e1f24;display:none;
                 align-items:center;justify-content:center;
                 font-size:2.5rem;font-weight:800;color:#fff;">?</div>
-            <h2 id="public-name" style="margin:12px 0 4px;"></h2>
+            <h2 style="margin:12px 0 4px;">
+                <span id="public-name"></span>
+                <span id="public-pronouns" style="font-size:.9rem;font-weight:400;
+                    opacity:.6;"></span>
+            </h2>
+            <div id="public-member-since" style="opacity:.55;font-size:.9rem;"></div>
             <p id="public-status" style="opacity:.9;margin:12px 0 0;
                 font-style:italic;display:none;"></p>
             <p id="public-bio" style="opacity:.8;margin:12px 0 0;line-height:1.5;"></p>
+            <div id="public-tags" style="display:flex;gap:8px;
+                flex-wrap:wrap;margin-top:12px;"></div>
             <div id="public-socials" style="display:flex;gap:10px;
                 flex-wrap:wrap;margin-top:14px;"></div>
         </div>
+    </div>
+
+    <div id="public-featured" style="display:none;background:rgba(255,255,255,.03);
+        border:1px solid rgba(255,255,255,.08);border-radius:16px;
+        padding:24px 32px;margin-top:20px;">
+        <h3 style="margin:0 0 16px;">Featured</h3>
+        <div id="public-featured-content" style="display:flex;gap:12px;flex-wrap:wrap;"></div>
     </div>
 
     <div id="public-stats" style="display:none;background:rgba(255,255,255,.03);
@@ -32,6 +52,18 @@
         <h3 style="margin:0 0 16px;">Bot stats</h3>
         <div id="public-stats-grid" style="display:grid;
             grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:12px;"></div>
+        <div id="public-progress-box" style="margin-top:16px;display:none;">
+            <div style="display:flex;justify-content:space-between;
+                font-size:.9rem;margin-bottom:6px;">
+                <span id="public-progress-label"></span>
+                <span id="public-progress-numbers"></span>
+            </div>
+            <div style="height:12px;border-radius:6px;background:#1e1f24;
+                border:1px solid rgba(255,255,255,.08);overflow:hidden;">
+                <div id="public-progress-bar" style="height:100%;background:#5865F2;
+                    width:0%;transition:width .5s;"></div>
+            </div>
+        </div>
     </div>
 
     <div id="public-badges" style="display:none;background:rgba(255,255,255,.03);
@@ -39,6 +71,13 @@
         padding:24px 32px;margin-top:20px;">
         <h3 style="margin:0 0 16px;">Achievements</h3>
         <div id="public-badge-grid" style="display:flex;gap:12px;flex-wrap:wrap;"></div>
+    </div>
+
+    <div id="public-activity" style="display:none;background:rgba(255,255,255,.03);
+        border:1px solid rgba(255,255,255,.08);border-radius:16px;
+        padding:24px 32px;margin-top:20px;">
+        <h3 style="margin:0 0 16px;">Recent activity</h3>
+        <div id="public-activity-list" style="display:grid;gap:10px;"></div>
     </div>
 
     <div id="public-error" style="display:none;text-align:center;padding:64px 24px;">
@@ -56,7 +95,9 @@
 <script>
 (function() {
     var SOCIAL_LABELS = {twitch: "Twitch", youtube: "YouTube", twitter: "Twitter / X", website: "Website"};
+    var STAT_LABELS = {level: "Level", xp: "Total XP", played: "Games played", points: "Game points", daily_streak: "Daily streak"};
     var userId = "{{ user_id }}";
+    var $ = function(id) { return document.getElementById(id); };
 
     function esc(s) {
         return String(s == null ? "" : s).replace(/[&<>"']/g, function(c) {
@@ -64,41 +105,70 @@
         });
     }
 
+    function activityText(a) {
+        var d = a.detail || {};
+        if (a.kind === "level_up") return "\uD83C\uDF89 Reached level " + (d.level || "?");
+        if (a.kind === "daily_claim") return "\uD83C\uDF81 Claimed daily reward (" + (d.streak || 1) + "-day streak)";
+        if (a.kind === "game_round") {
+            var pts = d.majority ? "(+" + (d.points || 0) + " pts, with the majority)" : "(against the crowd)";
+            return "\uD83C\uDFAE Eat It or Yeet It: " + (d.food || "something") + " \u2014 voted " + (d.voted || "?") + ", verdict " + (d.verdict || "?") + " " + pts;
+        }
+        return a.kind;
+    }
+
     fetch("/api/profile/public/" + encodeURIComponent(userId), {credentials: "same-origin"})
         .then(function(r) { return r.ok ? r.json() : null; })
         .then(function(data) {
             if (!data || !data.success) {
-                document.getElementById("public-error").style.display = "";
+                $("public-error").style.display = "";
                 return;
             }
             var p = data.profile || {};
             var u = data.user || {};
-            document.getElementById("public-card").style.display = "";
-            document.getElementById("public-stats").style.display = "";
-            document.getElementById("public-badges").style.display = "";
+            var t = (data.stats && data.stats.totals) || {};
+            $("public-card").style.display = "";
+            $("public-stats").style.display = "";
+            $("public-badges").style.display = "";
+            $("public-activity").style.display = "";
 
-            var banner = document.getElementById("public-banner");
+            var banner = $("public-banner");
             banner.style.background = p.banner
                 ? "url(" + p.banner + ") center / cover"
-                : p.accent;
+                : (u.banner_url || p.accent);
 
-            var name = u.display_name || ("User " + userId);
-            document.getElementById("public-name").textContent = name;
-            if (u.avatar_url) {
-                var img = document.getElementById("public-avatar");
-                img.src = u.avatar_url;
+            if (p.background_url) {
+                $("public-page-bg").style.backgroundImage = "url(" + p.background_url + ")";
+                $("public-page-bg").style.display = "";
+                $("public-page-bg-overlay").style.display = "";
+            }
+
+            var name = p.display_name || u.display_name || ("User " + userId);
+            $("public-name").textContent = name;
+            $("public-pronouns").textContent = p.pronouns ? "(" + p.pronouns + ")" : "";
+            if (p.avatar_url || u.avatar_url) {
+                var img = $("public-avatar");
+                img.src = p.avatar_url || u.avatar_url;
                 img.style.display = "";
             } else {
-                var fb = document.getElementById("public-avatar-fallback");
+                var fb = $("public-avatar-fallback");
                 fb.textContent = (name[0] || "?").toUpperCase();
                 fb.style.display = "flex";
             }
+            if (data.stats && data.stats.member_since) {
+                $("public-member-since").textContent = "Member since " + new Date(data.stats.member_since).toLocaleDateString();
+            }
             if (p.status) {
-                var st = document.getElementById("public-status");
+                var st = $("public-status");
                 st.textContent = "\u201C" + p.status + "\u201D";
                 st.style.display = "";
             }
-            document.getElementById("public-bio").textContent = p.bio || "No bio yet.";
+            $("public-bio").textContent = p.bio || "No bio yet.";
+
+            $("public-tags").innerHTML = (p.tags || []).map(function(tag) {
+                return '<span style="font-size:.8rem;background:rgba(255,255,255,.08);'
+                    + 'border:1px solid rgba(255,255,255,.12);border-radius:20px;'
+                    + 'padding:4px 12px;">' + esc(tag) + "</span>";
+            }).join("");
 
             var socialsHtml = "";
             Object.keys(SOCIAL_LABELS).forEach(function(key) {
@@ -109,9 +179,8 @@
                         + SOCIAL_LABELS[key] + "</a>";
                 }
             });
-            document.getElementById("public-socials").innerHTML = socialsHtml;
+            $("public-socials").innerHTML = socialsHtml;
 
-            var t = (data.stats && data.stats.totals) || {};
             var cells = [
                 ["Level", t.level || 0],
                 ["Total XP", (t.xp || 0).toLocaleString()],
@@ -120,15 +189,23 @@
                 ["Game points", t.points || 0],
                 ["Majority votes", t.majority || 0]
             ];
-            document.getElementById("public-stats-grid").innerHTML = cells.map(function(c) {
+            $("public-stats-grid").innerHTML = cells.map(function(c) {
                 return '<div style="background:#1e1f24;border:1px solid rgba(255,255,255,.08);'
                     + 'border-radius:12px;padding:14px;text-align:center;">'
                     + '<div style="font-size:1.4rem;font-weight:800;">' + c[1] + "</div>"
                     + '<div style="opacity:.6;font-size:.8rem;">' + c[0] + "</div></div>";
             }).join("");
 
+            var prog = data.stats && data.stats.best_guild_progress;
+            if (prog) {
+                $("public-progress-box").style.display = "";
+                $("public-progress-label").textContent = "Level " + prog.level + " progress";
+                $("public-progress-numbers").textContent = prog.xp.toLocaleString() + " / " + prog.xp_needed.toLocaleString() + " XP";
+                $("public-progress-bar").style.width = prog.progress_pct + "%";
+            }
+
             var badges = (data.badges || []).filter(function(b) { return b.earned; });
-            document.getElementById("public-badge-grid").innerHTML = badges.length
+            $("public-badge-grid").innerHTML = badges.length
                 ? badges.map(function(b) {
                     return '<div title="' + esc(b.description) + '" style="background:#1e1f24;'
                         + 'border:1px solid rgba(255,255,255,.15);border-radius:12px;'
@@ -137,9 +214,47 @@
                         + '<div style="font-size:.8rem;font-weight:700;margin-top:4px;">' + esc(b.name) + "</div></div>";
                 }).join("")
                 : '<div style="opacity:.5;">No achievements yet.</div>';
+
+            var parts = [];
+            if (p.featured_badge) {
+                var fbd = badges.filter(function(b) { return b.key === p.featured_badge; })[0];
+                if (fbd) {
+                    parts.push('<div style="background:#1e1f24;border:1px solid rgba(255,255,255,.15);'
+                        + 'border-radius:12px;padding:14px 18px;text-align:center;">'
+                        + '<div style="font-size:1.8rem;">' + fbd.icon + "</div>"
+                        + '<div style="font-size:.85rem;font-weight:700;margin-top:4px;">' + esc(fbd.name) + "</div>"
+                        + '<div style="opacity:.6;font-size:.75rem;">Featured badge</div></div>');
+                }
+            }
+            if (p.featured_stat && STAT_LABELS[p.featured_stat]) {
+                var val = t[p.featured_stat];
+                if (p.featured_stat === "xp" || p.featured_stat === "points" || p.featured_stat === "played") val = (val || 0).toLocaleString();
+                if (p.featured_stat === "daily_streak") val = (val || 0) + " days";
+                parts.push('<div style="background:#1e1f24;border:1px solid rgba(255,255,255,.15);'
+                    + 'border-radius:12px;padding:14px 18px;text-align:center;">'
+                    + '<div style="font-size:1.6rem;font-weight:800;">' + val + "</div>"
+                    + '<div style="opacity:.6;font-size:.8rem;">' + STAT_LABELS[p.featured_stat] + "</div>"
+                    + '<div style="opacity:.6;font-size:.75rem;">Featured stat</div></div>');
+            }
+            if (parts.length) {
+                $("public-featured").style.display = "";
+                $("public-featured-content").innerHTML = parts.join("");
+            }
+
+            var activity = data.activity || [];
+            $("public-activity-list").innerHTML = activity.length
+                ? activity.map(function(a) {
+                    var when = a.ts ? new Date(a.ts * 1000).toLocaleString() : "";
+                    return '<div style="display:flex;gap:12px;align-items:baseline;'
+                        + 'background:#1e1f24;border:1px solid rgba(255,255,255,.08);'
+                        + 'border-radius:12px;padding:12px 16px;">'
+                        + '<div style="flex:1;">' + esc(activityText(a)) + "</div>"
+                        + '<div style="opacity:.5;font-size:.8rem;white-space:nowrap;">' + when + "</div></div>";
+                }).join("")
+                : '<div style="opacity:.5;">No activity yet.</div>';
         })
         .catch(function() {
-            document.getElementById("public-error").style.display = "";
+            $("public-error").style.display = "";
         });
 })();
 </script>
