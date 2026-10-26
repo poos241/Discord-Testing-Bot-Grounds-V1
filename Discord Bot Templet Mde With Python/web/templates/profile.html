@@ -9,7 +9,28 @@
 <div id="page-bg-overlay" style="display:none;position:fixed;inset:0;z-index:-1;
     background:rgba(0,0,0,.55);"></div>
 
-<div style="max-width:760px;margin:40px auto;padding:0 16px;">
+<style>
+#profile-layout { display:grid; grid-template-columns: 1fr 320px; gap:20px; align-items:start; }
+#profile-layout > div { margin-top: 0 !important; }
+#profile-card { grid-column: 1 / -1; grid-row: 1; }
+#stats-section { grid-column: 1; grid-row: 2; }
+#featured-box { grid-column: 2; grid-row: 2; }
+#activity-section { grid-column: 1; grid-row: 3; }
+#badges-section { grid-column: 2; grid-row: 3; }
+#servers-section { grid-column: 2; grid-row: 4; }
+#customize-section { grid-column: 1 / -1; grid-row: 5; }
+@media (max-width: 800px) {
+  #profile-layout { grid-template-columns: 1fr; }
+  #profile-card { grid-column: 1; grid-row: 1; }
+  #stats-section { grid-column: 1; grid-row: 2; }
+  #activity-section { grid-column: 1; grid-row: 3; }
+  #featured-box { grid-column: 1; grid-row: 4; }
+  #badges-section { grid-column: 1; grid-row: 5; }
+  #servers-section { grid-column: 1; grid-row: 6; }
+  #customize-section { grid-column: 1; grid-row: 7; }
+}
+</style>
+<div id="profile-layout style="max-width:1000px;margin:40px auto;padding:0 16px;">
 
     <!-- HEADER CARD -->
     <div id="profile-card" style="background:rgba(255,255,255,.03);
@@ -17,7 +38,8 @@
         overflow:hidden;">
         <div id="profile-banner" style="height:140px;background:#5865F2;
             background-size:cover;background-position:center;"></div>
-        <div style="padding:0 32px 32px;margin-top:-48px;">
+        <div style="padding:0 32px 32px;margin-top:-48px;display:flex;gap:24px;align-items:flex-start;flex-wrap:wrap;">
+            <div style="flex:1;min-width:280px;">
             <img id="profile-avatar-img" src="" alt=""
                 style="width:96px;height:96px;border-radius:50%;
                 border:4px solid #1e1f24;background:#1e1f24;display:none;">
@@ -32,7 +54,6 @@
             </h2>
             <div style="opacity:.55;font-size:.9rem;">
                 @{{ user.username }} · ID: {{ user.id }}
-                <span id="profile-member-since"></span>
             </div>
             <p id="profile-status-display" style="opacity:.9;margin:12px 0 0;
                 font-style:italic;display:none;"></p>
@@ -48,6 +69,15 @@
                 <a id="profile-public-url" href="#" target="_blank" rel="noopener"
                     style="font-size:.85rem;color:#8ea2ff;"></a>
             </div>
+            </div>
+            <div style="text-align:center;flex-shrink:0;padding-top:8px;">
+                <div id="header-level-circle" style="width:88px;height:88px;border-radius:50%;border:3px solid #5865F2;display:grid;place-items:center;margin:0 auto;">
+                    <span id="header-level-number" style="font-size:2rem;font-weight:800;">?</span>
+                </div>
+                <div style="font-weight:700;margin-top:8px;">Level</div>
+                <div id="header-level-xp" style="opacity:.6;font-size:.85rem;"></div>
+                <div id="profile-member-since" style="opacity:.6;font-size:.85rem;margin-top:4px;"></div>
+            </div>
         </div>
     </div>
 
@@ -62,7 +92,7 @@
     <!-- STATS -->
     <div style="background:rgba(255,255,255,.03);
         border:1px solid rgba(255,255,255,.08);border-radius:16px;
-        padding:24px 32px;margin-top:20px;">
+        padding:24px 32px;margin-top:20px;" id="stats-section">
         <h3 style="margin:0 0 16px;">Bot stats</h3>
         <div id="stats-grid" style="display:grid;
             grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:12px;">
@@ -86,7 +116,7 @@
     <!-- BADGES -->
     <div style="background:rgba(255,255,255,.03);
         border:1px solid rgba(255,255,255,.08);border-radius:16px;
-        padding:24px 32px;margin-top:20px;">
+        padding:24px 32px;margin-top:20px;" id="badges-section">
         <h3 style="margin:0 0 16px;">Achievements</h3>
         <div id="badge-grid" style="display:flex;gap:12px;flex-wrap:wrap;">
             <div style="opacity:.5;">Loading badges...</div>
@@ -96,7 +126,7 @@
     <!-- ACTIVITY -->
     <div style="background:rgba(255,255,255,.03);
         border:1px solid rgba(255,255,255,.08);border-radius:16px;
-        padding:24px 32px;margin-top:20px;">
+        padding:24px 32px;margin-top:20px;" id="activity-section">
         <h3 style="margin:0 0 16px;">Recent activity</h3>
         <div id="activity-list" style="display:grid;gap:10px;">
             <div style="opacity:.5;">Loading activity...</div>
@@ -106,7 +136,7 @@
     <!-- CUSTOMIZE -->
     <div style="background:rgba(255,255,255,.03);
         border:1px solid rgba(255,255,255,.08);border-radius:16px;
-        padding:24px 32px;margin-top:20px;">
+        padding:24px 32px;margin-top:20px;" id="customize-section">
         <h3 style="margin:0 0 16px;">Customize your profile</h3>
 
         <label style="display:block;font-size:.85rem;opacity:.7;margin-bottom:6px;"
@@ -242,7 +272,7 @@
     </div>
 
     <!-- MY SERVERS -->
-    <div style="margin-top:20px;">
+    <div id="servers-section" style="margin-top:20px;">
         <h3 style="margin:0 0 12px;padding:0 8px;">My servers</h3>
         <div id="server-list" style="display:grid;gap:12px;">
             <div style="opacity:.5;padding:12px 8px;">Loading servers...</div>
@@ -298,6 +328,7 @@
     function setAccent(c) {
         accentInput.value = c;
         saveBtn.style.background = c;
+        $("header-level-circle").style.borderColor = c;
         refreshBanner({banner: bannerInput.value, accent: c});
     }
 
@@ -489,9 +520,11 @@
                 $("progress-numbers").textContent = prog.xp.toLocaleString() + " / " + prog.xp_needed.toLocaleString() + " XP";
                 $("progress-bar").style.width = prog.progress_pct + "%";
             }
+            $("header-level-number").textContent = prog ? prog.level : (t.level || 0);
+            $("header-level-xp").textContent = (t.xp || 0).toLocaleString() + " XP";
 
             if (data.stats && data.stats.member_since) {
-                $("profile-member-since").textContent = " · Member since " + new Date(data.stats.member_since).toLocaleDateString();
+                $("profile-member-since").textContent = "Member since " + new Date(data.stats.member_since).toLocaleDateString();
             }
 
             var guilds = (data.stats && data.stats.per_guild) || [];
