@@ -31,8 +31,8 @@
 }
 
 /* Steam-style translucent panels + gradient section header bars */
-#profile-card, #stats-section, #badges-section, #activity-section, #customize-section { background: rgba(13,17,28,.78) !important; backdrop-filter: blur(8px); border-color: rgba(255,255,255,.12) !important; }
-#servers-section { background: rgba(13,17,28,.78); backdrop-filter: blur(8px); border:1px solid rgba(255,255,255,.12); border-radius:12px; padding:24px; }
+#profile-card, #stats-section, #badges-section, #activity-section, #customize-section { background: rgba(13,17,28,.85) !important; backdrop-filter: blur(8px); border-color: rgba(255,255,255,.12) !important; }
+#servers-section { background: rgba(13,17,28,.85); backdrop-filter: blur(8px); border:1px solid rgba(255,255,255,.12); border-radius:12px; padding:24px; }
 #stats-section > h3, #badges-section > h3, #activity-section > h3, #featured-box > h3, #customize-section > h3 { background: linear-gradient(90deg, rgba(42,71,94,.95), rgba(42,71,94,0)); margin: -24px -32px 16px !important; padding: 12px 32px !important; border-radius: 12px 12px 0 0; }
 #servers-section > h3 { background: linear-gradient(90deg, rgba(42,71,94,.95), rgba(42,71,94,0)); margin: -24px -24px 16px !important; padding: 12px 24px !important; border-radius: 12px 12px 0 0; }
 #profile-card h2 { font-size: 2rem; }
@@ -41,6 +41,7 @@
 .stat-cell:hover, .guild-row:hover, .server-card:hover, .activity-row:hover { transform: translateY(-2px); border-color: rgba(255,255,255,.28) !important; }
 .badge-item { background:#1e1f24; border:1px solid rgba(255,255,255,.12); border-radius:12px; padding:12px 10px; text-align:center; min-width:84px; }
 .badge-item:hover { transform: translateY(-3px); border-color: rgba(255,255,255,.3); }
+#profile-card { padding: 24px 32px !important; }
 </style>
 <div id="profile-layout" style="max-width:1000px;margin:40px auto;padding:0 16px;">
 
@@ -80,6 +81,7 @@
                 <span style="font-size:.85rem;opacity:.6;">Public profile: </span>
                 <a id="profile-public-url" href="#" target="_blank" rel="noopener"
                     style="font-size:.85rem;color:#8ea2ff;"></a>
+                <button id="copy-public-link" type="button" style="margin-left:8px;border:1px solid rgba(255,255,255,.25);background:transparent;color:inherit;border-radius:99px;padding:2px 10px;cursor:pointer;font-size:.8rem;">Copy</button>
             </div>
             </div>
             <div style="text-align:center;flex-shrink:0;padding-top:8px;">
@@ -111,7 +113,7 @@
         padding:24px 32px;margin-top:20px;" id="stats-section">
         <h3 style="margin:0 0 16px;">Bot stats</h3>
         <div id="stats-grid" style="display:grid;
-            grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:12px;">
+            grid-template-columns:repeat(3,1fr);gap:12px;">
             <div style="opacity:.5;">Loading stats...</div>
         </div>
         <div id="progress-box" style="margin-top:16px;display:none;">
@@ -347,6 +349,7 @@
         accentInput.value = c;
         saveBtn.style.background = c;
         $("header-level-ring").style.stroke = c;
+        $("progress-bar").style.background = c;
         avatarImg.style.boxShadow = "0 0 0 3px " + c + ", 0 0 24px rgba(0,0,0,.6)";
         avatarFallback.style.boxShadow = "0 0 0 3px " + c + ", 0 0 24px rgba(0,0,0,.6)";
         refreshBanner({banner: bannerInput.value, accent: c});
@@ -530,7 +533,7 @@
                 return '<div class="stat-cell" style="background:#1e1f24;border:1px solid rgba(255,255,255,.08);'
                     + 'border-radius:12px;padding:14px;text-align:center;">'
                     + '<div style="font-size:1.4rem;font-weight:800;">' + c[1] + "</div>"
-                    + '<div style="opacity:.6;font-size:.8rem;">' + c[0] + "</div></div>";
+                    + '<div style="opacity:.65;font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;">' + c[0] + "</div></div>";
             }).join("");
 
             var prog = data.stats && data.stats.best_guild_progress;
@@ -561,9 +564,10 @@
                     + '<div style="opacity:.6;font-size:.85rem;text-align:right;">'
                     + g.played + " games · " + g.points + " pts</div></div>"
                     + '<div style="height:8px;border-radius:4px;background:rgba(255,255,255,.06);'
-                    + 'overflow:hidden;margin-top:8px;"><div style="height:100%;background:#5865F2;'
+                    + 'overflow:hidden;margin-top:8px;"><div class="guild-progress-fill" style="height:100%;background:#5865F2;'
                     + 'width:' + g.progress_pct + '%;"></div></div></div>';
             }).join("");
+            document.querySelectorAll(".guild-progress-fill").forEach(function(el) { el.style.background = accentInput.value; });
 
             var badges = data.badges || [];
             $("badges-title").textContent = "Badges " + badges.filter(function(b) { return b.earned; }).length;
@@ -618,7 +622,15 @@
             var activity = data.activity || [];
             $("activity-list").innerHTML = activity.length
                 ? activity.map(function(a) {
-                    var when = a.ts ? new Date(a.ts * 1000).toLocaleString() : "";
+function fmtAgo(ts) {
+                var d = Math.floor(Date.now() / 1000) - ts;
+                if (d < 60) return "just now";
+                if (d < 3600) return Math.floor(d / 60) + "m ago";
+                if (d < 86400) return Math.floor(d / 3600) + "h ago";
+                if (d < 604800) return Math.floor(d / 86400) + "d ago";
+                return new Date(ts * 1000).toLocaleDateString();
+            }
+            var when = a.ts ? fmtAgo(a.ts) : "";
                     return '<div class="activity-row" style="display:flex;gap:12px;align-items:baseline;'
                         + 'background:#1e1f24;border:1px solid rgba(255,255,255,.08);'
                         + 'border-radius:12px;padding:12px 16px;">'
@@ -657,5 +669,18 @@
             list.innerHTML = '<div style="opacity:.5;padding:12px 8px;">Could not load servers.</div>';
         });
 })();
+    (function() {
+        var cp = $("copy-public-link");
+        if (!cp) return;
+        cp.addEventListener("click", function() {
+            var href = $("profile-public-url").href;
+            if (navigator.clipboard) {
+                navigator.clipboard.writeText(href).then(function() {
+                    cp.textContent = "Copied!";
+                    setTimeout(function() { cp.textContent = "Copy"; }, 1500);
+                });
+            }
+        });
+    })();
 </script>
 {% endblock %}
