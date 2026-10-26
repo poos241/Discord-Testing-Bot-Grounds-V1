@@ -397,7 +397,7 @@ External links in the nav bar:
 
 ### 👤 User profiles
 
-The profile page (`/profile`) is a customizable end-user page. Profile settings live in the bot's SQLite database (`data/bot.db`, `profiles` table) — migrated from the old `data/profiles.json` on first read, with the JSON kept as a `profiles.json.migrated` backup. The API is `GET/POST /api/profile` (login + CSRF), `GET /api/profile/stats` (login), and `GET /api/profile/public/<user-id>` (public).
+The profile page (`/profile`) is a customizable end-user page. Layout follows the Steam profile pattern: a header with avatar, name, and status plus a level badge and member-since on the right, a main column (recent activity, stats) and a sidebar (featured, badges, servers), stacking to one column on narrow screens. Profile settings live in the bot's SQLite database (`data/bot.db`, `profiles` table) — migrated from the old `data/profiles.json` on first read, with the JSON kept as a `profiles.json.migrated` backup. The API is `GET/POST /api/profile` (login + CSRF), `GET /api/profile/stats` (login), and `GET /api/profile/public/<user-id>` (public).
 
 **Customization** — bio (500 chars), accent color (picker + 8 swatches) tinting the banner and save button, status message, social links (Twitch, YouTube, Twitter/X, website), pronouns, and a custom display name (falls back to the Discord name). Interest tags (comma-separated, up to 10) render as chips.
 
