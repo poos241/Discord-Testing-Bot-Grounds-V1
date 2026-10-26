@@ -1,6 +1,7 @@
 from data.DB.db import database
-from data.DB.models import welcome_data, main_vc_map, xp_timestamps, threads_settings, levels, ticket_config, active_tickets, ticket_records
+from data.DB.models import welcome_data, main_vc_map, xp_timestamps, threads_settings, levels, ticket_config, active_tickets, ticket_records, profiles, profile_activity
 from datetime import datetime
+import time
 
 async def get_welcome(guild_id: str):
     row = await database.fetch_one(welcome_data.select().where(welcome_data.c.guild_id == guild_id))
@@ -116,3 +117,42 @@ async def save_ticket_records(gid: str, records: dict):
     
     
     
+
+
+async def get_profile(user_id: str):
+    row = await database.fetch_one(profiles.select().where(profiles.c.user_id == str(user_id)))
+    return dict(row) if row else {}
+
+
+async def save_profile(user_id: str, data: dict):
+    await database.execute(
+        profiles.insert()
+        .values(user_id=str(user_id), **data)
+        .prefix_with("OR REPLACE")
+    )
+
+
+async def log_activity(user_id, guild_id, kind, detail):
+    """Append one activity-feed event. Never raises to callers."""
+    try:
+        await database.execute(
+            profile_activity.insert().values(
+                user_id=str(user_id),
+                guild_id=str(guild_id),
+                kind=kind,
+                detail=detail or {},
+                ts=int(time.time()),
+            )
+        )
+    except Exception:
+        pass
+
+
+async def get_activity(user_id: str, limit: int = 20):
+    rows = await database.fetch_all(
+        profile_activity.select()
+        .where(profile_activity.c.user_id == str(user_id))
+        .order_by(profile_activity.c.id.desc())
+        .limit(limit)
+    )
+    return [dict(r) for r in rows]
