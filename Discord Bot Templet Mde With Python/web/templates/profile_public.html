@@ -63,6 +63,12 @@
                 flex-wrap:wrap;margin-top:12px;"></div>
             <div id="public-socials" style="display:flex;gap:10px;
                 flex-wrap:wrap;margin-top:14px;"></div>
+            {% set viewer = session.get("user") %}
+            {% if viewer and viewer.id|string == user_id %}
+            <div style="margin-top:14px;">
+                <a href="/profile/edit" style="display:inline-block;border:1px solid rgba(255,255,255,.25);border-radius:99px;padding:6px 16px;color:#fff;text-decoration:none;font-size:.85rem;font-weight:700;">Edit profile</a>
+            </div>
+            {% endif %}
             </div>
             <div style="text-align:center;flex-shrink:0;padding-top:8px;">
                 <div style="position:relative;width:96px;height:96px;margin:0 auto;">
@@ -134,7 +140,6 @@
 
 <script>
 (function() {
-    var SOCIAL_LABELS = {twitch: "Twitch", youtube: "YouTube", twitter: "Twitter / X", website: "Website"};
     var STAT_LABELS = {level: "Level", xp: "Total XP", played: "Games played", points: "Game points", daily_streak: "Daily streak"};
     var userId = "{{ user_id }}";
     var $ = function(id) { return document.getElementById(id); };
@@ -216,16 +221,33 @@
                     + 'padding:4px 12px;">' + esc(tag) + "</span>";
             }).join("");
 
-            var socialsHtml = "";
-            Object.keys(SOCIAL_LABELS).forEach(function(key) {
-                if (p.socials && p.socials[key]) {
-                    socialsHtml += '<a href="' + esc(p.socials[key]) + '" target="_blank" rel="noopener" '
-                        + 'style="font-size:.85rem;border:1px solid rgba(255,255,255,.15);'
-                        + 'border-radius:20px;padding:5px 14px;color:#fff;text-decoration:none;">'
-                        + SOCIAL_LABELS[key] + "</a>";
-                }
-            });
-            $("public-socials").innerHTML = socialsHtml;
+            var socialsList = Array.isArray(p.socials) ? p.socials
+                : (p.socials && typeof p.socials === "object"
+                    ? Object.keys(p.socials).map(function(k) { return p.socials[k]; }).filter(function(v) { return v; })
+                    : []);
+            $("public-socials").innerHTML = socialsList.map(function(url) {
+                var m = url.match(/^https?:\/\/([^\/]+)/i);
+                var host = m ? m[1].toLowerCase().replace(/^www\./, "") : "";
+                var map = {
+                    "youtube.com": "YouTube", "youtu.be": "YouTube",
+                    "twitch.tv": "Twitch",
+                    "twitter.com": "Twitter / X", "x.com": "Twitter / X",
+                    "discord.gg": "Discord", "discord.com": "Discord",
+                    "instagram.com": "Instagram", "tiktok.com": "TikTok",
+                    "steamcommunity.com": "Steam", "store.steampowered.com": "Steam",
+                    "reddit.com": "Reddit", "github.com": "GitHub",
+                    "spotify.com": "Spotify", "ko-fi.com": "Ko-fi", "patreon.com": "Patreon",
+                    "facebook.com": "Facebook", "bsky.app": "Bluesky", "tumblr.com": "Tumblr"
+                };
+                var label = map[host] || host || "Link";
+                var icon = host
+                    ? '<img src="https://www.google.com/s2/favicons?domain=' + esc(host) + '&sz=32" alt="" style="width:16px;height:16px;vertical-align:-3px;border-radius:3px;" onerror="this.style.display=\'none\'"> '
+                    : "";
+                return '<a href="' + esc(url) + '" target="_blank" rel="noopener" '
+                    + 'style="font-size:.85rem;border:1px solid rgba(255,255,255,.15);'
+                    + 'border-radius:20px;padding:5px 14px;color:#fff;text-decoration:none;">'
+                    + icon + esc(label) + "</a>";
+            }).join("");
 
             var cells = [
                 ["Level", t.level || 0],
