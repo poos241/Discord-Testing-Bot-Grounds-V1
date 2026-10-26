@@ -1,11 +1,14 @@
 """End-user profile customization API.
 
-Stores per-user profile settings in ``data/profiles.json``
-(created at runtime, never committed), keyed by Discord user ID.
+Profile settings live in the bot's SQLite database
+(``data/bot.db``, ``profiles`` table) — migrated from the old
+``data/profiles.json`` on first read (the JSON file is kept as a
+``profiles.json.migrated`` backup and never read again).
 
 Also serves bot stats (level/XP, daily streaks, Eat It or Yeet It)
 aggregated across the bot's guilds, derives achievement badges
-from those stats, and serves public profiles for users who opt in.
+from those stats, serves the per-user activity feed, and serves
+public profiles for users who opt in.
 """
 
 import json
@@ -42,9 +45,13 @@ DATA_DIR = os.path.normpath(
         "data",
     )
 )
-PROFILES_PATH = os.path.join(
+LEGACY_PROFILES_PATH = os.path.join(
     DATA_DIR,
     "profiles.json",
+)
+LEGACY_BACKUP_PATH = os.path.join(
+    DATA_DIR,
+    "profiles.json.migrated",
 )
 EATYEET_PATH = os.path.join(
     DATA_DIR,
@@ -54,83 +61,60 @@ EATYEET_PATH = os.path.join(
 MAX_BIO_LEN = 500
 MAX_STATUS_LEN = 120
 MAX_URL_LEN = 500
+MAX_PRONOUNS_LEN = 40
+MAX_DISPLAY_NAME_LEN = 64
+MAX_TAGS = 10
+MAX_TAG_LEN = 24
 ACCENT_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
 URL_RE = re.compile(r"^https?://\S+$")
 SOCIAL_FIELDS = ("twitch", "youtube", "twitter", "website")
+FEATURED_STATS = ("level", "xp", "played", "points", "daily_streak")
 
 DEFAULT_PROFILE = {
     "bio": "",
     "accent": "#5865F2",
     "banner": "",
     "status": "",
+    "avatar_url": "",
+    "background_url": "",
+    "pronouns": "",
+    "display_name": "",
+    "featured_badge": "",
+    "featured_stat": "",
     "socials": {},
+    "tags": [],
     "public": False,
 }
 
 
 # =========================================================
-# PROFILE STORAGE
+# PROFILE STORAGE (SQLite, with one-time JSON migration)
 # =========================================================
 
-def _load_profiles():
-
-    try:
-
-        with open(
-            PROFILES_PATH,
-            encoding="utf-8",
-        ) as f:
-
-            data = json.load(f)
-
-        if isinstance(data, dict):
-
-            return data
-
-    except (OSError, ValueError):
-
-        pass
-
-    return {}
-
-
-def _save_profiles(data):
-
-    os.makedirs(
-        DATA_DIR,
-        exist_ok=True,
-    )
-
-    tmp_path = PROFILES_PATH + ".tmp"
-
-    with open(
-        tmp_path,
-        "w",
-        encoding="utf-8",
-    ) as f:
-
-        json.dump(
-            data,
-            f,
-            indent=2,
-        )
-
-    os.replace(
-        tmp_path,
-        PROFILES_PATH,
-    )
+_MIGRATION_DONE = False
 
 
 def _clean_profile(saved):
 
-    """Merge a saved profile over the defaults, validating fields."""
+    """Validate a profile dict (from DB or JSON) into canonical shape."""
+
+    if not isinstance(saved, dict):
+
+        saved = {}
 
     profile = {
         "bio": str(saved.get("bio", ""))[:MAX_BIO_LEN],
         "accent": saved.get("accent", DEFAULT_PROFILE["accent"]),
         "banner": str(saved.get("banner", ""))[:MAX_URL_LEN],
         "status": str(saved.get("status", ""))[:MAX_STATUS_LEN],
+        "avatar_url": str(saved.get("avatar_url", ""))[:MAX_URL_LEN],
+        "background_url": str(saved.get("background_url", ""))[:MAX_URL_LEN],
+        "pronouns": str(saved.get("pronouns", ""))[:MAX_PRONOUNS_LEN],
+        "display_name": str(saved.get("display_name", ""))[:MAX_DISPLAY_NAME_LEN],
+        "featured_badge": str(saved.get("featured_badge", "")),
+        "featured_stat": str(saved.get("featured_stat", "")),
         "socials": {},
+        "tags": [],
         "public": bool(saved.get("public", False)),
     }
 
@@ -138,9 +122,11 @@ def _clean_profile(saved):
 
         profile["accent"] = DEFAULT_PROFILE["accent"]
 
-    if not URL_RE.match(profile["banner"]):
+    for field in ("banner", "avatar_url", "background_url"):
 
-        profile["banner"] = ""
+        if not URL_RE.match(profile[field]):
+
+            profile[field] = ""
 
     socials = saved.get("socials", {})
 
@@ -154,7 +140,152 @@ def _clean_profile(saved):
 
                 profile["socials"][field] = url
 
+    tags = saved.get("tags", [])
+
+    if isinstance(tags, list):
+
+        for tag in tags[:MAX_TAGS]:
+
+            tag = str(tag).strip()[:MAX_TAG_LEN]
+
+            if tag and tag not in profile["tags"]:
+
+                profile["tags"].append(tag)
+
+    if profile["featured_badge"] not in {b[0] for b in BADGE_DEFS}:
+
+        profile["featured_badge"] = ""
+
+    if profile["featured_stat"] not in FEATURED_STATS:
+
+        profile["featured_stat"] = ""
+
     return profile
+
+
+def _db_get_profile(user_id):
+
+    from data.DB.Storage.storage import get_profile
+
+    try:
+
+        row = run_coro_threadsafe(
+            get_profile(str(user_id))
+        ).result(timeout=10)
+
+    except Exception:
+
+        return {}
+
+    if not row:
+
+        return {}
+
+    # Drop DB-only columns before cleaning.
+    row = {
+        k: v
+        for k, v in row.items()
+        if k in DEFAULT_PROFILE
+    }
+
+    return _clean_profile(row)
+
+
+def _db_save_profile(user_id, profile):
+
+    from data.DB.Storage.storage import save_profile
+
+    run_coro_threadsafe(
+        save_profile(str(user_id), profile)
+    ).result(timeout=10)
+
+
+def _maybe_migrate_json():
+
+    """One-time import of legacy data/profiles.json into SQLite.
+
+    Runs once per process. Only imports users with no DB row yet,
+    then renames the JSON file to a backup so it never runs twice.
+    Failures are swallowed: profiles must never break on migration.
+    """
+
+    global _MIGRATION_DONE
+
+    if _MIGRATION_DONE:
+
+        return
+
+    _MIGRATION_DONE = True
+
+    if not os.path.exists(LEGACY_PROFILES_PATH):
+
+        return
+
+    try:
+
+        with open(
+            LEGACY_PROFILES_PATH,
+            encoding="utf-8",
+        ) as f:
+
+            legacy = json.load(f)
+
+        if not isinstance(legacy, dict):
+
+            return
+
+        for user_id, saved in legacy.items():
+
+            try:
+
+                if _db_raw_exists(user_id):
+
+                    continue
+
+                _db_save_profile(user_id, _clean_profile(saved))
+
+            except Exception:
+
+                continue
+
+        os.replace(
+            LEGACY_PROFILES_PATH,
+            LEGACY_BACKUP_PATH,
+        )
+
+    except Exception:
+
+        pass
+
+
+def _db_raw_exists(user_id):
+
+    from data.DB.Storage.storage import get_profile
+
+    try:
+
+        row = run_coro_threadsafe(
+            get_profile(str(user_id))
+        ).result(timeout=10)
+
+    except Exception:
+
+        return False
+
+    return bool(row)
+
+
+def _get_profile(user_id):
+
+    _maybe_migrate_json()
+
+    saved = _db_get_profile(user_id)
+
+    if saved:
+
+        return saved
+
+    return dict(DEFAULT_PROFILE)
 
 
 def _check_csrf():
@@ -222,6 +353,7 @@ def get_user_stats(user_id):
     best_level = 0
     best_streak = 0
     best_game_streak = 0
+    member_since = None
 
     eatyeet = _load_eatyeet()
 
@@ -238,6 +370,8 @@ def get_user_stats(user_id):
                 "daily_streak": 0,
                 "best_game_streak": 0,
             },
+            "best_guild_progress": None,
+            "member_since": None,
             "bot_ready": False,
         }
 
@@ -299,6 +433,30 @@ def get_user_stats(user_id):
         majority = int(game.get("majority", 0) or 0)
         game_streak = int(game.get("best_streak", 0) or 0)
 
+        joined_at = None
+
+        try:
+
+            member = guild.get_member(int(user_id))
+
+            if member is not None and member.joined_at is not None:
+
+                joined_at = member.joined_at.isoformat()
+
+                if member_since is None or joined_at < member_since:
+
+                    member_since = joined_at
+
+        except (ValueError, TypeError):
+
+            pass
+
+        xp_needed = level * 100
+        progress_pct = min(
+            (xp / xp_needed) * 100 if xp_needed else 0,
+            100,
+        )
+
         per_guild.append({
             "guild_id": gid,
             "guild_name": guild.name,
@@ -311,6 +469,9 @@ def get_user_stats(user_id):
             "points": points,
             "majority": majority,
             "best_game_streak": game_streak,
+            "joined_at": joined_at,
+            "xp_needed": xp_needed,
+            "progress_pct": round(progress_pct, 1),
         })
 
         total_xp += xp
@@ -320,6 +481,24 @@ def get_user_stats(user_id):
         best_level = max(best_level, level)
         best_streak = max(best_streak, daily_streak)
         best_game_streak = max(best_game_streak, game_streak)
+
+    best_progress = None
+
+    if per_guild:
+
+        top = max(
+            per_guild,
+            key=lambda g: (g["level"], g["xp"]),
+        )
+
+        best_progress = {
+            "guild_name": top["guild_name"],
+            "level": top["level"],
+            "xp": top["xp"],
+            "xp_needed": top["xp_needed"],
+            "progress_pct": top["progress_pct"],
+            "rank": top["rank"],
+        }
 
     return {
         "per_guild": per_guild,
@@ -332,6 +511,8 @@ def get_user_stats(user_id):
             "daily_streak": best_streak,
             "best_game_streak": best_game_streak,
         },
+        "best_guild_progress": best_progress,
+        "member_since": member_since,
         "bot_ready": True,
     }
 
@@ -386,6 +567,34 @@ def get_badges(stats):
 
 
 # =========================================================
+# ACTIVITY FEED
+# =========================================================
+
+def get_user_activity(user_id, limit=20):
+
+    from data.DB.Storage.storage import get_activity
+
+    try:
+
+        rows = run_coro_threadsafe(
+            get_activity(str(user_id), limit)
+        ).result(timeout=10)
+
+    except Exception:
+
+        return []
+
+    return [
+        {
+            "kind": row.get("kind"),
+            "detail": row.get("detail") or {},
+            "ts": row.get("ts"),
+        }
+        for row in rows
+    ]
+
+
+# =========================================================
 # SELF PROFILE
 # =========================================================
 
@@ -398,8 +607,7 @@ def get_profile():
     user = session.get("user") or {}
     user_id = str(user.get("id", ""))
 
-    saved = _load_profiles().get(user_id, {})
-    profile = _clean_profile(saved)
+    profile = _get_profile(user_id)
 
     return jsonify({
 
@@ -410,6 +618,7 @@ def get_profile():
             "username": user.get("username"),
             "global_name": user.get("global_name"),
             "avatar": user.get("avatar"),
+            "banner": user.get("banner"),
         },
 
         "profile": profile,
@@ -441,29 +650,40 @@ def save_profile():
 
     body = request.get_json(silent=True) or {}
 
+    tags = body.get("tags", [])
+
+    if isinstance(tags, str):
+
+        tags = [t.strip() for t in tags.split(",")]
+
     incoming = {
         "bio": body.get("bio", ""),
         "accent": body.get("accent", ""),
         "banner": body.get("banner", ""),
         "status": body.get("status", ""),
+        "avatar_url": body.get("avatar_url", ""),
+        "background_url": body.get("background_url", ""),
+        "pronouns": body.get("pronouns", ""),
+        "display_name": body.get("display_name", ""),
+        "featured_badge": body.get("featured_badge", ""),
+        "featured_stat": body.get("featured_stat", ""),
         "socials": body.get("socials", {}),
+        "tags": tags,
         "public": body.get("public", False),
     }
 
     profile = _clean_profile(incoming)
 
-    data = _load_profiles()
-    data[user_id] = profile
-
     try:
 
-        _save_profiles(data)
+        _maybe_migrate_json()
+        _db_save_profile(user_id, profile)
 
-    except OSError as exc:
+    except Exception as exc:
 
         print(
-            "[Profiles API] Failed to save "
-            f"profiles.json: {exc}"
+            "[Profiles API] Failed to save profile: "
+            f"{exc}"
         )
 
         return jsonify({
@@ -481,7 +701,7 @@ def save_profile():
 
 
 # =========================================================
-# SELF STATS + BADGES
+# SELF STATS + BADGES + ACTIVITY
 # =========================================================
 
 @profiles_api.get(
@@ -503,6 +723,8 @@ def get_self_stats():
 
         "badges": get_badges(stats),
 
+        "activity": get_user_activity(user_id),
+
     })
 
 
@@ -515,20 +737,19 @@ def get_self_stats():
 )
 def get_public_profile(user_id):
 
-    saved = _load_profiles().get(str(user_id), {})
+    profile = _get_profile(str(user_id))
 
-    if not saved or not saved.get("public"):
+    if not profile.get("public"):
 
         return jsonify({
             "success": False,
             "error": "Profile not found or not public.",
         }), 404
 
-    profile = _clean_profile(saved)
-
-    # Display name + avatar from the bot (shared servers only).
+    # Display name + avatar/banner from the bot (shared servers only).
     display_name = None
     avatar_url = None
+    banner_url = None
     bot = discord_state.bot
 
     if bot is not None and discord_state.ready:
@@ -545,11 +766,24 @@ def get_public_profile(user_id):
                 )
                 avatar_url = str(member_user.display_avatar.url)
 
+                if member_user.banner is not None:
+
+                    banner_url = str(member_user.banner.url)
+
         except (ValueError, TypeError):
 
             pass
 
     stats = get_user_stats(user_id)
+
+    # Public profiles never expose per-server details: guild names
+    # would reveal which servers the user is in.
+    public_stats = {
+        "totals": stats["totals"],
+        "best_guild_progress": stats["best_guild_progress"],
+        "member_since": stats["member_since"],
+        "bot_ready": stats["bot_ready"],
+    }
 
     return jsonify({
 
@@ -559,12 +793,15 @@ def get_public_profile(user_id):
             "id": str(user_id),
             "display_name": display_name,
             "avatar_url": avatar_url,
+            "banner_url": banner_url,
         },
 
         "profile": profile,
 
-        "stats": stats,
+        "stats": public_stats,
 
         "badges": get_badges(stats),
+
+        "activity": get_user_activity(user_id),
 
     })
