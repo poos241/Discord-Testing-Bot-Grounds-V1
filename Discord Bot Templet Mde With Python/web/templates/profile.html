@@ -18,7 +18,6 @@
 #activity-section { grid-column: 1; grid-row: 3; }
 #badges-section { grid-column: 2; grid-row: 3; }
 #servers-section { grid-column: 2; grid-row: 4; }
-#customize-section { grid-column: 1 / -1; grid-row: 5; }
 @media (max-width: 800px) {
   #profile-layout { grid-template-columns: 1fr; }
   #profile-card { grid-column: 1; grid-row: 1; }
@@ -27,13 +26,12 @@
   #featured-box { grid-column: 1; grid-row: 4; }
   #badges-section { grid-column: 1; grid-row: 5; }
   #servers-section { grid-column: 1; grid-row: 6; }
-  #customize-section { grid-column: 1; grid-row: 7; }
-}
+  }
 
 /* Steam-style translucent panels + gradient section header bars */
-#profile-card, #stats-section, #badges-section, #activity-section, #customize-section { background: rgba(13,17,28,.85) !important; backdrop-filter: blur(8px); border-color: rgba(255,255,255,.12) !important; }
+#profile-card, #stats-section, #badges-section, #activity-section { background: rgba(13,17,28,.85) !important; backdrop-filter: blur(8px); border-color: rgba(255,255,255,.12) !important; }
 #servers-section { background: rgba(13,17,28,.85); backdrop-filter: blur(8px); border:1px solid rgba(255,255,255,.12); border-radius:12px; padding:24px; }
-#stats-section > h3, #badges-section > h3, #activity-section > h3, #featured-box > h3, #customize-section > h3 { background: linear-gradient(90deg, rgba(42,71,94,.95), rgba(42,71,94,0)); margin: -24px -32px 16px !important; padding: 12px 32px !important; border-radius: 12px 12px 0 0; }
+#stats-section > h3, #badges-section > h3, #activity-section > h3, #featured-box > h3 { background: linear-gradient(90deg, rgba(42,71,94,.95), rgba(42,71,94,0)); margin: -24px -32px 16px !important; padding: 12px 32px !important; border-radius: 12px 12px 0 0; }
 #servers-section > h3 { background: linear-gradient(90deg, rgba(42,71,94,.95), rgba(42,71,94,0)); margin: -24px -24px 16px !important; padding: 12px 24px !important; border-radius: 12px 12px 0 0; }
 #profile-card h2 { font-size: 2rem; }
 #profile-avatar-img, #profile-avatar-fallback { width:112px !important; height:112px !important; }
@@ -82,6 +80,9 @@
                 <a id="profile-public-url" href="#" target="_blank" rel="noopener"
                     style="font-size:.85rem;color:#8ea2ff;"></a>
                 <button id="copy-public-link" type="button" style="margin-left:8px;border:1px solid rgba(255,255,255,.25);background:transparent;color:inherit;border-radius:99px;padding:2px 10px;cursor:pointer;font-size:.8rem;">Copy</button>
+            </div>
+            <div style="margin-top:14px;">
+                <a href="/profile/edit" style="display:inline-block;border:1px solid rgba(255,255,255,.25);border-radius:99px;padding:6px 16px;color:#fff;text-decoration:none;font-size:.85rem;font-weight:700;">Edit profile</a>
             </div>
             </div>
             <div style="text-align:center;flex-shrink:0;padding-top:8px;">
@@ -152,153 +153,7 @@
         </div>
     </div>
 
-    <!-- CUSTOMIZE -->
-    <div style="background:rgba(255,255,255,.03);
-        border:1px solid rgba(255,255,255,.08);border-radius:16px;
-        padding:24px 32px;margin-top:20px;" id="customize-section">
-        <h3 style="margin:0 0 16px;">Customize your profile</h3>
-        <div id="completion-box" style="margin:-4px 0 20px;display:none;">
-            <div style="display:flex;justify-content:space-between;font-size:.85rem;opacity:.8;">
-                <span>Profile completion</span><span id="completion-text"></span>
-            </div>
-            <div style="height:8px;background:rgba(255,255,255,.08);border-radius:99px;overflow:hidden;margin-top:6px;">
-                <div id="completion-bar" style="height:100%;width:0%;background:#57F287;border-radius:99px;"></div>
-            </div>
-        </div>
 
-        <label style="display:block;font-size:.85rem;opacity:.7;margin-bottom:6px;"
-            for="display-name-input">Display name</label>
-        <input id="display-name-input" type="text" maxlength="64"
-            placeholder="Leave empty to use your Discord name"
-            style="width:100%;box-sizing:border-box;background:#1e1f24;
-            border:1px solid rgba(255,255,255,.12);border-radius:10px;
-            color:#fff;padding:12px;font-family:inherit;">
-
-        <label style="display:block;font-size:.85rem;opacity:.7;
-            margin:16px 0 6px;" for="pronouns-input">Pronouns</label>
-        <input id="pronouns-input" type="text" maxlength="40"
-            placeholder="e.g. she/her"
-            style="width:100%;box-sizing:border-box;background:#1e1f24;
-            border:1px solid rgba(255,255,255,.12);border-radius:10px;
-            color:#fff;padding:12px;font-family:inherit;">
-
-        <label style="display:block;font-size:.85rem;opacity:.7;
-            margin:16px 0 6px;" for="bio-input">Bio</label>
-        <textarea id="bio-input" rows="3" maxlength="500"
-            placeholder="Tell people a little about yourself..."
-            style="width:100%;box-sizing:border-box;background:#1e1f24;
-            border:1px solid rgba(255,255,255,.12);border-radius:10px;
-            color:#fff;padding:12px;font-family:inherit;resize:vertical;"></textarea>
-        <div style="text-align:right;font-size:.8rem;opacity:.5;margin-top:4px;">
-            <span id="bio-count">0</span>/500
-        </div>
-
-        <label style="display:block;font-size:.85rem;opacity:.7;
-            margin:16px 0 6px;" for="status-input">Status</label>
-        <input id="status-input" type="text" maxlength="120"
-            placeholder="A short status message..."
-            style="width:100%;box-sizing:border-box;background:#1e1f24;
-            border:1px solid rgba(255,255,255,.12);border-radius:10px;
-            color:#fff;padding:12px;font-family:inherit;">
-
-        <label style="display:block;font-size:.85rem;opacity:.7;
-            margin:16px 0 6px;" for="avatar-input">Profile picture URL</label>
-        <input id="avatar-input" type="url" maxlength="500"
-            placeholder="https://... (leave empty to use your Discord avatar)"
-            style="width:100%;box-sizing:border-box;background:#1e1f24;
-            border:1px solid rgba(255,255,255,.12);border-radius:10px;
-            color:#fff;padding:12px;font-family:inherit;">
-
-        <label style="display:block;font-size:.85rem;opacity:.7;
-            margin:16px 0 6px;" for="banner-input">Banner image URL</label>
-        <input id="banner-input" type="url" maxlength="500"
-            placeholder="https://... (leave empty to use your Discord banner, then accent color)"
-            style="width:100%;box-sizing:border-box;background:#1e1f24;
-            border:1px solid rgba(255,255,255,.12);border-radius:10px;
-            color:#fff;padding:12px;font-family:inherit;">
-
-        <label style="display:block;font-size:.85rem;opacity:.7;
-            margin:16px 0 6px;" for="background-input">Profile background URL</label>
-        <input id="background-input" type="url" maxlength="500"
-            placeholder="https://... (a background image behind your whole profile)"
-            style="width:100%;box-sizing:border-box;background:#1e1f24;
-            border:1px solid rgba(255,255,255,.12);border-radius:10px;
-            color:#fff;padding:12px;font-family:inherit;">
-
-        <label style="display:block;font-size:.85rem;opacity:.7;
-            margin:16px 0 6px;">Accent color</label>
-        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
-            <input id="accent-input" type="color" value="#5865F2"
-                style="width:48px;height:40px;padding:2px;border:1px solid
-                rgba(255,255,255,.12);border-radius:8px;background:#1e1f24;cursor:pointer;">
-            <div id="accent-swatches" style="display:flex;gap:8px;flex-wrap:wrap;"></div>
-        </div>
-
-        <label style="display:block;font-size:.85rem;opacity:.7;
-            margin:16px 0 6px;" for="tags-input">Interest tags</label>
-        <input id="tags-input" type="text" maxlength="300"
-            placeholder="Comma-separated, e.g. DDO, VRChat, cozy games"
-            style="width:100%;box-sizing:border-box;background:#1e1f24;
-            border:1px solid rgba(255,255,255,.12);border-radius:10px;
-            color:#fff;padding:12px;font-family:inherit;">
-
-        <label style="display:block;font-size:.85rem;opacity:.7;
-            margin:16px 0 6px;">Social links</label>
-        <div style="display:grid;gap:10px;">
-            <input id="social-twitch" type="url" maxlength="500" placeholder="Twitch URL"
-                style="background:#1e1f24;border:1px solid rgba(255,255,255,.12);
-                border-radius:10px;color:#fff;padding:10px 12px;font-family:inherit;">
-            <input id="social-youtube" type="url" maxlength="500" placeholder="YouTube URL"
-                style="background:#1e1f24;border:1px solid rgba(255,255,255,.12);
-                border-radius:10px;color:#fff;padding:10px 12px;font-family:inherit;">
-            <input id="social-twitter" type="url" maxlength="500" placeholder="Twitter / X URL"
-                style="background:#1e1f24;border:1px solid rgba(255,255,255,.12);
-                border-radius:10px;color:#fff;padding:10px 12px;font-family:inherit;">
-            <input id="social-website" type="url" maxlength="500" placeholder="Website URL"
-                style="background:#1e1f24;border:1px solid rgba(255,255,255,.12);
-                border-radius:10px;color:#fff;padding:10px 12px;font-family:inherit;">
-        </div>
-
-        <label style="display:block;font-size:.85rem;opacity:.7;
-            margin:16px 0 6px;" for="featured-badge-input">Featured badge</label>
-        <select id="featured-badge-input"
-            style="width:100%;box-sizing:border-box;background:#1e1f24;
-            border:1px solid rgba(255,255,255,.12);border-radius:10px;
-            color:#fff;padding:12px;font-family:inherit;">
-            <option value="">None</option>
-        </select>
-
-        <label style="display:block;font-size:.85rem;opacity:.7;
-            margin:16px 0 6px;" for="featured-stat-input">Featured stat</label>
-        <select id="featured-stat-input"
-            style="width:100%;box-sizing:border-box;background:#1e1f24;
-            border:1px solid rgba(255,255,255,.12);border-radius:10px;
-            color:#fff;padding:12px;font-family:inherit;">
-            <option value="">None</option>
-            <option value="level">Level</option>
-            <option value="xp">Total XP</option>
-            <option value="played">Games played</option>
-            <option value="points">Game points</option>
-            <option value="daily_streak">Daily streak</option>
-        </select>
-
-        <label style="display:flex;gap:10px;align-items:center;margin-top:20px;
-            cursor:pointer;">
-            <input id="public-toggle" type="checkbox" style="width:18px;height:18px;">
-            <span>Make my profile public (shareable link, no server list)</span>
-        </label>
-
-        <div style="display:flex;gap:12px;align-items:center;margin-top:20px;">
-            <button id="save-btn"
-                style="padding:10px 24px;border:none;border-radius:10px;
-                background:#5865F2;color:#fff;font-weight:700;cursor:pointer;">
-                Save profile
-            </button>
-            <span id="save-status" style="font-size:.9rem;opacity:.7;"></span>
-        </div>
-    </div>
-
-    <!-- MY SERVERS -->
     <div id="servers-section" style="margin-top:20px;">
         <h3 style="margin:0 0 12px;padding:0 8px;">My servers</h3>
         <div id="server-list" style="display:grid;gap:12px;">
@@ -310,35 +165,22 @@
 
 <script>
 (function() {
-    var ACCENTS = ["#5865F2", "#57F287", "#FEE75C", "#EB459E", "#ED4245", "#E67E22", "#9B59B6", "#1ABC9C"];
-    var SOCIAL_LABELS = {twitch: "Twitch", youtube: "YouTube", twitter: "Twitter / X", website: "Website"};
     var STAT_LABELS = {level: "Level", xp: "Total XP", played: "Games played", points: "Game points", daily_streak: "Daily streak"};
     var DISCORD_AVATAR = "{% if user.avatar %}https://cdn.discordapp.com/avatars/{{ user.id }}/{{ user.avatar }}.png{% endif %}";
     var DISCORD_BANNER = "{% if user.banner %}https://cdn.discordapp.com/banners/{{ user.id }}/{{ user.banner }}{% if user.banner.startswith('a_') %}.gif{% else %}.png{% endif %}{% endif %}";
     var DISCORD_NAME = "{{ user.global_name or user.username }}";
 
     var $ = function(id) { return document.getElementById(id); };
-    var bioInput = $("bio-input"), bioCount = $("bio-count");
-    var statusInput = $("status-input"), bannerInput = $("banner-input");
-    var avatarInput = $("avatar-input"), backgroundInput = $("background-input");
-    var accentInput = $("accent-input"), banner = $("profile-banner");
+    var banner = $("profile-banner");
     var bioDisplay = $("profile-bio-display"), statusDisplay = $("profile-status-display");
     var socialsDisplay = $("profile-socials-display"), tagsDisplay = $("profile-tags-display");
-    var publicToggle = $("public-toggle"), publicLinkBox = $("profile-public-link");
-    var publicUrl = $("profile-public-url"), saveBtn = $("save-btn"), saveStatus = $("save-status");
+    var publicLinkBox = $("profile-public-link");
+    var publicUrl = $("profile-public-url");
+    var currentAccent = "#5865F2";
     var avatarImg = $("profile-avatar-img"), avatarFallback = $("profile-avatar-fallback");
     var nameEl = $("profile-name"), pronounsEl = $("profile-pronouns");
     var pageBg = $("page-bg"), pageBgOverlay = $("page-bg-overlay");
 
-    var swWrap = $("accent-swatches");
-    ACCENTS.forEach(function(c) {
-        var b = document.createElement("button");
-        b.type = "button";
-        b.title = c;
-        b.style.cssText = "width:32px;height:32px;border-radius:50%;border:2px solid rgba(255,255,255,.2);background:" + c + ";cursor:pointer;";
-        b.addEventListener("click", function() { setAccent(c); });
-        swWrap.appendChild(b);
-    });
 
     function esc(s) {
         return String(s == null ? "" : s).replace(/[&<>"']/g, function(c) {
@@ -360,81 +202,52 @@
     }
 
     function setAccent(c) {
-        accentInput.value = c;
-        saveBtn.style.background = c;
+        currentAccent = c;
         $("header-level-ring").style.stroke = c;
         $("progress-bar").style.background = c;
         avatarImg.style.boxShadow = "0 0 0 3px " + c + ", 0 0 24px rgba(0,0,0,.6)";
         avatarFallback.style.boxShadow = "0 0 0 3px " + c + ", 0 0 24px rgba(0,0,0,.6)";
-        document.querySelectorAll("#stats-section > h3, #badges-section > h3, #activity-section > h3, #featured-box > h3, #customize-section > h3, #servers-section > h3").forEach(function(h) {
+        document.querySelectorAll("#stats-section > h3, #badges-section > h3, #activity-section > h3, #featured-box > h3, #servers-section > h3").forEach(function(h) {
             h.style.background = "linear-gradient(90deg, " + hexA(c, .45) + ", " + hexA(c, 0) + ")";
         });
-        refreshBanner({banner: bannerInput.value, accent: c});
     }
 
-    accentInput.addEventListener("input", function() { setAccent(accentInput.value); });
-    bannerInput.addEventListener("input", function() {
-        refreshBanner({banner: bannerInput.value, accent: accentInput.value});
-    });
-    bioInput.addEventListener("input", function() {
-        bioCount.textContent = bioInput.value.length;
-        bioDisplay.textContent = bioInput.value ? bioInput.value : "No bio yet.";
-    });
-    statusInput.addEventListener("input", function() {
-        if (statusInput.value) {
-            statusDisplay.textContent = "\u201C" + statusInput.value + "\u201D";
-            statusDisplay.style.display = "";
-        } else {
-            statusDisplay.style.display = "none";
-        }
-    });
-    $("display-name-input").addEventListener("input", function() {
-        nameEl.textContent = $("display-name-input").value || DISCORD_NAME;
-    });
-    $("pronouns-input").addEventListener("input", function() {
-        pronounsEl.textContent = $("pronouns-input").value ? "(" + $("pronouns-input").value + ")" : "";
-    });
-    $("tags-input").addEventListener("input", function() {
-        renderTags($("tags-input").value.split(",").map(function(t) { return t.trim(); }).filter(function(t) { return t; }));
-    });
-    avatarInput.addEventListener("input", function() {
-        if (avatarInput.value) {
-            avatarImg.src = avatarInput.value;
-            avatarImg.style.display = "";
-            avatarFallback.style.display = "none";
-        } else if (DISCORD_AVATAR) {
-            avatarImg.src = DISCORD_AVATAR;
-            avatarImg.style.display = "";
-            avatarFallback.style.display = "none";
-        } else {
-            avatarFallback.textContent = (DISCORD_NAME[0] || "?").toUpperCase();
-            avatarFallback.style.display = "flex";
-            avatarImg.style.display = "none";
-        }
-    });
-    backgroundInput.addEventListener("input", function() {
-        if (backgroundInput.value) {
-            pageBg.style.backgroundImage = "url(" + backgroundInput.value + ")";
-            pageBg.style.display = "";
-            pageBgOverlay.style.display = "";
-        } else {
-            pageBg.style.display = "none";
-            pageBgOverlay.style.display = "none";
-        }
-    });
+    function detectSocial(url) {
+        var m = url.match(/^https?:\/\/([^\/]+)/i);
+        var host = m ? m[1].toLowerCase().replace(/^www\./, "") : "";
+        var map = {
+            "youtube.com": "YouTube", "youtu.be": "YouTube",
+            "twitch.tv": "Twitch",
+            "twitter.com": "Twitter / X", "x.com": "Twitter / X",
+            "discord.gg": "Discord", "discord.com": "Discord",
+            "instagram.com": "Instagram", "tiktok.com": "TikTok",
+            "steamcommunity.com": "Steam", "store.steampowered.com": "Steam",
+            "reddit.com": "Reddit", "github.com": "GitHub",
+            "spotify.com": "Spotify", "ko-fi.com": "Ko-fi", "patreon.com": "Patreon",
+            "facebook.com": "Facebook", "bsky.app": "Bluesky", "tumblr.com": "Tumblr"
+        };
+        return {label: map[host] || host || "Link", host: host};
+    }
+
+    function socialPill(url) {
+        var d = detectSocial(url);
+        var icon = d.host
+            ? '<img src="https://www.google.com/s2/favicons?domain=' + esc(d.host) + '&sz=32" alt="" style="width:16px;height:16px;vertical-align:-3px;border-radius:3px;" onerror="this.style.display=\'none\'"> '
+            : "";
+        return '<a href="' + esc(url) + '" target="_blank" rel="noopener" '
+            + 'style="font-size:.85rem;border:1px solid rgba(255,255,255,.15);'
+            + 'border-radius:20px;padding:5px 14px;color:#fff;text-decoration:none;">'
+            + icon + esc(d.label) + "</a>";
+    }
 
     function renderSocials(socials) {
-        var html = "";
-        Object.keys(SOCIAL_LABELS).forEach(function(key) {
-            if (socials[key]) {
-                html += '<a href="' + esc(socials[key]) + '" target="_blank" rel="noopener" '
-                    + 'style="font-size:.85rem;border:1px solid rgba(255,255,255,.15);'
-                    + 'border-radius:20px;padding:5px 14px;color:#fff;text-decoration:none;">'
-                    + SOCIAL_LABELS[key] + "</a>";
-            }
-        });
-        socialsDisplay.innerHTML = html;
+        var list = Array.isArray(socials) ? socials
+            : (socials && typeof socials === "object"
+                ? Object.keys(socials).map(function(k) { return socials[k]; }).filter(function(v) { return v; })
+                : []);
+        socialsDisplay.innerHTML = list.map(socialPill).join("");
     }
+
 
     function renderTags(tags) {
         tagsDisplay.innerHTML = (tags || []).map(function(t) {
@@ -445,15 +258,6 @@
     }
 
     function applyProfile(p) {
-        $("display-name-input").value = p.display_name || "";
-        $("pronouns-input").value = p.pronouns || "";
-        bioInput.value = p.bio || "";
-        bioCount.textContent = bioInput.value.length;
-        statusInput.value = p.status || "";
-        avatarInput.value = p.avatar_url || "";
-        bannerInput.value = p.banner || "";
-        backgroundInput.value = p.background_url || "";
-        $("tags-input").value = (p.tags || []).join(", ");
         setAccent(p.accent || "#5865F2");
         refreshBanner(p);
 
@@ -466,7 +270,7 @@
         } else {
             statusDisplay.style.display = "none";
         }
-        renderSocials(p.socials || {});
+        renderSocials(p.socials || []);
         renderTags(p.tags || []);
 
         if (p.avatar_url || DISCORD_AVATAR) {
@@ -488,7 +292,6 @@
             pageBgOverlay.style.display = "none";
         }
 
-        publicToggle.checked = !!p.public;
         var uid = "{{ user.id }}";
         if (p.public) {
             publicUrl.href = "/profile/" + encodeURIComponent(uid);
@@ -497,22 +300,6 @@
         } else {
             publicLinkBox.style.display = "none";
         }
-        ["twitch", "youtube", "twitter", "website"].forEach(function(key) {
-            $("social-" + key).value = (p.socials && p.socials[key]) || "";
-        });
-        $("featured-stat-input").value = p.featured_stat || "";
-        if (p.featured_badge) {
-            var opt = document.querySelector('#featured-badge-input option[value="' + p.featured_badge + '"]');
-            if (opt) $("featured-badge-input").value = p.featured_badge;
-        }
-        var compChecks = [!!p.bio, !!p.status, !!p.pronouns, !!(p.tags && p.tags.length),
-            !!p.avatar_url, !!(p.banner || p.background_url),
-            !!(p.featured_badge || p.featured_stat),
-            !!(p.socials && Object.keys(p.socials).some(function(k) { return p.socials[k]; }))];
-        var compDone = compChecks.filter(function(v) { return v; }).length;
-        $("completion-text").textContent = compDone + " / " + compChecks.length;
-        $("completion-bar").style.width = Math.round(compDone / compChecks.length * 100) + "%";
-        $("completion-box").style.display = "";
     }
 
     function activityText(a) {
@@ -533,60 +320,7 @@
         })
         .catch(function() {});
 
-    saveBtn.addEventListener("click", function() {
-        saveStatus.textContent = "Saving...";
-        var socials = {};
-        ["twitch", "youtube", "twitter", "website"].forEach(function(key) {
-            var v = $("social-" + key).value.trim();
-            if (v) socials[key] = v;
-        });
-        fetch("/api/csrf", {credentials: "same-origin"})
-            .then(function(r) { return r.json(); })
-            .then(function(csrf) {
-                var token = csrf.token || csrf.csrf_token || "";
-                return fetch("/api/profile", {
-                    method: "POST",
-                    credentials: "same-origin",
-                    headers: {
-                        "Content-Type": "application/json",
-                        "X-CSRF-Token": token
-                    },
-                    body: JSON.stringify({
-                        display_name: $("display-name-input").value,
-                        pronouns: $("pronouns-input").value,
-                        bio: bioInput.value,
-                        status: statusInput.value,
-                        avatar_url: avatarInput.value,
-                        banner: bannerInput.value,
-                        background_url: backgroundInput.value,
-                        accent: accentInput.value,
-                        tags: $("tags-input").value,
-                        socials: socials,
-                        featured_badge: $("featured-badge-input").value,
-                        featured_stat: $("featured-stat-input").value,
-                        public: publicToggle.checked
-                    })
-                });
-            })
-            .then(function(r) { return r.json(); })
-            .then(function(data) {
-                if (data && data.success) {
-                    applyProfile(data.profile);
-                    saveStatus.textContent = "Saved!";
-                    var oldLabel = saveBtn.textContent;
-                    saveBtn.textContent = "Saved!";
-                    setTimeout(function() { saveBtn.textContent = oldLabel; }, 1500);
-                } else {
-                    saveStatus.textContent = (data && data.error) || "Could not save.";
-                }
-                setTimeout(function() { saveStatus.textContent = ""; }, 3000);
-            })
-            .catch(function() {
-                saveStatus.textContent = "Could not save.";
-            });
-    });
 
-    // Stats + badges + activity
     fetch("/api/profile/stats", {credentials: "same-origin"})
         .then(function(r) { return r.ok ? r.json() : null; })
         .then(function(data) {
@@ -639,7 +373,7 @@
                     + 'overflow:hidden;margin-top:8px;"><div class="guild-progress-fill" style="height:100%;background:#5865F2;'
                     + 'width:' + g.progress_pct + '%;"></div></div></div>';
             }).join("");
-            document.querySelectorAll(".guild-progress-fill").forEach(function(el) { el.style.background = accentInput.value; });
+            document.querySelectorAll(".guild-progress-fill").forEach(function(el) { el.style.background = currentAccent; });
 
             var badges = data.badges || [];
             $("badges-title").textContent = "Badges " + badges.filter(function(b) { return b.earned; }).length;
@@ -668,16 +402,8 @@
                 ? '<div style="background:#1e1f24;border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:12px 16px;">'
                     + '<div style="font-size:.85rem;opacity:.7;">Next up: <span style="font-size:1.1rem;">' + nextBadge.icon + '</span> <b style="opacity:1;">' + esc(nextBadge.name) + '</b> \u2014 ' + nextBadge.cur + '/' + nextBadge.need + ' ' + nextBadge.unit + '</div>'
                     + '<div style="height:8px;background:rgba(255,255,255,.08);border-radius:99px;overflow:hidden;margin-top:8px;">'
-                    + '<div style="height:100%;width:' + nextBadge.pct + '%;background:' + accentInput.value + ';border-radius:99px;"></div></div></div>'
+                    + '<div style="height:100%;width:' + nextBadge.pct + '%;background:' + currentAccent + ';border-radius:99px;"></div></div></div>'
                 : '<div style="opacity:.6;font-size:.9rem;">All badges earned!</div>';
-
-            var badgeSelect = $("featured-badge-input");
-            badges.filter(function(b) { return b.earned; }).forEach(function(b) {
-                var opt = document.createElement("option");
-                opt.value = b.key;
-                opt.textContent = b.icon + " " + b.name;
-                badgeSelect.appendChild(opt);
-            });
 
             // Featured showcase (needs current profile + stats + badges)
             fetch("/api/profile", {credentials: "same-origin"})
