@@ -647,6 +647,24 @@ class FunCog(commands.Cog):
         self._timer_edit_at.pop(channel_id, None)
 
         verdict, shoutouts = self._tally_and_save(rnd)
+        # Profile activity feed: one game_round event per voter.
+        try:
+            from data.DB.Storage.storage import log_activity
+            _majority = (
+                {uid for uid, v in rnd["votes"].items() if v == verdict}
+                if verdict in ("eat", "yeet") else set()
+            )
+            for _uid, _vote in rnd["votes"].items():
+                _pts = RARITY_POINTS[rnd["rarity"]] if _uid in _majority else 0
+                await log_activity(_uid, rnd["guild_id"], "game_round", {
+                    "food": rnd["food"],
+                    "verdict": verdict,
+                    "voted": _vote,
+                    "majority": _uid in _majority,
+                    "points": _pts,
+                })
+        except Exception:
+            pass
         game_xp_on = await self._award_game_xp(rnd, verdict)
         embed = self.build_results_embed(rnd, verdict, shoutouts, game_xp_on=game_xp_on)
 
