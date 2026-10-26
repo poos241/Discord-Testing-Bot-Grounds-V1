@@ -16,7 +16,7 @@ except ImportError:
     _PIL_OK = False
 
 from config import admin_required, extra_help, GUILD_IDS
-from data.DB.Storage.storage import get_levels, save_levels, get_xp, save_xp
+from data.DB.Storage.storage import get_levels, save_levels, get_xp, save_xp, log_activity
 
 COOLDOWN_LEVEL = 30
 COOLDOWN_LEADERBOARD = 30
@@ -147,6 +147,8 @@ async def award_xp(guild, user_id, display_name, amount, fallback_channel=None,
         gained.append(user_data["level"])
     await save_levels(gid, db)
     if gained:
+        for new_level in gained:
+            await log_activity(uid, gid, "level_up", {"level": new_level})
         await apply_level_rewards(guild, user_id, user_data["level"], settings)
         accent = _hex_to_rgb(user_data.get("card_color", "#5865F2"))
         await announce_level_up(guild, user_id, display_name, user_data["level"],
@@ -652,6 +654,7 @@ class LevelSystem(commands.Cog):
         user["daily_last"] = now
         user["daily_streak"] = streak
         await save_levels(gid, db)
+        await log_activity(uid, gid, "daily_claim", {"streak": streak})
         gained = await award_xp(interaction.guild, target.id, target.display_name,
                                 amount, fallback_channel=interaction.channel)
         msg = f"🎁 Daily claimed! **+{amount} XP** (🔥 {streak}-day streak)"
