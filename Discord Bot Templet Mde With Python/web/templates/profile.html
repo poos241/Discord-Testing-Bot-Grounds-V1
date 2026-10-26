@@ -3,6 +3,12 @@
 {% block title %}Profile — Kush Bush Dashboard{% endblock %}
 
 {% block body %}
+<!-- Custom profile background (fixed, behind everything) -->
+<div id="page-bg" style="display:none;position:fixed;inset:0;z-index:-1;
+    background-size:cover;background-position:center;"></div>
+<div id="page-bg-overlay" style="display:none;position:fixed;inset:0;z-index:-1;
+    background:rgba(0,0,0,.55);"></div>
+
 <div style="max-width:760px;margin:40px auto;padding:0 16px;">
 
     <!-- HEADER CARD -->
@@ -12,26 +18,29 @@
         <div id="profile-banner" style="height:140px;background:#5865F2;
             background-size:cover;background-position:center;"></div>
         <div style="padding:0 32px 32px;margin-top:-48px;">
-            {% if user.avatar %}
-            <img src="https://cdn.discordapp.com/avatars/{{ user.id }}/{{ user.avatar }}.png"
-                alt="" style="width:96px;height:96px;border-radius:50%;
-                border:4px solid #1e1f24;background:#1e1f24;">
-            {% else %}
-            <div style="width:96px;height:96px;border-radius:50%;background:#5865F2;
-                border:4px solid #1e1f24;display:inline-flex;align-items:center;
-                justify-content:center;font-size:2.5rem;font-weight:800;color:#fff;">
-                {{ (user.global_name or user.username or "U")[0] }}
-            </div>
-            {% endif %}
-            <h2 style="margin:12px 0 4px;">{{ user.global_name or user.username }}</h2>
+            <img id="profile-avatar-img" src="" alt=""
+                style="width:96px;height:96px;border-radius:50%;
+                border:4px solid #1e1f24;background:#1e1f24;display:none;">
+            <div id="profile-avatar-fallback" style="width:96px;height:96px;border-radius:50%;
+                background:#5865F2;border:4px solid #1e1f24;display:none;
+                align-items:center;justify-content:center;
+                font-size:2.5rem;font-weight:800;color:#fff;">?</div>
+            <h2 style="margin:12px 0 4px;">
+                <span id="profile-name">{{ user.global_name or user.username }}</span>
+                <span id="profile-pronouns" style="font-size:.9rem;font-weight:400;
+                    opacity:.6;"></span>
+            </h2>
             <div style="opacity:.55;font-size:.9rem;">
                 @{{ user.username }} · ID: {{ user.id }}
+                <span id="profile-member-since"></span>
             </div>
             <p id="profile-status-display" style="opacity:.9;margin:12px 0 0;
                 font-style:italic;display:none;"></p>
             <p id="profile-bio-display" style="opacity:.8;margin:12px 0 0;line-height:1.5;">
                 No bio yet.
             </p>
+            <div id="profile-tags-display" style="display:flex;gap:8px;
+                flex-wrap:wrap;margin-top:12px;"></div>
             <div id="profile-socials-display" style="display:flex;gap:10px;
                 flex-wrap:wrap;margin-top:14px;"></div>
             <div id="profile-public-link" style="margin-top:14px;display:none;">
@@ -42,6 +51,14 @@
         </div>
     </div>
 
+    <!-- FEATURED SHOWCASE -->
+    <div id="featured-box" style="display:none;background:rgba(255,255,255,.03);
+        border:1px solid rgba(255,255,255,.08);border-radius:16px;
+        padding:24px 32px;margin-top:20px;">
+        <h3 style="margin:0 0 16px;">Featured</h3>
+        <div id="featured-content" style="display:flex;gap:12px;flex-wrap:wrap;"></div>
+    </div>
+
     <!-- STATS -->
     <div style="background:rgba(255,255,255,.03);
         border:1px solid rgba(255,255,255,.08);border-radius:16px;
@@ -50,6 +67,18 @@
         <div id="stats-grid" style="display:grid;
             grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:12px;">
             <div style="opacity:.5;">Loading stats...</div>
+        </div>
+        <div id="progress-box" style="margin-top:16px;display:none;">
+            <div style="display:flex;justify-content:space-between;
+                font-size:.9rem;margin-bottom:6px;">
+                <span id="progress-label"></span>
+                <span id="progress-numbers"></span>
+            </div>
+            <div style="height:12px;border-radius:6px;background:#1e1f24;
+                border:1px solid rgba(255,255,255,.08);overflow:hidden;">
+                <div id="progress-bar" style="height:100%;background:#5865F2;
+                    width:0%;transition:width .5s;"></div>
+            </div>
         </div>
         <div id="stats-guilds" style="margin-top:16px;display:grid;gap:10px;"></div>
     </div>
@@ -64,6 +93,16 @@
         </div>
     </div>
 
+    <!-- ACTIVITY -->
+    <div style="background:rgba(255,255,255,.03);
+        border:1px solid rgba(255,255,255,.08);border-radius:16px;
+        padding:24px 32px;margin-top:20px;">
+        <h3 style="margin:0 0 16px;">Recent activity</h3>
+        <div id="activity-list" style="display:grid;gap:10px;">
+            <div style="opacity:.5;">Loading activity...</div>
+        </div>
+    </div>
+
     <!-- CUSTOMIZE -->
     <div style="background:rgba(255,255,255,.03);
         border:1px solid rgba(255,255,255,.08);border-radius:16px;
@@ -71,7 +110,23 @@
         <h3 style="margin:0 0 16px;">Customize your profile</h3>
 
         <label style="display:block;font-size:.85rem;opacity:.7;margin-bottom:6px;"
-            for="bio-input">Bio</label>
+            for="display-name-input">Display name</label>
+        <input id="display-name-input" type="text" maxlength="64"
+            placeholder="Leave empty to use your Discord name"
+            style="width:100%;box-sizing:border-box;background:#1e1f24;
+            border:1px solid rgba(255,255,255,.12);border-radius:10px;
+            color:#fff;padding:12px;font-family:inherit;">
+
+        <label style="display:block;font-size:.85rem;opacity:.7;
+            margin:16px 0 6px;" for="pronouns-input">Pronouns</label>
+        <input id="pronouns-input" type="text" maxlength="40"
+            placeholder="e.g. she/her"
+            style="width:100%;box-sizing:border-box;background:#1e1f24;
+            border:1px solid rgba(255,255,255,.12);border-radius:10px;
+            color:#fff;padding:12px;font-family:inherit;">
+
+        <label style="display:block;font-size:.85rem;opacity:.7;
+            margin:16px 0 6px;" for="bio-input">Bio</label>
         <textarea id="bio-input" rows="3" maxlength="500"
             placeholder="Tell people a little about yourself..."
             style="width:100%;box-sizing:border-box;background:#1e1f24;
@@ -90,9 +145,25 @@
             color:#fff;padding:12px;font-family:inherit;">
 
         <label style="display:block;font-size:.85rem;opacity:.7;
+            margin:16px 0 6px;" for="avatar-input">Profile picture URL</label>
+        <input id="avatar-input" type="url" maxlength="500"
+            placeholder="https://... (leave empty to use your Discord avatar)"
+            style="width:100%;box-sizing:border-box;background:#1e1f24;
+            border:1px solid rgba(255,255,255,.12);border-radius:10px;
+            color:#fff;padding:12px;font-family:inherit;">
+
+        <label style="display:block;font-size:.85rem;opacity:.7;
             margin:16px 0 6px;" for="banner-input">Banner image URL</label>
         <input id="banner-input" type="url" maxlength="500"
-            placeholder="https://... (leave empty to use your accent color)"
+            placeholder="https://... (leave empty to use your Discord banner, then accent color)"
+            style="width:100%;box-sizing:border-box;background:#1e1f24;
+            border:1px solid rgba(255,255,255,.12);border-radius:10px;
+            color:#fff;padding:12px;font-family:inherit;">
+
+        <label style="display:block;font-size:.85rem;opacity:.7;
+            margin:16px 0 6px;" for="background-input">Profile background URL</label>
+        <input id="background-input" type="url" maxlength="500"
+            placeholder="https://... (a background image behind your whole profile)"
             style="width:100%;box-sizing:border-box;background:#1e1f24;
             border:1px solid rgba(255,255,255,.12);border-radius:10px;
             color:#fff;padding:12px;font-family:inherit;">
@@ -105,6 +176,14 @@
                 rgba(255,255,255,.12);border-radius:8px;background:#1e1f24;cursor:pointer;">
             <div id="accent-swatches" style="display:flex;gap:8px;flex-wrap:wrap;"></div>
         </div>
+
+        <label style="display:block;font-size:.85rem;opacity:.7;
+            margin:16px 0 6px;" for="tags-input">Interest tags</label>
+        <input id="tags-input" type="text" maxlength="300"
+            placeholder="Comma-separated, e.g. DDO, VRChat, cozy games"
+            style="width:100%;box-sizing:border-box;background:#1e1f24;
+            border:1px solid rgba(255,255,255,.12);border-radius:10px;
+            color:#fff;padding:12px;font-family:inherit;">
 
         <label style="display:block;font-size:.85rem;opacity:.7;
             margin:16px 0 6px;">Social links</label>
@@ -122,6 +201,29 @@
                 style="background:#1e1f24;border:1px solid rgba(255,255,255,.12);
                 border-radius:10px;color:#fff;padding:10px 12px;font-family:inherit;">
         </div>
+
+        <label style="display:block;font-size:.85rem;opacity:.7;
+            margin:16px 0 6px;" for="featured-badge-input">Featured badge</label>
+        <select id="featured-badge-input"
+            style="width:100%;box-sizing:border-box;background:#1e1f24;
+            border:1px solid rgba(255,255,255,.12);border-radius:10px;
+            color:#fff;padding:12px;font-family:inherit;">
+            <option value="">None</option>
+        </select>
+
+        <label style="display:block;font-size:.85rem;opacity:.7;
+            margin:16px 0 6px;" for="featured-stat-input">Featured stat</label>
+        <select id="featured-stat-input"
+            style="width:100%;box-sizing:border-box;background:#1e1f24;
+            border:1px solid rgba(255,255,255,.12);border-radius:10px;
+            color:#fff;padding:12px;font-family:inherit;">
+            <option value="">None</option>
+            <option value="level">Level</option>
+            <option value="xp">Total XP</option>
+            <option value="played">Games played</option>
+            <option value="points">Game points</option>
+            <option value="daily_streak">Daily streak</option>
+        </select>
 
         <label style="display:flex;gap:10px;align-items:center;margin-top:20px;
             cursor:pointer;">
@@ -153,22 +255,25 @@
 (function() {
     var ACCENTS = ["#5865F2", "#57F287", "#FEE75C", "#EB459E", "#ED4245", "#E67E22", "#9B59B6", "#1ABC9C"];
     var SOCIAL_LABELS = {twitch: "Twitch", youtube: "YouTube", twitter: "Twitter / X", website: "Website"};
-    var bioInput = document.getElementById("bio-input");
-    var bioCount = document.getElementById("bio-count");
-    var statusInput = document.getElementById("status-input");
-    var bannerInput = document.getElementById("banner-input");
-    var accentInput = document.getElementById("accent-input");
-    var banner = document.getElementById("profile-banner");
-    var bioDisplay = document.getElementById("profile-bio-display");
-    var statusDisplay = document.getElementById("profile-status-display");
-    var socialsDisplay = document.getElementById("profile-socials-display");
-    var publicToggle = document.getElementById("public-toggle");
-    var publicLinkBox = document.getElementById("profile-public-link");
-    var publicUrl = document.getElementById("profile-public-url");
-    var saveBtn = document.getElementById("save-btn");
-    var saveStatus = document.getElementById("save-status");
+    var STAT_LABELS = {level: "Level", xp: "Total XP", played: "Games played", points: "Game points", daily_streak: "Daily streak"};
+    var DISCORD_AVATAR = "{% if user.avatar %}https://cdn.discordapp.com/avatars/{{ user.id }}/{{ user.avatar }}.png{% endif %}";
+    var DISCORD_BANNER = "{% if user.banner %}https://cdn.discordapp.com/banners/{{ user.id }}/{{ user.banner }}{% if user.banner.startswith('a_') %}.gif{% else %}.png{% endif %}{% endif %}";
+    var DISCORD_NAME = "{{ user.global_name or user.username }}";
 
-    var swWrap = document.getElementById("accent-swatches");
+    var $ = function(id) { return document.getElementById(id); };
+    var bioInput = $("bio-input"), bioCount = $("bio-count");
+    var statusInput = $("status-input"), bannerInput = $("banner-input");
+    var avatarInput = $("avatar-input"), backgroundInput = $("background-input");
+    var accentInput = $("accent-input"), banner = $("profile-banner");
+    var bioDisplay = $("profile-bio-display"), statusDisplay = $("profile-status-display");
+    var socialsDisplay = $("profile-socials-display"), tagsDisplay = $("profile-tags-display");
+    var publicToggle = $("public-toggle"), publicLinkBox = $("profile-public-link");
+    var publicUrl = $("profile-public-url"), saveBtn = $("save-btn"), saveStatus = $("save-status");
+    var avatarImg = $("profile-avatar-img"), avatarFallback = $("profile-avatar-fallback");
+    var nameEl = $("profile-name"), pronounsEl = $("profile-pronouns");
+    var pageBg = $("page-bg"), pageBgOverlay = $("page-bg-overlay");
+
+    var swWrap = $("accent-swatches");
     ACCENTS.forEach(function(c) {
         var b = document.createElement("button");
         b.type = "button";
@@ -178,29 +283,31 @@
         swWrap.appendChild(b);
     });
 
-    function setAccent(c) {
-        accentInput.value = c;
-        if (!bannerInput.value) banner.style.background = c;
-        saveBtn.style.background = c;
-    }
-
-    function refreshBanner() {
-        banner.style.background = bannerInput.value
-            ? "url(" + bannerInput.value + ") center / cover"
-            : accentInput.value;
-    }
-
-    accentInput.addEventListener("input", function() { setAccent(accentInput.value); });
-    bannerInput.addEventListener("input", refreshBanner);
-    bioInput.addEventListener("input", function() {
-        bioCount.textContent = bioInput.value.length;
-    });
-
     function esc(s) {
         return String(s == null ? "" : s).replace(/[&<>"']/g, function(c) {
             return {"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c];
         });
     }
+
+    function refreshBanner(p) {
+        banner.style.background = p.banner
+            ? "url(" + p.banner + ") center / cover"
+            : (DISCORD_BANNER || p.accent);
+    }
+
+    function setAccent(c) {
+        accentInput.value = c;
+        saveBtn.style.background = c;
+        refreshBanner({banner: bannerInput.value, accent: c});
+    }
+
+    accentInput.addEventListener("input", function() { setAccent(accentInput.value); });
+    bannerInput.addEventListener("input", function() {
+        refreshBanner({banner: bannerInput.value, accent: accentInput.value});
+    });
+    bioInput.addEventListener("input", function() {
+        bioCount.textContent = bioInput.value.length;
+    });
 
     function renderSocials(socials) {
         var html = "";
@@ -215,13 +322,29 @@
         socialsDisplay.innerHTML = html;
     }
 
+    function renderTags(tags) {
+        tagsDisplay.innerHTML = (tags || []).map(function(t) {
+            return '<span style="font-size:.8rem;background:rgba(255,255,255,.08);'
+                + 'border:1px solid rgba(255,255,255,.12);border-radius:20px;'
+                + 'padding:4px 12px;">' + esc(t) + "</span>";
+        }).join("");
+    }
+
     function applyProfile(p) {
+        $("display-name-input").value = p.display_name || "";
+        $("pronouns-input").value = p.pronouns || "";
         bioInput.value = p.bio || "";
         bioCount.textContent = bioInput.value.length;
         statusInput.value = p.status || "";
+        avatarInput.value = p.avatar_url || "";
         bannerInput.value = p.banner || "";
+        backgroundInput.value = p.background_url || "";
+        $("tags-input").value = (p.tags || []).join(", ");
         setAccent(p.accent || "#5865F2");
-        refreshBanner();
+        refreshBanner(p);
+
+        nameEl.textContent = p.display_name || DISCORD_NAME;
+        pronounsEl.textContent = p.pronouns ? "(" + p.pronouns + ")" : "";
         bioDisplay.textContent = p.bio ? p.bio : "No bio yet.";
         if (p.status) {
             statusDisplay.textContent = "\u201C" + p.status + "\u201D";
@@ -230,6 +353,27 @@
             statusDisplay.style.display = "none";
         }
         renderSocials(p.socials || {});
+        renderTags(p.tags || []);
+
+        if (p.avatar_url || DISCORD_AVATAR) {
+            avatarImg.src = p.avatar_url || DISCORD_AVATAR;
+            avatarImg.style.display = "";
+            avatarFallback.style.display = "none";
+        } else {
+            avatarFallback.textContent = (DISCORD_NAME[0] || "?").toUpperCase();
+            avatarFallback.style.display = "flex";
+            avatarImg.style.display = "none";
+        }
+
+        if (p.background_url) {
+            pageBg.style.backgroundImage = "url(" + p.background_url + ")";
+            pageBg.style.display = "";
+            pageBgOverlay.style.display = "";
+        } else {
+            pageBg.style.display = "none";
+            pageBgOverlay.style.display = "none";
+        }
+
         publicToggle.checked = !!p.public;
         var uid = "{{ user.id }}";
         if (p.public) {
@@ -240,8 +384,24 @@
             publicLinkBox.style.display = "none";
         }
         ["twitch", "youtube", "twitter", "website"].forEach(function(key) {
-            document.getElementById("social-" + key).value = (p.socials && p.socials[key]) || "";
+            $("social-" + key).value = (p.socials && p.socials[key]) || "";
         });
+        $("featured-stat-input").value = p.featured_stat || "";
+        if (p.featured_badge) {
+            var opt = document.querySelector('#featured-badge-input option[value="' + p.featured_badge + '"]');
+            if (opt) $("featured-badge-input").value = p.featured_badge;
+        }
+    }
+
+    function activityText(a) {
+        var d = a.detail || {};
+        if (a.kind === "level_up") return "\uD83C\uDF89 Reached level " + (d.level || "?");
+        if (a.kind === "daily_claim") return "\uD83C\uDF81 Claimed daily reward (" + (d.streak || 1) + "-day streak)";
+        if (a.kind === "game_round") {
+            var pts = d.majority ? "(+" + (d.points || 0) + " pts, with the majority)" : "(against the crowd)";
+            return "\uD83C\uDFAE Eat It or Yeet It: " + (d.food || "something") + " \u2014 voted " + (d.voted || "?") + ", verdict " + (d.verdict || "?") + " " + pts;
+        }
+        return a.kind;
     }
 
     fetch("/api/profile", {credentials: "same-origin"})
@@ -255,7 +415,7 @@
         saveStatus.textContent = "Saving...";
         var socials = {};
         ["twitch", "youtube", "twitter", "website"].forEach(function(key) {
-            var v = document.getElementById("social-" + key).value.trim();
+            var v = $("social-" + key).value.trim();
             if (v) socials[key] = v;
         });
         fetch("/api/csrf", {credentials: "same-origin"})
@@ -270,11 +430,18 @@
                         "X-CSRF-Token": token
                     },
                     body: JSON.stringify({
+                        display_name: $("display-name-input").value,
+                        pronouns: $("pronouns-input").value,
                         bio: bioInput.value,
                         status: statusInput.value,
+                        avatar_url: avatarInput.value,
                         banner: bannerInput.value,
+                        background_url: backgroundInput.value,
                         accent: accentInput.value,
+                        tags: $("tags-input").value,
                         socials: socials,
+                        featured_badge: $("featured-badge-input").value,
+                        featured_stat: $("featured-stat-input").value,
                         public: publicToggle.checked
                     })
                 });
@@ -294,7 +461,7 @@
             });
     });
 
-    // Stats + badges
+    // Stats + badges + activity
     fetch("/api/profile/stats", {credentials: "same-origin"})
         .then(function(r) { return r.ok ? r.json() : null; })
         .then(function(data) {
@@ -308,26 +475,44 @@
                 ["Game points", t.points || 0],
                 ["Majority votes", t.majority || 0]
             ];
-            document.getElementById("stats-grid").innerHTML = cells.map(function(c) {
+            $("stats-grid").innerHTML = cells.map(function(c) {
                 return '<div style="background:#1e1f24;border:1px solid rgba(255,255,255,.08);'
                     + 'border-radius:12px;padding:14px;text-align:center;">'
                     + '<div style="font-size:1.4rem;font-weight:800;">' + c[1] + "</div>"
                     + '<div style="opacity:.6;font-size:.8rem;">' + c[0] + "</div></div>";
             }).join("");
+
+            var prog = data.stats && data.stats.best_guild_progress;
+            if (prog) {
+                $("progress-box").style.display = "";
+                $("progress-label").textContent = "Level " + prog.level + " progress" + (prog.guild_name ? " · " + prog.guild_name : "");
+                $("progress-numbers").textContent = prog.xp.toLocaleString() + " / " + prog.xp_needed.toLocaleString() + " XP";
+                $("progress-bar").style.width = prog.progress_pct + "%";
+            }
+
+            if (data.stats && data.stats.member_since) {
+                $("profile-member-since").textContent = " · Member since " + new Date(data.stats.member_since).toLocaleDateString();
+            }
+
             var guilds = (data.stats && data.stats.per_guild) || [];
-            document.getElementById("stats-guilds").innerHTML = guilds.map(function(g) {
-                return '<div style="display:flex;gap:12px;align-items:center;'
-                    + 'background:#1e1f24;border:1px solid rgba(255,255,255,.08);'
+            $("stats-guilds").innerHTML = guilds.map(function(g) {
+                var joined = g.joined_at ? " · Joined " + new Date(g.joined_at).toLocaleDateString() : "";
+                return '<div style="background:#1e1f24;border:1px solid rgba(255,255,255,.08);'
                     + 'border-radius:12px;padding:12px 16px;">'
+                    + '<div style="display:flex;gap:12px;align-items:center;">'
                     + '<div style="flex:1;"><div style="font-weight:700;">' + esc(g.guild_name) + "</div>"
                     + '<div style="opacity:.6;font-size:.85rem;">Level ' + g.level + " · "
-                    + g.xp.toLocaleString() + " XP"
-                    + (g.rank ? " · Rank #" + g.rank : "") + "</div></div>"
+                    + g.xp.toLocaleString() + " / " + g.xp_needed.toLocaleString() + " XP"
+                    + (g.rank ? " · Rank #" + g.rank : "") + joined + "</div></div>"
                     + '<div style="opacity:.6;font-size:.85rem;text-align:right;">'
-                    + g.played + " games · " + g.points + " pts</div></div>";
+                    + g.played + " games · " + g.points + " pts</div></div>"
+                    + '<div style="height:8px;border-radius:4px;background:rgba(255,255,255,.06);'
+                    + 'overflow:hidden;margin-top:8px;"><div style="height:100%;background:#5865F2;'
+                    + 'width:' + g.progress_pct + '%;"></div></div></div>';
             }).join("");
+
             var badges = data.badges || [];
-            document.getElementById("badge-grid").innerHTML = badges.map(function(b) {
+            $("badge-grid").innerHTML = badges.map(function(b) {
                 var style = b.earned
                     ? "background:#1e1f24;border:1px solid rgba(255,255,255,.15);opacity:1;"
                     : "background:#1e1f24;border:1px solid rgba(255,255,255,.08);opacity:.35;";
@@ -336,11 +521,65 @@
                     + '<div style="font-size:1.6rem;">' + b.icon + "</div>"
                     + '<div style="font-size:.8rem;font-weight:700;margin-top:4px;">' + esc(b.name) + "</div></div>";
             }).join("");
+
+            var badgeSelect = $("featured-badge-input");
+            badges.filter(function(b) { return b.earned; }).forEach(function(b) {
+                var opt = document.createElement("option");
+                opt.value = b.key;
+                opt.textContent = b.icon + " " + b.name;
+                badgeSelect.appendChild(opt);
+            });
+
+            // Featured showcase (needs current profile + stats + badges)
+            fetch("/api/profile", {credentials: "same-origin"})
+                .then(function(r) { return r.ok ? r.json() : null; })
+                .then(function(pdata) {
+                    if (!pdata || !pdata.profile) return;
+                    var p = pdata.profile;
+                    var parts = [];
+                    if (p.featured_badge) {
+                        var fb = badges.filter(function(b) { return b.key === p.featured_badge && b.earned; })[0];
+                        if (fb) {
+                            parts.push('<div style="background:#1e1f24;border:1px solid rgba(255,255,255,.15);'
+                                + 'border-radius:12px;padding:14px 18px;text-align:center;">'
+                                + '<div style="font-size:1.8rem;">' + fb.icon + "</div>"
+                                + '<div style="font-size:.85rem;font-weight:700;margin-top:4px;">' + esc(fb.name) + "</div>"
+                                + '<div style="opacity:.6;font-size:.75rem;">Featured badge</div></div>');
+                        }
+                    }
+                    if (p.featured_stat && STAT_LABELS[p.featured_stat]) {
+                        var val = t[p.featured_stat];
+                        if (p.featured_stat === "xp" || p.featured_stat === "points" || p.featured_stat === "played") val = (val || 0).toLocaleString();
+                        if (p.featured_stat === "daily_streak") val = (val || 0) + " days";
+                        parts.push('<div style="background:#1e1f24;border:1px solid rgba(255,255,255,.15);'
+                            + 'border-radius:12px;padding:14px 18px;text-align:center;">'
+                            + '<div style="font-size:1.6rem;font-weight:800;">' + val + "</div>"
+                            + '<div style="opacity:.6;font-size:.8rem;">' + STAT_LABELS[p.featured_stat] + "</div>"
+                            + '<div style="opacity:.6;font-size:.75rem;">Featured stat</div></div>');
+                    }
+                    if (parts.length) {
+                        $("featured-box").style.display = "";
+                        $("featured-content").innerHTML = parts.join("");
+                    }
+                })
+                .catch(function() {});
+
+            var activity = data.activity || [];
+            $("activity-list").innerHTML = activity.length
+                ? activity.map(function(a) {
+                    var when = a.ts ? new Date(a.ts * 1000).toLocaleString() : "";
+                    return '<div style="display:flex;gap:12px;align-items:baseline;'
+                        + 'background:#1e1f24;border:1px solid rgba(255,255,255,.08);'
+                        + 'border-radius:12px;padding:12px 16px;">'
+                        + '<div style="flex:1;">' + esc(activityText(a)) + "</div>"
+                        + '<div style="opacity:.5;font-size:.8rem;white-space:nowrap;">' + when + "</div></div>";
+                }).join("")
+                : '<div style="opacity:.5;">No activity yet — play, claim your daily, and level up to fill this in.</div>';
         })
         .catch(function() {});
 
     // My servers
-    var list = document.getElementById("server-list");
+    var list = $("server-list");
     fetch("/api/servers", {credentials: "same-origin"})
         .then(function(r) { return r.ok ? r.json() : null; })
         .then(function(data) {
