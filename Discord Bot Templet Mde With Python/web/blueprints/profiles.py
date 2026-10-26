@@ -64,6 +64,7 @@ MAX_URL_LEN = 500
 MAX_PRONOUNS_LEN = 40
 MAX_DISPLAY_NAME_LEN = 64
 MAX_TAGS = 10
+MAX_SOCIAL_LINKS = 10
 MAX_TAG_LEN = 24
 ACCENT_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
 URL_RE = re.compile(r"^https?://\S+$")
@@ -81,7 +82,7 @@ DEFAULT_PROFILE = {
     "display_name": "",
     "featured_badge": "",
     "featured_stat": "",
-    "socials": {},
+    "socials": [],
     "tags": [],
     "public": False,
 }
@@ -113,7 +114,7 @@ def _clean_profile(saved):
         "display_name": str(saved.get("display_name", ""))[:MAX_DISPLAY_NAME_LEN],
         "featured_badge": str(saved.get("featured_badge", "")),
         "featured_stat": str(saved.get("featured_stat", "")),
-        "socials": {},
+        "socials": [],
         "tags": [],
         "public": bool(saved.get("public", False)),
     }
@@ -128,17 +129,22 @@ def _clean_profile(saved):
 
             profile[field] = ""
 
-    socials = saved.get("socials", {})
+    socials = saved.get("socials", [])
 
     if isinstance(socials, dict):
 
-        for field in SOCIAL_FIELDS:
+        # Legacy shape: {platform: url} -> ordered list of urls.
+        socials = [socials.get(field, "") for field in SOCIAL_FIELDS]
 
-            url = str(socials.get(field, "")).strip()[:MAX_URL_LEN]
+    if isinstance(socials, list):
 
-            if url and URL_RE.match(url):
+        for url in socials[:MAX_SOCIAL_LINKS]:
 
-                profile["socials"][field] = url
+            url = str(url).strip()[:MAX_URL_LEN]
+
+            if url and URL_RE.match(url) and url not in profile["socials"]:
+
+                profile["socials"].append(url)
 
     tags = saved.get("tags", [])
 
@@ -667,7 +673,7 @@ def save_profile():
         "display_name": body.get("display_name", ""),
         "featured_badge": body.get("featured_badge", ""),
         "featured_stat": body.get("featured_stat", ""),
-        "socials": body.get("socials", {}),
+        "socials": body.get("socials", []),
         "tags": tags,
         "public": body.get("public", False),
     }
