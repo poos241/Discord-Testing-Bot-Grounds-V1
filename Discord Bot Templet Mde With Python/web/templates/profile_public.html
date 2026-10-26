@@ -7,7 +7,7 @@
 <div id="public-page-bg" style="display:none;position:fixed;inset:0;z-index:-1;
     background-size:cover;background-position:center;"></div>
 <div id="public-page-bg-overlay" style="display:none;position:fixed;inset:0;z-index:-1;
-    background:rgba(0,0,0,.55);"></div>
+    background:radial-gradient(ellipse at center, rgba(0,0,0,.2) 0%, rgba(0,0,0,.68) 100%), linear-gradient(rgba(0,0,0,.3), rgba(0,0,0,.72));"></div>
 
 <style>
 #public-layout { display:grid; grid-template-columns: 1fr 320px; gap:20px; align-items:start; }
@@ -25,8 +25,18 @@
   #public-featured { grid-column: 1; grid-row: 4; }
   #public-badges { grid-column: 1; grid-row: 5; }
 }
+
+/* Steam-style translucent panels + gradient section header bars */
+#public-card, #public-stats, #public-badges, #public-activity, #public-featured { background: rgba(13,17,28,.78) !important; backdrop-filter: blur(8px); border-color: rgba(255,255,255,.12) !important; }
+#public-stats > h3, #public-badges > h3, #public-activity > h3, #public-featured > h3 { background: linear-gradient(90deg, rgba(42,71,94,.95), rgba(42,71,94,0)); margin: -24px -32px 16px !important; padding: 12px 32px !important; border-radius: 12px 12px 0 0; }
+#public-card h2 { font-size: 2rem; }
+#public-avatar, #public-avatar-fallback { width:112px !important; height:112px !important; }
+.stat-cell, .activity-row, .badge-item { transition: transform .15s ease, border-color .15s ease; }
+.stat-cell:hover, .activity-row:hover { transform: translateY(-2px); border-color: rgba(255,255,255,.28) !important; }
+.badge-item { background:#1e1f24; border:1px solid rgba(255,255,255,.12); border-radius:12px; padding:12px 10px; text-align:center; min-width:84px; }
+.badge-item:hover { transform: translateY(-3px); border-color: rgba(255,255,255,.3); }
 </style>
-<div id="public-layout style="max-width:1000px;margin:40px auto;padding:0 16px;">
+<div id="public-layout" style="max-width:1000px;margin:40px auto;padding:0 16px;">
 
     <div id="public-card" style="display:none;background:rgba(255,255,255,.03);
         border:1px solid rgba(255,255,255,.08);border-radius:16px;overflow:hidden;">
@@ -55,8 +65,12 @@
                 flex-wrap:wrap;margin-top:14px;"></div>
             </div>
             <div style="text-align:center;flex-shrink:0;padding-top:8px;">
-                <div id="public-level-circle" style="width:88px;height:88px;border-radius:50%;border:3px solid #5865F2;display:grid;place-items:center;margin:0 auto;">
-                    <span id="public-level-number" style="font-size:2rem;font-weight:800;">?</span>
+                <div style="position:relative;width:96px;height:96px;margin:0 auto;">
+                    <svg width="96" height="96" viewBox="0 0 96 96">
+                        <circle cx="48" cy="48" r="42" fill="none" stroke="rgba(255,255,255,.12)" stroke-width="5"/>
+                        <circle id="public-level-ring" cx="48" cy="48" r="42" fill="none" stroke="#5865F2" stroke-width="5" stroke-linecap="round" transform="rotate(-90 48 48)" stroke-dasharray="263.9" stroke-dashoffset="263.9"/>
+                    </svg>
+                    <span id="public-level-number" style="position:absolute;inset:0;display:grid;place-items:center;font-size:2rem;font-weight:800;">?</span>
                 </div>
                 <div style="font-weight:700;margin-top:8px;">Level</div>
                 <div id="public-level-xp" style="opacity:.6;font-size:.85rem;"></div>
@@ -95,7 +109,7 @@
     <div id="public-badges" style="display:none;background:rgba(255,255,255,.03);
         border:1px solid rgba(255,255,255,.08);border-radius:16px;
         padding:24px 32px;margin-top:20px;">
-        <h3 style="margin:0 0 16px;">Achievements</h3>
+        <h3 id="public-badges-title" style="margin:0 0 16px;">Achievements</h3>
         <div id="public-badge-grid" style="display:flex;gap:12px;flex-wrap:wrap;"></div>
     </div>
 
@@ -160,8 +174,10 @@
             var banner = $("public-banner");
             banner.style.background = p.banner
                 ? "url(" + p.banner + ") center / cover"
-                : (u.banner_url || p.accent);
-            $("public-level-circle").style.borderColor = p.accent;
+                : (u.banner_url
+                    ? "url(" + u.banner_url + ") center / cover"
+                    : "linear-gradient(135deg, " + p.accent + ", #14141f)");
+            $("public-level-ring").style.stroke = p.accent;
 
             if (p.background_url) {
                 $("public-page-bg").style.backgroundImage = "url(" + p.background_url + ")";
@@ -176,10 +192,12 @@
                 var img = $("public-avatar");
                 img.src = p.avatar_url || u.avatar_url;
                 img.style.display = "";
+                img.style.boxShadow = "0 0 0 3px " + p.accent + ", 0 0 24px rgba(0,0,0,.6)";
             } else {
                 var fb = $("public-avatar-fallback");
                 fb.textContent = (name[0] || "?").toUpperCase();
                 fb.style.display = "flex";
+                fb.style.boxShadow = "0 0 0 3px " + p.accent + ", 0 0 24px rgba(0,0,0,.6)";
             }
             if (data.stats && data.stats.member_since) {
                 $("public-member-since").textContent = "Member since " + new Date(data.stats.member_since).toLocaleDateString();
@@ -217,7 +235,7 @@
                 ["Majority votes", t.majority || 0]
             ];
             $("public-stats-grid").innerHTML = cells.map(function(c) {
-                return '<div style="background:#1e1f24;border:1px solid rgba(255,255,255,.08);'
+                return '<div class="stat-cell" style="background:#1e1f24;border:1px solid rgba(255,255,255,.08);'
                     + 'border-radius:12px;padding:14px;text-align:center;">'
                     + '<div style="font-size:1.4rem;font-weight:800;">' + c[1] + "</div>"
                     + '<div style="opacity:.6;font-size:.8rem;">' + c[0] + "</div></div>";
@@ -232,13 +250,13 @@
             }
             $("public-level-number").textContent = prog ? prog.level : (t.level || 0);
             $("public-level-xp").textContent = (t.xp || 0).toLocaleString() + " XP";
+            $("public-level-ring").style.strokeDashoffset = 263.9 * (1 - (prog ? prog.progress_pct : 0) / 100);
 
             var badges = (data.badges || []).filter(function(b) { return b.earned; });
+            $("public-badges-title").textContent = "Badges " + badges.length;
             $("public-badge-grid").innerHTML = badges.length
                 ? badges.map(function(b) {
-                    return '<div title="' + esc(b.description) + '" style="background:#1e1f24;'
-                        + 'border:1px solid rgba(255,255,255,.15);border-radius:12px;'
-                        + 'padding:12px 16px;text-align:center;min-width:90px;">'
+                    return '<div class="badge-item" title="' + esc(b.description) + '" style="">'
                         + '<div style="font-size:1.6rem;">' + b.icon + "</div>"
                         + '<div style="font-size:.8rem;font-weight:700;margin-top:4px;">' + esc(b.name) + "</div></div>";
                 }).join("")
@@ -274,7 +292,7 @@
             $("public-activity-list").innerHTML = activity.length
                 ? activity.map(function(a) {
                     var when = a.ts ? new Date(a.ts * 1000).toLocaleString() : "";
-                    return '<div style="display:flex;gap:12px;align-items:baseline;'
+                    return '<div class="activity-row" style="display:flex;gap:12px;align-items:baseline;'
                         + 'background:#1e1f24;border:1px solid rgba(255,255,255,.08);'
                         + 'border-radius:12px;padding:12px 16px;">'
                         + '<div style="flex:1;">' + esc(activityText(a)) + "</div>"
