@@ -7,7 +7,7 @@
 <div id="page-bg" style="display:none;position:fixed;inset:0;z-index:-1;
     background-size:cover;background-position:center;"></div>
 <div id="page-bg-overlay" style="display:none;position:fixed;inset:0;z-index:-1;
-    background:rgba(0,0,0,.55);"></div>
+    background:radial-gradient(ellipse at center, rgba(0,0,0,.2) 0%, rgba(0,0,0,.68) 100%), linear-gradient(rgba(0,0,0,.3), rgba(0,0,0,.72));"></div>
 
 <style>
 #profile-layout { display:grid; grid-template-columns: 1fr 320px; gap:20px; align-items:start; }
@@ -29,8 +29,20 @@
   #servers-section { grid-column: 1; grid-row: 6; }
   #customize-section { grid-column: 1; grid-row: 7; }
 }
+
+/* Steam-style translucent panels + gradient section header bars */
+#profile-card, #stats-section, #badges-section, #activity-section, #customize-section { background: rgba(13,17,28,.78) !important; backdrop-filter: blur(8px); border-color: rgba(255,255,255,.12) !important; }
+#servers-section { background: rgba(13,17,28,.78); backdrop-filter: blur(8px); border:1px solid rgba(255,255,255,.12); border-radius:12px; padding:24px; }
+#stats-section > h3, #badges-section > h3, #activity-section > h3, #featured-box > h3, #customize-section > h3 { background: linear-gradient(90deg, rgba(42,71,94,.95), rgba(42,71,94,0)); margin: -24px -32px 16px !important; padding: 12px 32px !important; border-radius: 12px 12px 0 0; }
+#servers-section > h3 { background: linear-gradient(90deg, rgba(42,71,94,.95), rgba(42,71,94,0)); margin: -24px -24px 16px !important; padding: 12px 24px !important; border-radius: 12px 12px 0 0; }
+#profile-card h2 { font-size: 2rem; }
+#profile-avatar-img, #profile-avatar-fallback { width:112px !important; height:112px !important; }
+.stat-cell, .guild-row, .server-card, .activity-row, .badge-item { transition: transform .15s ease, border-color .15s ease; }
+.stat-cell:hover, .guild-row:hover, .server-card:hover, .activity-row:hover { transform: translateY(-2px); border-color: rgba(255,255,255,.28) !important; }
+.badge-item { background:#1e1f24; border:1px solid rgba(255,255,255,.12); border-radius:12px; padding:12px 10px; text-align:center; min-width:84px; }
+.badge-item:hover { transform: translateY(-3px); border-color: rgba(255,255,255,.3); }
 </style>
-<div id="profile-layout style="max-width:1000px;margin:40px auto;padding:0 16px;">
+<div id="profile-layout" style="max-width:1000px;margin:40px auto;padding:0 16px;">
 
     <!-- HEADER CARD -->
     <div id="profile-card" style="background:rgba(255,255,255,.03);
@@ -71,8 +83,12 @@
             </div>
             </div>
             <div style="text-align:center;flex-shrink:0;padding-top:8px;">
-                <div id="header-level-circle" style="width:88px;height:88px;border-radius:50%;border:3px solid #5865F2;display:grid;place-items:center;margin:0 auto;">
-                    <span id="header-level-number" style="font-size:2rem;font-weight:800;">?</span>
+                <div style="position:relative;width:96px;height:96px;margin:0 auto;">
+                    <svg width="96" height="96" viewBox="0 0 96 96">
+                        <circle cx="48" cy="48" r="42" fill="none" stroke="rgba(255,255,255,.12)" stroke-width="5"/>
+                        <circle id="header-level-ring" cx="48" cy="48" r="42" fill="none" stroke="#5865F2" stroke-width="5" stroke-linecap="round" transform="rotate(-90 48 48)" stroke-dasharray="263.9" stroke-dashoffset="263.9"/>
+                    </svg>
+                    <span id="header-level-number" style="position:absolute;inset:0;display:grid;place-items:center;font-size:2rem;font-weight:800;">?</span>
                 </div>
                 <div style="font-weight:700;margin-top:8px;">Level</div>
                 <div id="header-level-xp" style="opacity:.6;font-size:.85rem;"></div>
@@ -117,7 +133,7 @@
     <div style="background:rgba(255,255,255,.03);
         border:1px solid rgba(255,255,255,.08);border-radius:16px;
         padding:24px 32px;margin-top:20px;" id="badges-section">
-        <h3 style="margin:0 0 16px;">Achievements</h3>
+        <h3 id="badges-title" style="margin:0 0 16px;">Achievements</h3>
         <div id="badge-grid" style="display:flex;gap:12px;flex-wrap:wrap;">
             <div style="opacity:.5;">Loading badges...</div>
         </div>
@@ -322,13 +338,17 @@
     function refreshBanner(p) {
         banner.style.background = p.banner
             ? "url(" + p.banner + ") center / cover"
-            : (DISCORD_BANNER || p.accent);
+            : (DISCORD_BANNER
+                ? "url(" + DISCORD_BANNER + ") center / cover"
+                : "linear-gradient(135deg, " + p.accent + ", #14141f)");
     }
 
     function setAccent(c) {
         accentInput.value = c;
         saveBtn.style.background = c;
-        $("header-level-circle").style.borderColor = c;
+        $("header-level-ring").style.stroke = c;
+        avatarImg.style.boxShadow = "0 0 0 3px " + c + ", 0 0 24px rgba(0,0,0,.6)";
+        avatarFallback.style.boxShadow = "0 0 0 3px " + c + ", 0 0 24px rgba(0,0,0,.6)";
         refreshBanner({banner: bannerInput.value, accent: c});
     }
 
@@ -507,7 +527,7 @@
                 ["Majority votes", t.majority || 0]
             ];
             $("stats-grid").innerHTML = cells.map(function(c) {
-                return '<div style="background:#1e1f24;border:1px solid rgba(255,255,255,.08);'
+                return '<div class="stat-cell" style="background:#1e1f24;border:1px solid rgba(255,255,255,.08);'
                     + 'border-radius:12px;padding:14px;text-align:center;">'
                     + '<div style="font-size:1.4rem;font-weight:800;">' + c[1] + "</div>"
                     + '<div style="opacity:.6;font-size:.8rem;">' + c[0] + "</div></div>";
@@ -522,6 +542,7 @@
             }
             $("header-level-number").textContent = prog ? prog.level : (t.level || 0);
             $("header-level-xp").textContent = (t.xp || 0).toLocaleString() + " XP";
+            $("header-level-ring").style.strokeDashoffset = 263.9 * (1 - (prog ? prog.progress_pct : 0) / 100);
 
             if (data.stats && data.stats.member_since) {
                 $("profile-member-since").textContent = "Member since " + new Date(data.stats.member_since).toLocaleDateString();
@@ -530,7 +551,7 @@
             var guilds = (data.stats && data.stats.per_guild) || [];
             $("stats-guilds").innerHTML = guilds.map(function(g) {
                 var joined = g.joined_at ? " · Joined " + new Date(g.joined_at).toLocaleDateString() : "";
-                return '<div style="background:#1e1f24;border:1px solid rgba(255,255,255,.08);'
+                return '<div class="guild-row" style="background:#1e1f24;border:1px solid rgba(255,255,255,.08);'
                     + 'border-radius:12px;padding:12px 16px;">'
                     + '<div style="display:flex;gap:12px;align-items:center;">'
                     + '<div style="flex:1;"><div style="font-weight:700;">' + esc(g.guild_name) + "</div>"
@@ -545,12 +566,9 @@
             }).join("");
 
             var badges = data.badges || [];
+            $("badges-title").textContent = "Badges " + badges.filter(function(b) { return b.earned; }).length;
             $("badge-grid").innerHTML = badges.map(function(b) {
-                var style = b.earned
-                    ? "background:#1e1f24;border:1px solid rgba(255,255,255,.15);opacity:1;"
-                    : "background:#1e1f24;border:1px solid rgba(255,255,255,.08);opacity:.35;";
-                return '<div title="' + esc(b.description) + '" style="' + style
-                    + 'border-radius:12px;padding:12px 16px;text-align:center;min-width:90px;">'
+                return '<div class="badge-item" title="' + esc(b.description) + '" style="opacity:' + (b.earned ? '1' : '.35') + ';">'
                     + '<div style="font-size:1.6rem;">' + b.icon + "</div>"
                     + '<div style="font-size:.8rem;font-weight:700;margin-top:4px;">' + esc(b.name) + "</div></div>";
             }).join("");
@@ -601,7 +619,7 @@
             $("activity-list").innerHTML = activity.length
                 ? activity.map(function(a) {
                     var when = a.ts ? new Date(a.ts * 1000).toLocaleString() : "";
-                    return '<div style="display:flex;gap:12px;align-items:baseline;'
+                    return '<div class="activity-row" style="display:flex;gap:12px;align-items:baseline;'
                         + 'background:#1e1f24;border:1px solid rgba(255,255,255,.08);'
                         + 'border-radius:12px;padding:12px 16px;">'
                         + '<div style="flex:1;">' + esc(activityText(a)) + "</div>"
@@ -627,7 +645,7 @@
                 var icon = s.icon
                     ? '<img src="' + esc(s.icon) + '" alt="" style="width:44px;height:44px;border-radius:50%;object-fit:cover;">'
                     : '<div style="width:44px;height:44px;border-radius:50%;background:#2b2d31;display:grid;place-items:center;font-weight:800;">' + esc((s.name || "?").slice(0, 2).toUpperCase()) + "</div>";
-                return '<a href="/servers/' + encodeURIComponent(s.id) + '/dashboard" style="display:flex;gap:14px;align-items:center;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:14px 18px;text-decoration:none;color:inherit;">'
+                return '<a class="server-card" href="/servers/' + encodeURIComponent(s.id) + '/dashboard" style="display:flex;gap:14px;align-items:center;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:14px 18px;text-decoration:none;color:inherit;">'
                     + icon
                     + '<div style="flex:1;min-width:0;"><div style="font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(s.name) + '</div>'
                     + '<div style="opacity:.55;font-size:.85rem;">' + (s.member_count || 0) + " members</div></div>"
