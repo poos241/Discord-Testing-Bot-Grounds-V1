@@ -102,3 +102,44 @@ ticket_records = sqlalchemy.Table(
 
 
 
+
+
+# Web dashboard user profiles (migrated from data/profiles.json).
+# Scalar fields are real columns so they can be queried directly;
+# socials/tags stay JSON because their shape is free-form.
+
+profiles = sqlalchemy.Table(
+    "profiles", metadata,
+    sqlalchemy.Column("user_id", sqlalchemy.String, primary_key=True),
+    sqlalchemy.Column("bio", sqlalchemy.String, default=""),
+    sqlalchemy.Column("accent", sqlalchemy.String, default="#5865F2"),
+    sqlalchemy.Column("banner", sqlalchemy.String, default=""),
+    sqlalchemy.Column("status", sqlalchemy.String, default=""),
+    sqlalchemy.Column("avatar_url", sqlalchemy.String, default=""),
+    sqlalchemy.Column("background_url", sqlalchemy.String, default=""),
+    sqlalchemy.Column("pronouns", sqlalchemy.String, default=""),
+    sqlalchemy.Column("display_name", sqlalchemy.String, default=""),
+    sqlalchemy.Column("featured_badge", sqlalchemy.String, default=""),
+    sqlalchemy.Column("featured_stat", sqlalchemy.String, default=""),
+    sqlalchemy.Column("public", sqlalchemy.Boolean, default=False),
+    sqlalchemy.Column("socials", sqlalchemy.JSON, default={}),
+    sqlalchemy.Column("tags", sqlalchemy.JSON, default=[]),
+    sqlalchemy.Column("created_at", sqlalchemy.DateTime, server_default=func.now()),
+    sqlalchemy.Column("updated_at", sqlalchemy.DateTime, server_default=func.now(), onupdate=func.now())
+)
+
+
+# Per-user activity feed for profiles. `ts` is a unix epoch (UTC) so
+# the frontend can render it in the viewer's timezone. `detail` is
+# free-form per kind: level_up {level}, daily_claim {streak},
+# game_round {food, verdict, voted, majority, points}.
+
+profile_activity = sqlalchemy.Table(
+    "profile_activity", metadata,
+    sqlalchemy.Column("id", sqlalchemy.Integer, primary_key=True, autoincrement=True),
+    sqlalchemy.Column("user_id", sqlalchemy.String, nullable=False),
+    sqlalchemy.Column("guild_id", sqlalchemy.String, nullable=False),
+    sqlalchemy.Column("kind", sqlalchemy.String, nullable=False),
+    sqlalchemy.Column("detail", sqlalchemy.JSON, default={}),
+    sqlalchemy.Column("ts", sqlalchemy.Integer, nullable=False)
+)
