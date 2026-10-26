@@ -1,0 +1,569 @@
+{% extends "base.html" %}
+
+{% block title %}Edit profile — Kush Bush Dashboard{% endblock %}
+
+{% block body %}
+<!-- Custom profile background preview (fixed, behind everything) -->
+<div id="page-bg" style="display:none;position:fixed;inset:0;z-index:-1;
+    background-size:cover;background-position:center;"></div>
+<div id="page-bg-overlay" style="display:none;position:fixed;inset:0;z-index:-1;
+    background:radial-gradient(ellipse at center, rgba(0,0,0,.2) 0%, rgba(0,0,0,.68) 100%), linear-gradient(rgba(0,0,0,.3), rgba(0,0,0,.72));"></div>
+
+<style>
+.help-tip { position:relative; display:inline-flex; }
+.help-btn { width:20px; height:20px; border-radius:50%; border:1px solid rgba(255,255,255,.4); background:transparent; color:#fff; font-size:.75rem; line-height:1; cursor:pointer; padding:0; flex-shrink:0; }
+.help-btn:hover { background:rgba(255,255,255,.12); }
+.help-text { display:none; position:absolute; left:0; top:26px; z-index:50; width:260px; max-width:70vw; background:#1e1f24; border:1px solid rgba(255,255,255,.25); border-radius:10px; padding:10px 12px; font-size:.85rem; line-height:1.45; color:#fff; font-weight:400; box-shadow:0 8px 24px rgba(0,0,0,.5); }
+.help-tip:hover .help-text, .help-tip.open .help-text { display:block; }
+</style>
+
+<div style="max-width:1000px;margin:40px auto;padding:0 16px;">
+
+    <div style="margin-bottom:16px;">
+        <a href="/profile" style="color:#8ea2ff;text-decoration:none;font-size:.9rem;">&#8592; Back to profile</a>
+    </div>
+
+    <!-- LIVE PREVIEW -->
+    <div id="edit-preview-card" style="background:rgba(13,17,28,.85);backdrop-filter:blur(8px);
+        border:1px solid rgba(255,255,255,.12);border-radius:16px;overflow:hidden;">
+        <div id="edit-preview-banner" style="height:120px;background:#5865F2;
+            background-size:cover;background-position:center;"></div>
+        <div style="padding:0 24px 20px;margin-top:-40px;display:flex;gap:20px;flex-wrap:wrap;">
+            <div>
+                <img id="edit-preview-avatar-img" src="" alt=""
+                    style="width:96px;height:96px;border-radius:50%;object-fit:cover;
+                    border:4px solid #1e1f24;display:none;">
+                <div id="edit-preview-avatar-fallback" style="width:96px;height:96px;border-radius:50%;
+                    background:#5865F2;display:grid;place-items:center;
+                    font-size:2rem;font-weight:800;border:4px solid #1e1f24;">?</div>
+            </div>
+            <div style="flex:1;min-width:240px;padding-top:48px;">
+                <h2 style="margin:0;"><span id="edit-preview-name">{{ user.global_name or user.username }}</span>
+                    <span id="edit-preview-pronouns" style="font-size:.9rem;font-weight:400;opacity:.6;"></span></h2>
+                <p id="edit-preview-status" style="opacity:.9;margin:8px 0 0;
+                    font-style:italic;display:none;"></p>
+                <p id="edit-preview-bio" style="opacity:.8;margin:8px 0 0;line-height:1.5;">
+                    No bio yet.
+                </p>
+                <div id="edit-preview-tags" style="display:flex;gap:8px;
+                    flex-wrap:wrap;margin-top:10px;"></div>
+                <div id="edit-preview-socials" style="display:flex;gap:10px;
+                    flex-wrap:wrap;margin-top:12px;"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- EDIT FORM -->
+    <div style="background:rgba(13,17,28,.85);backdrop-filter:blur(8px);
+        border:1px solid rgba(255,255,255,.12);border-radius:16px;
+        padding:24px 32px;margin-top:20px;">
+        <h3 style="margin:0 0 16px;">Edit your profile</h3>
+        <p style="margin:0 0 20px;opacity:.7;font-size:.9rem;">
+            Changes show up in the preview above as you type. Press Save profile when you are happy with it.
+        </p>
+        <div id="completion-box" style="margin:0 0 20px;display:none;">
+            <div style="display:flex;justify-content:space-between;font-size:.85rem;opacity:.8;">
+                <span>Profile completion</span><span id="completion-text"></span>
+            </div>
+            <div style="height:8px;background:rgba(255,255,255,.08);border-radius:99px;overflow:hidden;margin-top:6px;">
+                <div id="completion-bar" style="height:100%;width:0%;background:#57F287;border-radius:99px;"></div>
+            </div>
+        </div>
+
+        <label style="display:flex;align-items:center;gap:6px;font-size:.85rem;color:rgba(255,255,255,.75);margin:0 0 6px;"
+            for="display-name-input">Display name
+            <span class="help-tip"><button type="button" class="help-btn" aria-label="Help for display name">?</button><span class="help-text">This is the name shown at the top of your profile. Leave it empty and we will use your Discord name instead.</span></span></label>
+        <input id="display-name-input" type="text" maxlength="64"
+            placeholder="Leave empty to use your Discord name"
+            style="width:100%;box-sizing:border-box;background:#1e1f24;
+            border:1px solid rgba(255,255,255,.12);border-radius:10px;
+            color:#fff;padding:12px;font-family:inherit;">
+
+        <label style="display:flex;align-items:center;gap:6px;font-size:.85rem;color:rgba(255,255,255,.75);margin:16px 0 6px;"
+            for="pronouns-input">Pronouns
+            <span class="help-tip"><button type="button" class="help-btn" aria-label="Help for pronouns">?</button><span class="help-text">Words like she/her or they/them that tell people how to refer to you. These show in small text next to your name.</span></span></label>
+        <input id="pronouns-input" type="text" maxlength="40"
+            placeholder="e.g. she/her"
+            style="width:100%;box-sizing:border-box;background:#1e1f24;
+            border:1px solid rgba(255,255,255,.12);border-radius:10px;
+            color:#fff;padding:12px;font-family:inherit;">
+
+        <label style="display:flex;align-items:center;gap:6px;font-size:.85rem;color:rgba(255,255,255,.75);margin:16px 0 6px;"
+            for="bio-input">Bio
+            <span class="help-tip"><button type="button" class="help-btn" aria-label="Help for bio">?</button><span class="help-text">A few words about you. This shows under your name for everyone to read.</span></span></label>
+        <textarea id="bio-input" rows="3" maxlength="500"
+            placeholder="Tell people a little about yourself..."
+            style="width:100%;box-sizing:border-box;background:#1e1f24;
+            border:1px solid rgba(255,255,255,.12);border-radius:10px;
+            color:#fff;padding:12px;font-family:inherit;resize:vertical;"></textarea>
+        <div style="text-align:right;font-size:.8rem;opacity:.5;margin-top:4px;">
+            <span id="bio-count">0</span>/500
+        </div>
+
+        <label style="display:flex;align-items:center;gap:6px;font-size:.85rem;color:rgba(255,255,255,.75);margin:16px 0 6px;"
+            for="status-input">Status
+            <span class="help-tip"><button type="button" class="help-btn" aria-label="Help for status">?</button><span class="help-text">A short message that shows in slanted text under your name. Great for a mood or a hello.</span></span></label>
+        <input id="status-input" type="text" maxlength="120"
+            placeholder="A short status message..."
+            style="width:100%;box-sizing:border-box;background:#1e1f24;
+            border:1px solid rgba(255,255,255,.12);border-radius:10px;
+            color:#fff;padding:12px;font-family:inherit;">
+
+        <label style="display:flex;align-items:center;gap:6px;font-size:.85rem;color:rgba(255,255,255,.75);margin:16px 0 6px;"
+            for="avatar-input">Profile picture URL
+            <span class="help-tip"><button type="button" class="help-btn" aria-label="Help for profile picture">?</button><span class="help-text">A link to a picture you want as your profile picture. Leave it empty and we will use your Discord picture instead.</span></span></label>
+        <input id="avatar-input" type="url" maxlength="500"
+            placeholder="https://... (leave empty to use your Discord avatar)"
+            style="width:100%;box-sizing:border-box;background:#1e1f24;
+            border:1px solid rgba(255,255,255,.12);border-radius:10px;
+            color:#fff;padding:12px;font-family:inherit;">
+
+        <label style="display:flex;align-items:center;gap:6px;font-size:.85rem;color:rgba(255,255,255,.75);margin:16px 0 6px;"
+            for="banner-input">Banner image URL
+            <span class="help-tip"><button type="button" class="help-btn" aria-label="Help for banner">?</button><span class="help-text">A wide picture that shows at the very top of your profile. Leave it empty and we will use your Discord banner, or your accent color if you do not have one.</span></span></label>
+        <input id="banner-input" type="url" maxlength="500"
+            placeholder="https://... (leave empty to use your Discord banner, then accent color)"
+            style="width:100%;box-sizing:border-box;background:#1e1f24;
+            border:1px solid rgba(255,255,255,.12);border-radius:10px;
+            color:#fff;padding:12px;font-family:inherit;">
+
+        <label style="display:flex;align-items:center;gap:6px;font-size:.85rem;color:rgba(255,255,255,.75);margin:16px 0 6px;"
+            for="background-input">Profile background URL
+            <span class="help-tip"><button type="button" class="help-btn" aria-label="Help for background">?</button><span class="help-text">A picture that fills the whole page behind your profile. Pick one that is not too busy, so your words stay easy to read.</span></span></label>
+        <input id="background-input" type="url" maxlength="500"
+            placeholder="https://... (a background image behind your whole profile)"
+            style="width:100%;box-sizing:border-box;background:#1e1f24;
+            border:1px solid rgba(255,255,255,.12);border-radius:10px;
+            color:#fff;padding:12px;font-family:inherit;">
+
+        <label style="display:flex;align-items:center;gap:6px;font-size:.85rem;color:rgba(255,255,255,.75);margin:16px 0 6px;">Accent color
+            <span class="help-tip"><button type="button" class="help-btn" aria-label="Help for accent color">?</button><span class="help-text">Your own color. It tints your level ring, your progress bars, and the bars above each section on your profile.</span></span></label>
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+            <input id="accent-input" type="color" value="#5865F2"
+                style="width:48px;height:40px;padding:2px;border:1px solid
+                rgba(255,255,255,.12);border-radius:8px;background:#1e1f24;cursor:pointer;">
+            <div id="accent-swatches" style="display:flex;gap:8px;flex-wrap:wrap;"></div>
+        </div>
+
+        <label style="display:flex;align-items:center;gap:6px;font-size:.85rem;color:rgba(255,255,255,.75);margin:16px 0 6px;"
+            for="tags-input">Interest tags
+            <span class="help-tip"><button type="button" class="help-btn" aria-label="Help for interest tags">?</button><span class="help-text">Words about things you like, separated by commas. They show as little chips under your bio.</span></span></label>
+        <input id="tags-input" type="text" maxlength="300"
+            placeholder="Comma-separated, e.g. DDO, VRChat, cozy games"
+            style="width:100%;box-sizing:border-box;background:#1e1f24;
+            border:1px solid rgba(255,255,255,.12);border-radius:10px;
+            color:#fff;padding:12px;font-family:inherit;">
+
+        <label style="display:flex;align-items:center;gap:6px;font-size:.85rem;color:rgba(255,255,255,.75);margin:16px 0 6px;">Social links
+            <span class="help-tip"><button type="button" class="help-btn" aria-label="Help for social links">?</button><span class="help-text">Links to your pages on other sites, like YouTube or Twitch. Press + Add link to add one, up to 10. We work out which site each link is for and show its picture next to it.</span></span></label>
+        <div id="social-rows" style="display:grid;gap:10px;"></div>
+        <div style="display:flex;gap:10px;align-items:center;margin-top:10px;">
+            <button id="add-social-btn" type="button"
+                style="border:1px solid rgba(255,255,255,.25);background:transparent;color:#fff;
+                border-radius:99px;padding:6px 16px;cursor:pointer;font-size:.85rem;font-weight:700;">+ Add link</button>
+            <span id="social-count" style="font-size:.85rem;opacity:.6;"></span>
+        </div>
+
+        <label style="display:flex;align-items:center;gap:6px;font-size:.85rem;color:rgba(255,255,255,.75);margin:16px 0 6px;"
+            for="featured-badge-input">Featured badge
+            <span class="help-tip"><button type="button" class="help-btn" aria-label="Help for featured badge">?</button><span class="help-text">Pick one badge you have earned to show off in the Featured box on your profile.</span></span></label>
+        <select id="featured-badge-input"
+            style="width:100%;box-sizing:border-box;background:#1e1f24;
+            border:1px solid rgba(255,255,255,.12);border-radius:10px;
+            color:#fff;padding:12px;font-family:inherit;">
+            <option value="">None</option>
+        </select>
+
+        <label style="display:flex;align-items:center;gap:6px;font-size:.85rem;color:rgba(255,255,255,.75);margin:16px 0 6px;"
+            for="featured-stat-input">Featured stat
+            <span class="help-tip"><button type="button" class="help-btn" aria-label="Help for featured stat">?</button><span class="help-text">Pick one number to show off in the Featured box, like your level or your game points.</span></span></label>
+        <select id="featured-stat-input"
+            style="width:100%;box-sizing:border-box;background:#1e1f24;
+            border:1px solid rgba(255,255,255,.12);border-radius:10px;
+            color:#fff;padding:12px;font-family:inherit;">
+            <option value="">None</option>
+            <option value="level">Level</option>
+            <option value="xp">Total XP</option>
+            <option value="played">Games played</option>
+            <option value="points">Game points</option>
+            <option value="daily_streak">Daily streak</option>
+        </select>
+
+        <label style="display:flex;gap:10px;align-items:center;margin-top:20px;
+            cursor:pointer;">
+            <input id="public-toggle" type="checkbox" style="width:18px;height:18px;">
+            <span>Make my profile public (shareable link, no server list)</span>
+            <span class="help-tip"><button type="button" class="help-btn" aria-label="Help for public profile">?</button><span class="help-text">Turn this on and anyone with your profile link can see it, even if they are not logged in. Your server list is never shown on public profiles.</span></span>
+        </label>
+
+        <div style="display:flex;gap:12px;align-items:center;margin-top:20px;">
+            <button id="save-btn"
+                style="padding:10px 24px;border:none;border-radius:10px;
+                background:#5865F2;color:#fff;font-weight:700;cursor:pointer;">
+                Save profile
+            </button>
+            <span id="save-status" style="font-size:.9rem;opacity:.7;"></span>
+        </div>
+    </div>
+</div>
+
+<script>
+(function() {
+    var ACCENTS = ["#5865F2", "#57F287", "#FEE75C", "#EB459E", "#ED4245", "#E67E22", "#9B59B6", "#1ABC9C"];
+    var DISCORD_AVATAR = "{% if user.avatar %}https://cdn.discordapp.com/avatars/{{ user.id }}/{{ user.avatar }}.png{% endif %}";
+    var DISCORD_BANNER = "{% if user.banner %}https://cdn.discordapp.com/banners/{{ user.id }}/{{ user.banner }}{% if user.banner.startswith('a_') %}.gif{% else %}.png{% endif %}{% endif %}";
+    var DISCORD_NAME = "{{ user.global_name or user.username }}";
+    var SOCIAL_MAP = {
+        "youtube.com": "YouTube", "youtu.be": "YouTube",
+        "twitch.tv": "Twitch",
+        "twitter.com": "Twitter / X", "x.com": "Twitter / X",
+        "discord.gg": "Discord", "discord.com": "Discord",
+        "instagram.com": "Instagram", "tiktok.com": "TikTok",
+        "steamcommunity.com": "Steam", "store.steampowered.com": "Steam",
+        "reddit.com": "Reddit", "github.com": "GitHub",
+        "spotify.com": "Spotify", "ko-fi.com": "Ko-fi", "patreon.com": "Patreon",
+        "facebook.com": "Facebook", "bsky.app": "Bluesky", "tumblr.com": "Tumblr"
+    };
+
+    var $ = function(id) { return document.getElementById(id); };
+    var bioInput = $("bio-input"), bioCount = $("bio-count");
+    var statusInput = $("status-input"), bannerInput = $("banner-input");
+    var avatarInput = $("avatar-input"), backgroundInput = $("background-input");
+    var accentInput = $("accent-input"), banner = $("edit-preview-banner");
+    var bioDisplay = $("edit-preview-bio"), statusDisplay = $("edit-preview-status");
+    var socialsDisplay = $("edit-preview-socials"), tagsDisplay = $("edit-preview-tags");
+    var publicToggle = $("public-toggle"), saveBtn = $("save-btn"), saveStatus = $("save-status");
+    var avatarImg = $("edit-preview-avatar-img"), avatarFallback = $("edit-preview-avatar-fallback");
+    var nameEl = $("edit-preview-name"), pronounsEl = $("edit-preview-pronouns");
+    var pageBg = $("page-bg"), pageBgOverlay = $("page-bg-overlay");
+    var pendingFeaturedBadge = "";
+
+    var swWrap = $("accent-swatches");
+    ACCENTS.forEach(function(c) {
+        var b = document.createElement("button");
+        b.type = "button";
+        b.title = c;
+        b.style.cssText = "width:32px;height:32px;border-radius:50%;border:2px solid rgba(255,255,255,.2);background:" + c + ";cursor:pointer;";
+        b.addEventListener("click", function() { setAccent(c); });
+        swWrap.appendChild(b);
+    });
+
+    function esc(s) {
+        return String(s == null ? "" : s).replace(/[&<>"']/g, function(c) {
+            return {"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c];
+        });
+    }
+
+    function detectSocial(url) {
+        var m = url.match(/^https?:\/\/([^\/]+)/i);
+        var host = m ? m[1].toLowerCase().replace(/^www\./, "") : "";
+        return {label: SOCIAL_MAP[host] || host || "Link", host: host};
+    }
+
+    function socialPill(url) {
+        var d = detectSocial(url);
+        var icon = d.host
+            ? '<img src="https://www.google.com/s2/favicons?domain=' + esc(d.host) + '&sz=32" alt="" style="width:16px;height:16px;vertical-align:-3px;border-radius:3px;" onerror="this.style.display=\'none\'"> '
+            : "";
+        return '<a href="' + esc(url) + '" target="_blank" rel="noopener" '
+            + 'style="font-size:.85rem;border:1px solid rgba(255,255,255,.15);'
+            + 'border-radius:20px;padding:5px 14px;color:#fff;text-decoration:none;">'
+            + icon + esc(d.label) + "</a>";
+    }
+
+    function renderPreviewTags(tags) {
+        tagsDisplay.innerHTML = (tags || []).map(function(t) {
+            return '<span style="font-size:.8rem;background:rgba(255,255,255,.08);'
+                + 'border:1px solid rgba(255,255,255,.12);border-radius:20px;'
+                + 'padding:4px 12px;">' + esc(t) + "</span>";
+        }).join("");
+    }
+
+    function renderPreviewSocials(urls) {
+        socialsDisplay.innerHTML = (urls || []).map(socialPill).join("");
+    }
+
+    function refreshBanner(p) {
+        banner.style.background = p.banner
+            ? "url(" + p.banner + ") center / cover"
+            : (DISCORD_BANNER
+                ? "url(" + DISCORD_BANNER + ") center / cover"
+                : "linear-gradient(135deg, " + p.accent + ", #14141f)");
+    }
+
+    function setAccent(c) {
+        accentInput.value = c;
+        saveBtn.style.background = c;
+        avatarImg.style.boxShadow = "0 0 0 3px " + c + ", 0 0 24px rgba(0,0,0,.6)";
+        avatarFallback.style.boxShadow = "0 0 0 3px " + c + ", 0 0 24px rgba(0,0,0,.6)";
+        refreshBanner({banner: bannerInput.value, accent: c});
+    }
+
+    function updateAvatarPreview() {
+        if (avatarInput.value) {
+            avatarImg.src = avatarInput.value;
+            avatarImg.style.display = "";
+            avatarFallback.style.display = "none";
+        } else if (DISCORD_AVATAR) {
+            avatarImg.src = DISCORD_AVATAR;
+            avatarImg.style.display = "";
+            avatarFallback.style.display = "none";
+        } else {
+            avatarFallback.textContent = (DISCORD_NAME[0] || "?").toUpperCase();
+            avatarFallback.style.display = "grid";
+            avatarImg.style.display = "none";
+        }
+    }
+
+    function updateBackgroundPreview() {
+        if (backgroundInput.value) {
+            pageBg.style.backgroundImage = "url(" + backgroundInput.value + ")";
+            pageBg.style.display = "";
+            pageBgOverlay.style.display = "";
+        } else {
+            pageBg.style.display = "none";
+            pageBgOverlay.style.display = "none";
+        }
+    }
+
+    // ---- Social link manager (up to 10) ----
+    function updateSocialCount() {
+        var n = $("social-rows").children.length;
+        $("social-count").textContent = n + " / 10 links";
+        $("add-social-btn").disabled = n >= 10;
+        $("add-social-btn").style.opacity = n >= 10 ? ".5" : "1";
+    }
+
+    function collectSocials() {
+        var out = [];
+        Array.prototype.forEach.call($("social-rows").querySelectorAll("input"), function(inp) {
+            var v = inp.value.trim();
+            if (v) out.push(v);
+        });
+        return out.slice(0, 10);
+    }
+
+    function previewSocials() {
+        renderPreviewSocials(collectSocials());
+    }
+
+    function addSocialRow(value) {
+        var rows = $("social-rows");
+        if (rows.children.length >= 10) return;
+        var row = document.createElement("div");
+        row.style.cssText = "display:flex;gap:8px;align-items:center;";
+        var input = document.createElement("input");
+        input.type = "url";
+        input.maxLength = 500;
+        input.placeholder = "https://...";
+        input.value = value || "";
+        input.style.cssText = "flex:1;background:#1e1f24;border:1px solid rgba(255,255,255,.12);border-radius:10px;color:#fff;padding:10px 12px;font-family:inherit;";
+        var rm = document.createElement("button");
+        rm.type = "button";
+        rm.textContent = "×";
+        rm.title = "Remove this link";
+        rm.style.cssText = "width:36px;height:36px;flex-shrink:0;border:1px solid rgba(255,255,255,.2);background:transparent;color:#fff;border-radius:10px;cursor:pointer;font-size:1.1rem;";
+        rm.addEventListener("click", function() { row.remove(); updateSocialCount(); previewSocials(); updateCompletion(); });
+        input.addEventListener("input", function() { previewSocials(); updateCompletion(); });
+        row.appendChild(input);
+        row.appendChild(rm);
+        rows.appendChild(row);
+        updateSocialCount();
+    }
+
+    $("add-social-btn").addEventListener("click", function() {
+        addSocialRow("");
+        var inputs = $("social-rows").querySelectorAll("input");
+        if (inputs.length) inputs[inputs.length - 1].focus();
+    });
+
+    // ---- Help tooltips: hover shows them, click pins them (touch-friendly) ----
+    document.querySelectorAll(".help-btn").forEach(function(btn) {
+        btn.addEventListener("click", function(ev) {
+            ev.stopPropagation();
+            var tip = btn.parentElement;
+            var wasOpen = tip.classList.contains("open");
+            document.querySelectorAll(".help-tip.open").forEach(function(t) { t.classList.remove("open"); });
+            if (!wasOpen) tip.classList.add("open");
+        });
+    });
+    document.addEventListener("click", function() {
+        document.querySelectorAll(".help-tip.open").forEach(function(t) { t.classList.remove("open"); });
+    });
+
+    // ---- Live preview listeners ----
+    accentInput.addEventListener("input", function() { setAccent(accentInput.value); });
+    bannerInput.addEventListener("input", function() {
+        refreshBanner({banner: bannerInput.value, accent: accentInput.value});
+    });
+    bioInput.addEventListener("input", function() {
+        bioCount.textContent = bioInput.value.length;
+        bioDisplay.textContent = bioInput.value ? bioInput.value : "No bio yet.";
+    });
+    statusInput.addEventListener("input", function() {
+        if (statusInput.value) {
+            statusDisplay.textContent = "\u201C" + statusInput.value + "\u201D";
+            statusDisplay.style.display = "";
+        } else {
+            statusDisplay.style.display = "none";
+        }
+    });
+    $("display-name-input").addEventListener("input", function() {
+        nameEl.textContent = $("display-name-input").value || DISCORD_NAME;
+    });
+    $("pronouns-input").addEventListener("input", function() {
+        pronounsEl.textContent = $("pronouns-input").value ? "(" + $("pronouns-input").value + ")" : "";
+    });
+    $("tags-input").addEventListener("input", function() {
+        renderPreviewTags($("tags-input").value.split(",").map(function(t) { return t.trim(); }).filter(function(t) { return t; }));
+    });
+    avatarInput.addEventListener("input", updateAvatarPreview);
+    backgroundInput.addEventListener("input", updateBackgroundPreview);
+
+    // ---- Completion meter (reads live inputs) ----
+    function updateCompletion() {
+        var checks = [!!bioInput.value.trim(), !!statusInput.value.trim(),
+            !!$("pronouns-input").value.trim(), !!$("tags-input").value.trim(),
+            !!avatarInput.value.trim(),
+            !!(bannerInput.value.trim() || backgroundInput.value.trim()),
+            !!($("featured-badge-input").value || $("featured-stat-input").value),
+            collectSocials().length > 0];
+        var done = checks.filter(function(v) { return v; }).length;
+        $("completion-text").textContent = done + " / " + checks.length;
+        $("completion-bar").style.width = Math.round(done / checks.length * 100) + "%";
+        $("completion-box").style.display = "";
+    }
+    ["bio-input", "status-input", "pronouns-input", "tags-input", "avatar-input",
+     "banner-input", "background-input", "featured-badge-input", "featured-stat-input"].forEach(function(id) {
+        $(id).addEventListener("input", updateCompletion);
+        $(id).addEventListener("change", updateCompletion);
+    });
+    $("social-rows").addEventListener("input", updateCompletion);
+
+    function socialsToList(socials) {
+        if (Array.isArray(socials)) return socials;
+        if (socials && typeof socials === "object") {
+            return Object.keys(socials).map(function(k) { return socials[k]; }).filter(function(v) { return v; });
+        }
+        return [];
+    }
+
+    function fillForm(p) {
+        $("display-name-input").value = p.display_name || "";
+        $("pronouns-input").value = p.pronouns || "";
+        bioInput.value = p.bio || "";
+        bioCount.textContent = bioInput.value.length;
+        statusInput.value = p.status || "";
+        avatarInput.value = p.avatar_url || "";
+        bannerInput.value = p.banner || "";
+        backgroundInput.value = p.background_url || "";
+        $("tags-input").value = (p.tags || []).join(", ");
+        setAccent(p.accent || "#5865F2");
+        refreshBanner(p);
+
+        nameEl.textContent = p.display_name || DISCORD_NAME;
+        pronounsEl.textContent = p.pronouns ? "(" + p.pronouns + ")" : "";
+        bioDisplay.textContent = p.bio ? p.bio : "No bio yet.";
+        if (p.status) {
+            statusDisplay.textContent = "\u201C" + p.status + "\u201D";
+            statusDisplay.style.display = "";
+        } else {
+            statusDisplay.style.display = "none";
+        }
+        renderPreviewTags(p.tags || []);
+        updateAvatarPreview();
+        updateBackgroundPreview();
+
+        var list = socialsToList(p.socials);
+        $("social-rows").innerHTML = "";
+        if (list.length) {
+            list.slice(0, 10).forEach(addSocialRow);
+        } else {
+            addSocialRow("");
+        }
+        previewSocials();
+
+        publicToggle.checked = !!p.public;
+        pendingFeaturedBadge = p.featured_badge || "";
+        var opt = document.querySelector('#featured-badge-input option[value="' + pendingFeaturedBadge + '"]');
+        if (opt) $("featured-badge-input").value = pendingFeaturedBadge;
+        $("featured-stat-input").value = p.featured_stat || "";
+        updateCompletion();
+    }
+
+    fetch("/api/profile", {credentials: "same-origin"})
+        .then(function(r) { return r.ok ? r.json() : null; })
+        .then(function(data) {
+            if (data && data.profile) fillForm(data.profile);
+        })
+        .catch(function() {});
+
+    fetch("/api/profile/stats", {credentials: "same-origin"})
+        .then(function(r) { return r.ok ? r.json() : null; })
+        .then(function(data) {
+            if (!data) return;
+            var badges = data.badges || [];
+            var badgeSelect = $("featured-badge-input");
+            badges.filter(function(b) { return b.earned; }).forEach(function(b) {
+                var opt = document.createElement("option");
+                opt.value = b.key;
+                opt.textContent = b.name;
+                badgeSelect.appendChild(opt);
+            });
+            if (pendingFeaturedBadge) {
+                var opt = document.querySelector('#featured-badge-input option[value="' + pendingFeaturedBadge + '"]');
+                if (opt) $("featured-badge-input").value = pendingFeaturedBadge;
+            }
+        })
+        .catch(function() {});
+
+    saveBtn.addEventListener("click", function() {
+        saveStatus.textContent = "Saving...";
+        fetch("/api/csrf", {credentials: "same-origin"})
+            .then(function(r) { return r.json(); })
+            .then(function(csrf) {
+                var token = csrf.token || csrf.csrf_token || "";
+                return fetch("/api/profile", {
+                    method: "POST",
+                    credentials: "same-origin",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "X-CSRF-Token": token
+                    },
+                    body: JSON.stringify({
+                        display_name: $("display-name-input").value,
+                        pronouns: $("pronouns-input").value,
+                        bio: bioInput.value,
+                        status: statusInput.value,
+                        avatar_url: avatarInput.value,
+                        banner: bannerInput.value,
+                        background_url: backgroundInput.value,
+                        accent: accentInput.value,
+                        tags: $("tags-input").value,
+                        socials: collectSocials(),
+                        featured_badge: $("featured-badge-input").value,
+                        featured_stat: $("featured-stat-input").value,
+                        public: publicToggle.checked
+                    })
+                });
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data && data.success) {
+                    fillForm(data.profile);
+                    saveStatus.textContent = "Saved!";
+                    var oldLabel = saveBtn.textContent;
+                    saveBtn.textContent = "Saved!";
+                    setTimeout(function() { saveBtn.textContent = oldLabel; }, 1500);
+                } else {
+                    saveStatus.textContent = (data && data.error) || "Could not save.";
+                }
+                setTimeout(function() { saveStatus.textContent = ""; }, 3000);
+            })
+            .catch(function() {
+                saveStatus.textContent = "Could not save.";
+            });
+    });
+})();
+</script>
+{% endblock %}
