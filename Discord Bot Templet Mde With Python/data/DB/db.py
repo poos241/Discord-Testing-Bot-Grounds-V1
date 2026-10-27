@@ -23,6 +23,12 @@ metadata.create_all(engine)
 _PROFILE_COLUMNS = {
     "show_roles": "BOOLEAN DEFAULT 0",
     "roles_guild_id": "VARCHAR DEFAULT ''",
+    "roles_position": "VARCHAR DEFAULT 'bottom'",
+    "timezone": "VARCHAR DEFAULT ''",
+    "location": "VARCHAR DEFAULT ''",
+    "country": "VARCHAR DEFAULT ''",
+    "show_local_info": "BOOLEAN DEFAULT 0",
+    "dm_status": "VARCHAR DEFAULT ''",
 }
 
 try:
