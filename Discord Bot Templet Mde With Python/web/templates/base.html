@@ -208,6 +208,98 @@
 
             {% set user = session.get("user") %}
 
+            <div style="position:relative;">
+                <button id="navbar-bell-btn" type="button" title="Notifications"
+                    style="position:relative;width:40px;height:40px;border-radius:50%;
+                    border:1px solid rgba(255,255,255,.2);background:transparent;
+                    color:#fff;font-size:1.1rem;cursor:pointer;line-height:1;">&#128276;<span id="navbar-bell-badge"
+                    style="display:none;position:absolute;top:-4px;right:-4px;min-width:18px;height:18px;
+                    border-radius:99px;background:#ED4245;color:#fff;font-size:.7rem;font-weight:800;
+                    place-items:center;padding:0 4px;"></span></button>
+                <div id="navbar-bell-panel" style="display:none;position:fixed;top:64px;right:16px;
+                    width:340px;max-width:90vw;max-height:60vh;overflow:auto;background:#1e1f24;
+                    border:1px solid rgba(255,255,255,.2);border-radius:12px;
+                    box-shadow:0 12px 32px rgba(0,0,0,.5);z-index:2000;padding:8px;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;">
+                        <b>Notifications</b>
+                        <button id="navbar-bell-read" type="button"
+                            style="border:none;background:transparent;color:#8ea2ff;cursor:pointer;font-size:.8rem;">Mark all read</button>
+                    </div>
+                    <div id="navbar-bell-list"></div>
+                </div>
+            </div>
+
+            <script>
+            (function() {
+                var btn = document.getElementById("navbar-bell-btn");
+                var panel = document.getElementById("navbar-bell-panel");
+                var list = document.getElementById("navbar-bell-list");
+                var badge = document.getElementById("navbar-bell-badge");
+                if (!btn) return;
+                function esc(s) {
+                    return String(s == null ? "" : s).replace(/[&<>"']/g, function(c) {
+                        return {"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c];
+                    });
+                }
+                function fmtTime(ts) {
+                    var d = new Date(ts * 1000);
+                    var diff = Date.now() - d.getTime();
+                    if (diff < 60000) return "just now";
+                    if (diff < 3600000) return Math.floor(diff / 60000) + "m ago";
+                    if (diff < 86400000) return Math.floor(diff / 3600000) + "h ago";
+                    if (diff < 604800000) return Math.floor(diff / 86400000) + "d ago";
+                    return d.toLocaleDateString();
+                }
+                function render(items) {
+                    if (!items.length) {
+                        list.innerHTML = '<div style="padding:12px;opacity:.6;font-size:.9rem;">No notifications yet.</div>';
+                        return;
+                    }
+                    list.innerHTML = items.map(function(n) {
+                        return '<div style="padding:10px 12px;border-top:1px solid rgba(255,255,255,.08);'
+                            + (n.unread ? 'background:rgba(88,101,242,.12);' : '') + '">'
+                            + '<div style="font-size:.9rem;">' + n.icon + ' ' + esc(n.title) + '</div>'
+                            + (n.text ? '<div style="font-size:.85rem;opacity:.7;margin-top:2px;">' + esc(n.text) + '</div>' : '')
+                            + '<div style="font-size:.75rem;opacity:.5;margin-top:4px;">'
+                            + (n.guild_name ? esc(n.guild_name) + " \u00B7 " : "") + fmtTime(n.ts) + '</div></div>';
+                    }).join("");
+                }
+                function load() {
+                    fetch("/api/notifications", {credentials: "same-origin"})
+                        .then(function(r) { return r.ok ? r.json() : null; })
+                        .then(function(data) {
+                            if (!data) return;
+                            render(data.notifications || []);
+                            var u = data.unread || 0;
+                            badge.textContent = u > 99 ? "99+" : String(u);
+                            badge.style.display = u ? "grid" : "none";
+                        })
+                        .catch(function() {});
+                }
+                btn.addEventListener("click", function(ev) {
+                    ev.stopPropagation();
+                    panel.style.display = (panel.style.display === "none" || !panel.style.display) ? "block" : "none";
+                });
+                document.addEventListener("click", function(ev) {
+                    if (!panel.contains(ev.target) && ev.target !== btn) panel.style.display = "none";
+                });
+                document.getElementById("navbar-bell-read").addEventListener("click", function() {
+                    fetch("/api/csrf", {credentials: "same-origin"})
+                        .then(function(r) { return r.json(); })
+                        .then(function(csrf) {
+                            return fetch("/api/notifications/read", {
+                                method: "POST",
+                                credentials: "same-origin",
+                                headers: {"X-CSRF-Token": csrf.token || csrf.csrf_token || ""}
+                            });
+                        })
+                        .then(function() { load(); })
+                        .catch(function() {});
+                });
+                load();
+            })();
+            </script>
+
             <a href="{{ url_for('profile') }}" class="user-pill" title="View profile">
 
                 {% if user.avatar %}
