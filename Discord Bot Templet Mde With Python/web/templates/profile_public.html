@@ -61,10 +61,16 @@
             <p id="public-status" style="opacity:.9;margin:12px 0 0;
                 font-style:italic;display:none;"></p>
             <p id="public-bio" style="opacity:.8;margin:12px 0 0;line-height:1.5;"></p>
+            <div id="public-local-info" style="display:none;opacity:.75;margin:12px 0 0;font-size:.9rem;"></div>
+            <div id="public-dm-status" style="display:none;opacity:.75;margin:12px 0 0;font-size:.9rem;"></div>
             <div id="public-tags" style="display:flex;gap:8px;
                 flex-wrap:wrap;margin-top:12px;"></div>
             <div id="public-socials" style="display:flex;gap:10px;
                 flex-wrap:wrap;margin-top:14px;"></div>
+            <div id="public-bio-roles" style="display:none;margin-top:14px;">
+                <div id="public-bio-roles-guild" style="font-size:.8rem;opacity:.6;margin-bottom:8px;"></div>
+                <div id="public-bio-roles-list" style="display:flex;gap:8px;flex-wrap:wrap;"></div>
+            </div>
             {% set viewer = session.get("user") %}
             {% if viewer and viewer.id|string == user_id %}
             <div style="margin-top:14px;">
@@ -191,6 +197,150 @@
         img.src = url;
     }
 
+    function countryFlag(code) {
+        if (!code || code.length !== 2) return "";
+        var a = code.charCodeAt(0), b = code.charCodeAt(1);
+        if (a < 65 || a > 90 || b < 65 || b > 90) return "";
+        return String.fromCodePoint(a + 127397, b + 127397);
+    }
+    function fmtLocalTime(tz) {
+        if (!tz) return "";
+        try {
+            return new Intl.DateTimeFormat([], {timeZone: tz, hour: "numeric", minute: "2-digit"}).format(new Date());
+        } catch (e) { return ""; }
+    }
+    var TIMEZONE_LABELS = {
+        "UTC": "UTC",
+        "America/New_York": "Eastern Time",
+        "America/Chicago": "Central Time",
+        "America/Denver": "Mountain Time",
+        "America/Los_Angeles": "Pacific Time",
+        "America/Anchorage": "Alaska Time",
+        "Pacific/Honolulu": "Hawaii Time",
+        "America/Toronto": "Toronto Time",
+        "America/Mexico_City": "Mexico City Time",
+        "America/Bogota": "Bogota Time",
+        "America/Sao_Paulo": "Sao Paulo Time",
+        "America/Santiago": "Santiago Time",
+        "Atlantic/Reykjavik": "Reykjavik Time",
+        "Europe/London": "London Time",
+        "Europe/Dublin": "Dublin Time",
+        "Europe/Paris": "Paris Time",
+        "Europe/Berlin": "Berlin Time",
+        "Europe/Madrid": "Madrid Time",
+        "Europe/Amsterdam": "Amsterdam Time",
+        "Europe/Stockholm": "Stockholm Time",
+        "Europe/Moscow": "Moscow Time",
+        "Europe/Istanbul": "Istanbul Time",
+        "Africa/Cairo": "Cairo Time",
+        "Africa/Lagos": "Lagos Time",
+        "Africa/Johannesburg": "Johannesburg Time",
+        "Asia/Dubai": "Dubai Time",
+        "Asia/Karachi": "Karachi Time",
+        "Asia/Kolkata": "Kolkata Time",
+        "Asia/Dhaka": "Dhaka Time",
+        "Asia/Bangkok": "Bangkok Time",
+        "Asia/Singapore": "Singapore Time",
+        "Asia/Shanghai": "Shanghai Time",
+        "Asia/Hong_Kong": "Hong Kong Time",
+        "Asia/Taipei": "Taipei Time",
+        "Asia/Tokyo": "Tokyo Time",
+        "Asia/Seoul": "Seoul Time",
+        "Australia/Sydney": "Sydney Time",
+        "Australia/Melbourne": "Melbourne Time",
+        "Australia/Perth": "Perth Time",
+        "Pacific/Auckland": "Auckland Time",
+        "Pacific/Fiji": "Fiji Time",
+    };
+    function tzLabel(tz) {
+        if (TIMEZONE_LABELS[tz]) return TIMEZONE_LABELS[tz];
+        if (!tz) return "";
+        var parts = tz.split("/");
+        var city = parts[parts.length - 1].replace(/_/g, " ");
+        return city + " Time";
+    }
+    function fmtZoneTime(tz) {
+        var t = fmtLocalTime(tz);
+        if (!t) return "";
+        var label = tzLabel(tz);
+        return label ? (t + " " + label) : t;
+    }
+
+    function renderPublicLocalInfo(p) {
+        var box = $("public-local-info");
+        if (!p.show_local_info || !(p.location || p.timezone || p.country)) {
+            box.style.display = "none";
+            return;
+        }
+        var t = fmtZoneTime(p.timezone);
+        box.innerHTML = "";
+        var first = true;
+        function add(node) {
+            if (!first) box.appendChild(document.createTextNode(" \u00B7 "));
+            box.appendChild(node);
+            first = false;
+        }
+        if (p.country) {
+            var f = document.createElement("span");
+            f.textContent = countryFlag(p.country);
+            add(f);
+        }
+        if (p.location) {
+            var pl = document.createElement("span");
+            pl.textContent = p.location;
+            add(pl);
+        }
+        if (t) {
+            var tm = document.createElement("span");
+            tm.setAttribute("data-local-time", p.timezone || "");
+            tm.textContent = t;
+            add(tm);
+        }
+        box.style.display = "";
+    }
+    function renderPublicDmStatus(p) {
+        var box = $("public-dm-status");
+        var map = {"open": ["#57F287", "DMs: Open"], "closed": ["#ED4245", "DMs: Closed"], "ask": ["#FEE75C", "DMs: Ask first"]};
+        if (!map[p.dm_status]) { box.style.display = "none"; return; }
+        box.innerHTML = "";
+        var dot = document.createElement("span");
+        dot.style.cssText = "display:inline-block;width:8px;height:8px;border-radius:50%;background:" + map[p.dm_status][0] + ";margin-right:6px;";
+        box.appendChild(dot);
+        box.appendChild(document.createTextNode(map[p.dm_status][1]));
+        box.style.display = "";
+    }
+    function roleChip(r) {
+        var c = r.color || "#888888";
+        return '<span style="display:inline-flex;align-items:center;gap:6px;border:1px solid ' + c + '55;border-radius:20px;padding:4px 12px;font-size:.85rem;">'
+            + '<span style="width:10px;height:10px;border-radius:50%;background:' + c + ';flex-shrink:0;"></span>' + esc(r.name) + "</span>";
+    }
+    function showPublicRoles(data, position) {
+        var bottom = $("public-roles"), bio = $("public-bio-roles");
+        if (!data || !data.roles || !data.roles.length) {
+            bottom.style.display = "none";
+            bio.style.display = "none";
+            return;
+        }
+        var html = data.roles.map(roleChip).join("");
+        var label = data.roles_guild_name ? ("Roles in " + data.roles_guild_name) : "Server roles";
+        if (position === "bio") {
+            $("public-bio-roles-guild").textContent = label;
+            $("public-bio-roles-list").innerHTML = html;
+            bio.style.display = "";
+            bottom.style.display = "none";
+        } else {
+            $("public-roles-guild-name").textContent = label;
+            $("public-roles-list").innerHTML = html;
+            bottom.style.display = "";
+            bio.style.display = "none";
+        }
+    }
+    setInterval(function() {
+        document.querySelectorAll("[data-local-time]").forEach(function(el) {
+            el.textContent = fmtZoneTime(el.getAttribute("data-local-time"));
+        });
+    }, 30000);
+
     fetch("/api/profile/public/" + encodeURIComponent(userId), {credentials: "same-origin"})
         .then(function(r) { return r.ok ? r.json() : null; })
         .then(function(data) {
@@ -216,15 +366,7 @@
             $("public-progress-bar").style.background = p.accent;
 
             showPublicBackground(p.background_url);
-            if (data.roles && data.roles.length) {
-                $("public-roles").style.display = "";
-                $("public-roles-guild-name").textContent = data.roles_guild_name ? ("Roles in " + data.roles_guild_name) : "Server roles";
-                $("public-roles-list").innerHTML = data.roles.map(function(r) {
-                    var c = r.color || "#888888";
-                    return '<span style="display:inline-flex;align-items:center;gap:6px;border:1px solid ' + c + '55;border-radius:20px;padding:4px 12px;font-size:.85rem;">'
-                        + '<span style="width:10px;height:10px;border-radius:50%;background:' + c + ';flex-shrink:0;"></span>' + esc(r.name) + "</span>";
-                }).join("");
-            }
+            showPublicRoles(data, p.roles_position);
 
             var name = p.display_name || u.display_name || ("User " + userId);
             $("public-name").textContent = name;
@@ -249,6 +391,8 @@
                 st.style.display = "";
             }
             $("public-bio").textContent = p.bio || "No bio yet.";
+            renderPublicLocalInfo(p);
+            renderPublicDmStatus(p);
 
             $("public-tags").innerHTML = (p.tags || []).map(function(tag) {
                 return '<span style="font-size:.8rem;background:rgba(255,255,255,.08);'
