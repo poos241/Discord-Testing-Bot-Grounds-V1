@@ -4,7 +4,7 @@
 
 {% block body %}
 <!-- Custom profile background (fixed, behind everything) -->
-<div id="public-page-bg" style="display:none;position:fixed;inset:0;z-index:-1;
+<div id="public-page-bg" style="display:none;position:fixed;inset:0;z-index:-1;transform:translateZ(0);-webkit-transform:translateZ(0);
     background-size:cover;background-position:center;"></div>
 <div id="public-page-bg-overlay" style="display:none;position:fixed;inset:0;z-index:-1;
     background:radial-gradient(ellipse at center, rgba(0,0,0,.2) 0%, rgba(0,0,0,.68) 100%), linear-gradient(rgba(0,0,0,.3), rgba(0,0,0,.72));"></div>
@@ -17,6 +17,7 @@
 #public-featured { grid-column: 2; grid-row: 2; }
 #public-activity { grid-column: 1; grid-row: 3; }
 #public-badges { grid-column: 2; grid-row: 3; }
+#public-roles { grid-column: 1; grid-row: 4; }
 @media (max-width: 800px) {
   #public-layout { grid-template-columns: 1fr; }
   #public-card { grid-column: 1; grid-row: 1; }
@@ -24,11 +25,12 @@
   #public-activity { grid-column: 1; grid-row: 3; }
   #public-featured { grid-column: 1; grid-row: 4; }
   #public-badges { grid-column: 1; grid-row: 5; }
+  #public-roles { grid-column: 1; grid-row: 6; }
 }
 
 /* Steam-style translucent panels + gradient section header bars */
-#public-card, #public-stats, #public-badges, #public-activity, #public-featured { background: rgba(13,17,28,.85) !important; backdrop-filter: blur(8px); border-color: rgba(255,255,255,.12) !important; }
-#public-stats > h3, #public-badges > h3, #public-activity > h3, #public-featured > h3 { background: linear-gradient(90deg, rgba(42,71,94,.95), rgba(42,71,94,0)); margin: -24px -32px 16px !important; padding: 12px 32px !important; border-radius: 12px 12px 0 0; }
+#public-card, #public-stats, #public-badges, #public-activity, #public-featured, #public-roles { background: rgba(13,17,28,.85) !important; backdrop-filter: blur(8px); border-color: rgba(255,255,255,.12) !important; }
+#public-stats > h3, #public-badges > h3, #public-activity > h3, #public-featured > h3, #public-roles > h3 { background: linear-gradient(90deg, rgba(42,71,94,.95), rgba(42,71,94,0)); margin: -24px -32px 16px !important; padding: 12px 32px !important; border-radius: 12px 12px 0 0; }
 #public-card h2 { font-size: 2rem; }
 #public-avatar, #public-avatar-fallback { width:112px !important; height:112px !important; }
 .stat-cell, .activity-row, .badge-item { transition: transform .15s ease, border-color .15s ease; }
@@ -70,7 +72,7 @@
             </div>
             {% endif %}
             </div>
-            <div style="text-align:center;flex-shrink:0;padding-top:8px;">
+            <div style="text-align:center;flex-shrink:0;padding-top:56px;">
                 <div style="position:relative;width:96px;height:96px;margin:0 auto;">
                     <svg width="96" height="96" viewBox="0 0 96 96">
                         <circle cx="48" cy="48" r="42" fill="none" stroke="rgba(255,255,255,.12)" stroke-width="5"/>
@@ -126,6 +128,14 @@
         <div id="public-activity-list" style="display:grid;gap:10px;"></div>
     </div>
 
+    <div id="public-roles" style="display:none;background:rgba(255,255,255,.03);
+        border:1px solid rgba(255,255,255,.08);border-radius:16px;
+        padding:24px 32px;">
+        <h3 style="margin:0 0 16px;">Server roles</h3>
+        <div id="public-roles-guild-name" style="font-size:.85rem;opacity:.6;margin-bottom:10px;"></div>
+        <div id="public-roles-list" style="display:flex;gap:8px;flex-wrap:wrap;"></div>
+    </div>
+
     <div id="public-error" style="display:none;text-align:center;padding:64px 24px;">
         <div style="font-size:3rem;">🔒</div>
         <h2>This profile isn't public</h2>
@@ -161,6 +171,26 @@
         return a.kind;
     }
 
+    function showPublicBackground(url) {
+        if (!url) {
+            $("public-page-bg").style.display = "none";
+            $("public-page-bg-overlay").style.display = "none";
+            return;
+        }
+        var img = new Image();
+        img.onload = function() {
+            $("public-page-bg").style.backgroundImage = "url(" + url + ")";
+            $("public-page-bg").style.display = "";
+            $("public-page-bg-overlay").style.display = "";
+        };
+        img.onerror = function() {
+            $("public-page-bg").style.display = "none";
+            $("public-page-bg-overlay").style.display = "none";
+            if (window.console) console.warn("[Profile] Background image failed to load: " + url);
+        };
+        img.src = url;
+    }
+
     fetch("/api/profile/public/" + encodeURIComponent(userId), {credentials: "same-origin"})
         .then(function(r) { return r.ok ? r.json() : null; })
         .then(function(data) {
@@ -185,10 +215,15 @@
             $("public-level-ring").style.stroke = p.accent;
             $("public-progress-bar").style.background = p.accent;
 
-            if (p.background_url) {
-                $("public-page-bg").style.backgroundImage = "url(" + p.background_url + ")";
-                $("public-page-bg").style.display = "";
-                $("public-page-bg-overlay").style.display = "";
+            showPublicBackground(p.background_url);
+            if (data.roles && data.roles.length) {
+                $("public-roles").style.display = "";
+                $("public-roles-guild-name").textContent = data.roles_guild_name ? ("Roles in " + data.roles_guild_name) : "Server roles";
+                $("public-roles-list").innerHTML = data.roles.map(function(r) {
+                    var c = r.color || "#888888";
+                    return '<span style="display:inline-flex;align-items:center;gap:6px;border:1px solid ' + c + '55;border-radius:20px;padding:4px 12px;font-size:.85rem;">'
+                        + '<span style="width:10px;height:10px;border-radius:50%;background:' + c + ';flex-shrink:0;"></span>' + esc(r.name) + "</span>";
+                }).join("");
             }
 
             var name = p.display_name || u.display_name || ("User " + userId);

@@ -4,7 +4,7 @@
 
 {% block body %}
 <!-- Custom profile background preview (fixed, behind everything) -->
-<div id="page-bg" style="display:none;position:fixed;inset:0;z-index:-1;
+<div id="page-bg" style="display:none;position:fixed;inset:0;z-index:-1;transform:translateZ(0);-webkit-transform:translateZ(0);
     background-size:cover;background-position:center;"></div>
 <div id="page-bg-overlay" style="display:none;position:fixed;inset:0;z-index:-1;
     background:radial-gradient(ellipse at center, rgba(0,0,0,.2) 0%, rgba(0,0,0,.68) 100%), linear-gradient(rgba(0,0,0,.3), rgba(0,0,0,.72));"></div>
@@ -129,12 +129,20 @@
 
         <label style="display:flex;align-items:center;gap:6px;font-size:.85rem;color:rgba(255,255,255,.75);margin:16px 0 6px;"
             for="background-input">Profile background URL
-            <span class="help-tip"><button type="button" class="help-btn" aria-label="Help for background">?</button><span class="help-text">A picture that fills the whole page behind your profile. Pick one that is not too busy, so your words stay easy to read.</span></span></label>
+            <span class="help-tip"><button type="button" class="help-btn" aria-label="Help for background">?</button><span class="help-text">A picture that fills the whole page behind your profile. Pick one that is not too busy, so your words stay easy to read. You can paste a link below, or press Upload image to pick a picture from your own computer instead.</span></span></label>
         <input id="background-input" type="url" maxlength="500"
             placeholder="https://... (a background image behind your whole profile)"
             style="width:100%;box-sizing:border-box;background:#1e1f24;
             border:1px solid rgba(255,255,255,.12);border-radius:10px;
             color:#fff;padding:12px;font-family:inherit;">
+        <div style="display:flex;gap:10px;align-items:center;margin-top:10px;flex-wrap:wrap;">
+            <button id="upload-bg-btn" type="button"
+                style="border:1px solid rgba(255,255,255,.25);background:transparent;color:#fff;
+                border-radius:99px;padding:6px 16px;cursor:pointer;font-size:.85rem;font-weight:700;">Upload image</button>
+            <span style="font-size:.85rem;opacity:.6;">Max 5 MB (PNG, JPG, GIF, WebP). Uploaded pictures live on the bot PC and never expire.</span>
+            <span id="upload-status" style="font-size:.85rem;"></span>
+        </div>
+        <input id="upload-bg-input" type="file" accept="image/png,image/jpeg,image/gif,image/webp" style="display:none;">
 
         <label style="display:flex;align-items:center;gap:6px;font-size:.85rem;color:rgba(255,255,255,.75);margin:16px 0 6px;">Accent color
             <span class="help-tip"><button type="button" class="help-btn" aria-label="Help for accent color">?</button><span class="help-text">Your own color. It tints your level ring, your progress bars, and the bars above each section on your profile.</span></span></label>
@@ -191,6 +199,23 @@
 
         <label style="display:flex;gap:10px;align-items:center;margin-top:20px;
             cursor:pointer;">
+            <input id="show-roles-toggle" type="checkbox" style="width:18px;height:18px;">
+            <span>Show my server roles on my profile</span>
+            <span class="help-tip"><button type="button" class="help-btn" aria-label="Help for server roles">?</button><span class="help-text">Turn this on to show the roles you have in one server you pick below. Roles show in their Discord colors. Only the server you pick is shown, never your full server list.</span></span>
+        </label>
+
+        <label style="display:flex;align-items:center;gap:6px;font-size:.85rem;color:rgba(255,255,255,.75);margin:16px 0 6px;"
+            for="roles-guild-input">Server to show roles from
+            <span class="help-tip"><button type="button" class="help-btn" aria-label="Help for roles server">?</button><span class="help-text">Pick which server your roles come from. You need to be a member of it, and the bot needs to be in it too.</span></span></label>
+        <select id="roles-guild-input"
+            style="width:100%;box-sizing:border-box;background:#1e1f24;
+            border:1px solid rgba(255,255,255,.12);border-radius:10px;
+            color:#fff;padding:12px;font-family:inherit;">
+            <option value="">Pick a server...</option>
+        </select>
+
+        <label style="display:flex;gap:10px;align-items:center;margin-top:20px;
+            cursor:pointer;">
             <input id="public-toggle" type="checkbox" style="width:18px;height:18px;">
             <span>Make my profile public (shareable link, no server list)</span>
             <span class="help-tip"><button type="button" class="help-btn" aria-label="Help for public profile">?</button><span class="help-text">Turn this on and anyone with your profile link can see it, even if they are not logged in. Your server list is never shown on public profiles.</span></span>
@@ -237,6 +262,7 @@
     var nameEl = $("edit-preview-name"), pronounsEl = $("edit-preview-pronouns");
     var pageBg = $("page-bg"), pageBgOverlay = $("page-bg-overlay");
     var pendingFeaturedBadge = "";
+    var pendingRolesGuild = "";
 
     var swWrap = $("accent-swatches");
     ACCENTS.forEach(function(c) {
@@ -315,15 +341,28 @@
         }
     }
 
+    var bgTimer = null;
     function updateBackgroundPreview() {
-        if (backgroundInput.value) {
-            pageBg.style.backgroundImage = "url(" + backgroundInput.value + ")";
-            pageBg.style.display = "";
-            pageBgOverlay.style.display = "";
-        } else {
-            pageBg.style.display = "none";
-            pageBgOverlay.style.display = "none";
-        }
+        if (bgTimer) clearTimeout(bgTimer);
+        bgTimer = setTimeout(function() {
+            var url = backgroundInput.value;
+            if (!url) {
+                pageBg.style.display = "none";
+                pageBgOverlay.style.display = "none";
+                return;
+            }
+            var img = new Image();
+            img.onload = function() {
+                pageBg.style.backgroundImage = "url(" + url + ")";
+                pageBg.style.display = "";
+                pageBgOverlay.style.display = "";
+            };
+            img.onerror = function() {
+                pageBg.style.display = "none";
+                pageBgOverlay.style.display = "none";
+            };
+            img.src = url;
+        }, 300);
     }
 
     // ---- Social link manager (up to 10) ----
@@ -370,6 +409,53 @@
         rows.appendChild(row);
         updateSocialCount();
     }
+
+    // ---- Background image upload (max 5 MB) ----
+    $("upload-bg-btn").addEventListener("click", function() { $("upload-bg-input").click(); });
+    $("upload-bg-input").addEventListener("change", function() {
+        var file = $("upload-bg-input").files[0];
+        if (!file) return;
+        var status = $("upload-status");
+        if (file.size > 5 * 1024 * 1024) {
+            status.textContent = "That image is too big. Max size is 5 MB.";
+            $("upload-bg-input").value = "";
+            return;
+        }
+        if (!file.type.match(/^image\/(png|jpeg|gif|webp)$/)) {
+            status.textContent = "That file type is not allowed. Use PNG, JPG, GIF, or WebP.";
+            $("upload-bg-input").value = "";
+            return;
+        }
+        status.textContent = "Uploading...";
+        fetch("/api/csrf", {credentials: "same-origin"})
+            .then(function(r) { return r.json(); })
+            .then(function(csrf) {
+                var form = new FormData();
+                form.append("file", file);
+                return fetch("/api/profile/background-upload", {
+                    method: "POST",
+                    credentials: "same-origin",
+                    headers: {"X-CSRF-Token": csrf.token || csrf.csrf_token || ""},
+                    body: form
+                });
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data && data.success) {
+                    backgroundInput.value = data.url;
+                    updateBackgroundPreview();
+                    updateCompletion();
+                    status.textContent = "Uploaded!";
+                } else {
+                    status.textContent = (data && data.error) || "Could not upload.";
+                }
+                $("upload-bg-input").value = "";
+            })
+            .catch(function() {
+                status.textContent = "Could not upload.";
+                $("upload-bg-input").value = "";
+            });
+    });
 
     $("add-social-btn").addEventListener("click", function() {
         addSocialRow("");
@@ -484,6 +570,10 @@
         previewSocials();
 
         publicToggle.checked = !!p.public;
+        $("show-roles-toggle").checked = !!p.show_roles;
+        pendingRolesGuild = p.roles_guild_id || "";
+        var ropt = document.querySelector('#roles-guild-input option[value="' + pendingRolesGuild + '"]');
+        if (ropt) $("roles-guild-input").value = pendingRolesGuild;
         pendingFeaturedBadge = p.featured_badge || "";
         var opt = document.querySelector('#featured-badge-input option[value="' + pendingFeaturedBadge + '"]');
         if (opt) $("featured-badge-input").value = pendingFeaturedBadge;
@@ -495,6 +585,24 @@
         .then(function(r) { return r.ok ? r.json() : null; })
         .then(function(data) {
             if (data && data.profile) fillForm(data.profile);
+        })
+        .catch(function() {});
+
+    fetch("/api/servers", {credentials: "same-origin"})
+        .then(function(r) { return r.ok ? r.json() : null; })
+        .then(function(data) {
+            var servers = (data && data.servers) || [];
+            var sel = $("roles-guild-input");
+            servers.forEach(function(s) {
+                var opt = document.createElement("option");
+                opt.value = s.id;
+                opt.textContent = s.name;
+                sel.appendChild(opt);
+            });
+            if (pendingRolesGuild) {
+                var opt = document.querySelector('#roles-guild-input option[value="' + pendingRolesGuild + '"]');
+                if (opt) $("roles-guild-input").value = pendingRolesGuild;
+            }
         })
         .catch(function() {});
 
@@ -543,6 +651,8 @@
                         socials: collectSocials(),
                         featured_badge: $("featured-badge-input").value,
                         featured_stat: $("featured-stat-input").value,
+                        show_roles: $("show-roles-toggle").checked,
+                        roles_guild_id: $("roles-guild-input").value,
                         public: publicToggle.checked
                     })
                 });
