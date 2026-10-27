@@ -1,6 +1,6 @@
 {
     "557680433245061130": {
-        "rounds": 23,
+        "rounds": 24,
         "users": {
             "287282266261159937": {
                 "majority": 11,
@@ -11,13 +11,6 @@
             }
         },
         "history": [
-            {
-                "food": "Extra crispy chicken wings",
-                "verdict": "eat",
-                "eats": 1,
-                "yeets": 0,
-                "ended_at": 1791675072.536318
-            },
             {
                 "food": "Ratatouille",
                 "verdict": "yeet",
@@ -80,6 +73,13 @@
                 "eats": 1,
                 "yeets": 0,
                 "ended_at": 1793096725.3462799
+            },
+            {
+                "food": "Lasagna Sandwiches",
+                "verdict": "none",
+                "eats": 0,
+                "yeets": 0,
+                "ended_at": 1793100345.4897773
             }
         ]
     }
