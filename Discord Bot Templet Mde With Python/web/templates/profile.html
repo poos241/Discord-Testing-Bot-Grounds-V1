@@ -73,10 +73,16 @@
             <p id="profile-bio-display" style="opacity:.8;margin:12px 0 0;line-height:1.5;">
                 No bio yet.
             </p>
+            <div id="profile-local-info" style="display:none;opacity:.75;margin:12px 0 0;font-size:.9rem;"></div>
+            <div id="profile-dm-status" style="display:none;opacity:.75;margin:12px 0 0;font-size:.9rem;"></div>
             <div id="profile-tags-display" style="display:flex;gap:8px;
                 flex-wrap:wrap;margin-top:12px;"></div>
             <div id="profile-socials-display" style="display:flex;gap:10px;
                 flex-wrap:wrap;margin-top:14px;"></div>
+            <div id="bio-roles" style="display:none;margin-top:14px;">
+                <div id="bio-roles-guild" style="font-size:.8rem;opacity:.6;margin-bottom:8px;"></div>
+                <div id="bio-roles-list" style="display:flex;gap:8px;flex-wrap:wrap;"></div>
+            </div>
             <div id="profile-public-link" style="margin-top:14px;display:none;">
                 <span style="font-size:.85rem;opacity:.6;">Public profile: </span>
                 <a id="profile-public-url" href="#" target="_blank" rel="noopener"
@@ -287,6 +293,150 @@
         img.src = url;
     }
 
+    function countryFlag(code) {
+        if (!code || code.length !== 2) return "";
+        var a = code.charCodeAt(0), b = code.charCodeAt(1);
+        if (a < 65 || a > 90 || b < 65 || b > 90) return "";
+        return String.fromCodePoint(a + 127397, b + 127397);
+    }
+    function fmtLocalTime(tz) {
+        if (!tz) return "";
+        try {
+            return new Intl.DateTimeFormat([], {timeZone: tz, hour: "numeric", minute: "2-digit"}).format(new Date());
+        } catch (e) { return ""; }
+    }
+    var TIMEZONE_LABELS = {
+        "UTC": "UTC",
+        "America/New_York": "Eastern Time",
+        "America/Chicago": "Central Time",
+        "America/Denver": "Mountain Time",
+        "America/Los_Angeles": "Pacific Time",
+        "America/Anchorage": "Alaska Time",
+        "Pacific/Honolulu": "Hawaii Time",
+        "America/Toronto": "Toronto Time",
+        "America/Mexico_City": "Mexico City Time",
+        "America/Bogota": "Bogota Time",
+        "America/Sao_Paulo": "Sao Paulo Time",
+        "America/Santiago": "Santiago Time",
+        "Atlantic/Reykjavik": "Reykjavik Time",
+        "Europe/London": "London Time",
+        "Europe/Dublin": "Dublin Time",
+        "Europe/Paris": "Paris Time",
+        "Europe/Berlin": "Berlin Time",
+        "Europe/Madrid": "Madrid Time",
+        "Europe/Amsterdam": "Amsterdam Time",
+        "Europe/Stockholm": "Stockholm Time",
+        "Europe/Moscow": "Moscow Time",
+        "Europe/Istanbul": "Istanbul Time",
+        "Africa/Cairo": "Cairo Time",
+        "Africa/Lagos": "Lagos Time",
+        "Africa/Johannesburg": "Johannesburg Time",
+        "Asia/Dubai": "Dubai Time",
+        "Asia/Karachi": "Karachi Time",
+        "Asia/Kolkata": "Kolkata Time",
+        "Asia/Dhaka": "Dhaka Time",
+        "Asia/Bangkok": "Bangkok Time",
+        "Asia/Singapore": "Singapore Time",
+        "Asia/Shanghai": "Shanghai Time",
+        "Asia/Hong_Kong": "Hong Kong Time",
+        "Asia/Taipei": "Taipei Time",
+        "Asia/Tokyo": "Tokyo Time",
+        "Asia/Seoul": "Seoul Time",
+        "Australia/Sydney": "Sydney Time",
+        "Australia/Melbourne": "Melbourne Time",
+        "Australia/Perth": "Perth Time",
+        "Pacific/Auckland": "Auckland Time",
+        "Pacific/Fiji": "Fiji Time",
+    };
+    function tzLabel(tz) {
+        if (TIMEZONE_LABELS[tz]) return TIMEZONE_LABELS[tz];
+        if (!tz) return "";
+        var parts = tz.split("/");
+        var city = parts[parts.length - 1].replace(/_/g, " ");
+        return city + " Time";
+    }
+    function fmtZoneTime(tz) {
+        var t = fmtLocalTime(tz);
+        if (!t) return "";
+        var label = tzLabel(tz);
+        return label ? (t + " " + label) : t;
+    }
+
+    function renderLocalInfo(p) {
+        var box = $("profile-local-info");
+        if (!p.show_local_info || !(p.location || p.timezone || p.country)) {
+            box.style.display = "none";
+            return;
+        }
+        var t = fmtZoneTime(p.timezone);
+        box.innerHTML = "";
+        var first = true;
+        function add(node) {
+            if (!first) box.appendChild(document.createTextNode(" \u00B7 "));
+            box.appendChild(node);
+            first = false;
+        }
+        if (p.country) {
+            var f = document.createElement("span");
+            f.textContent = countryFlag(p.country);
+            add(f);
+        }
+        if (p.location) {
+            var pl = document.createElement("span");
+            pl.textContent = p.location;
+            add(pl);
+        }
+        if (t) {
+            var tm = document.createElement("span");
+            tm.setAttribute("data-local-time", p.timezone || "");
+            tm.textContent = t;
+            add(tm);
+        }
+        box.style.display = "";
+    }
+    function renderDmStatus(p) {
+        var box = $("profile-dm-status");
+        var map = {"open": ["#57F287", "DMs: Open"], "closed": ["#ED4245", "DMs: Closed"], "ask": ["#FEE75C", "DMs: Ask first"]};
+        if (!map[p.dm_status]) { box.style.display = "none"; return; }
+        box.innerHTML = "";
+        var dot = document.createElement("span");
+        dot.style.cssText = "display:inline-block;width:8px;height:8px;border-radius:50%;background:" + map[p.dm_status][0] + ";margin-right:6px;";
+        box.appendChild(dot);
+        box.appendChild(document.createTextNode(map[p.dm_status][1]));
+        box.style.display = "";
+    }
+    function roleChip(r) {
+        var c = r.color || "#888888";
+        return '<span style="display:inline-flex;align-items:center;gap:6px;border:1px solid ' + c + '55;border-radius:20px;padding:4px 12px;font-size:.85rem;">'
+            + '<span style="width:10px;height:10px;border-radius:50%;background:' + c + ';flex-shrink:0;"></span>' + esc(r.name) + "</span>";
+    }
+    function showRoles(data, position) {
+        var bottom = $("roles-section"), bio = $("bio-roles");
+        if (!data || !data.roles || !data.roles.length) {
+            bottom.style.display = "none";
+            bio.style.display = "none";
+            return;
+        }
+        var html = data.roles.map(roleChip).join("");
+        var label = data.guild_name ? ("Roles in " + data.guild_name) : "Server roles";
+        if (position === "bio") {
+            $("bio-roles-guild").textContent = label;
+            $("bio-roles-list").innerHTML = html;
+            bio.style.display = "";
+            bottom.style.display = "none";
+        } else {
+            $("roles-guild-name").textContent = label;
+            $("roles-list").innerHTML = html;
+            bottom.style.display = "";
+            bio.style.display = "none";
+        }
+    }
+    setInterval(function() {
+        document.querySelectorAll("[data-local-time]").forEach(function(el) {
+            el.textContent = fmtZoneTime(el.getAttribute("data-local-time"));
+        });
+    }, 30000);
+
     function applyProfile(p) {
         setAccent(p.accent || "#5865F2");
         refreshBanner(p);
@@ -302,6 +452,8 @@
         }
         renderSocials(p.socials || []);
         renderTags(p.tags || []);
+        renderLocalInfo(p);
+        renderDmStatus(p);
 
         if (p.avatar_url || DISCORD_AVATAR) {
             avatarImg.src = p.avatar_url || DISCORD_AVATAR;
@@ -326,22 +478,10 @@
         if (p.show_roles && p.roles_guild_id) {
             fetch("/api/profile/roles?guild_id=" + encodeURIComponent(p.roles_guild_id), {credentials: "same-origin"})
                 .then(function(r) { return r.ok ? r.json() : null; })
-                .then(function(data) {
-                    if (!data || !data.roles || !data.roles.length) {
-                        $("roles-section").style.display = "none";
-                        return;
-                    }
-                    $("roles-guild-name").textContent = data.guild_name ? ("Roles in " + data.guild_name) : "Server roles";
-                    $("roles-list").innerHTML = data.roles.map(function(r) {
-                        var c = r.color || "#888888";
-                        return '<span style="display:inline-flex;align-items:center;gap:6px;border:1px solid ' + c + '55;border-radius:20px;padding:4px 12px;font-size:.85rem;">'
-                            + '<span style="width:10px;height:10px;border-radius:50%;background:' + c + ';flex-shrink:0;"></span>' + esc(r.name) + "</span>";
-                    }).join("");
-                    $("roles-section").style.display = "";
-                })
+                .then(function(data) { showRoles(data, p.roles_position); })
                 .catch(function() {});
         } else {
-            $("roles-section").style.display = "none";
+            showRoles(null, p.roles_position);
         }
     }
 
