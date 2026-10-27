@@ -1,23 +1,16 @@
 {
     "557680433245061130": {
-        "rounds": 22,
+        "rounds": 23,
         "users": {
             "287282266261159937": {
-                "majority": 10,
-                "played": 10,
-                "points": 18,
-                "streak": 9,
-                "best_streak": 9
+                "majority": 11,
+                "played": 11,
+                "points": 20,
+                "streak": 10,
+                "best_streak": 10
             }
         },
         "history": [
-            {
-                "food": "Cambodian Waffles (Num Poum)",
-                "verdict": "eat",
-                "eats": 1,
-                "yeets": 0,
-                "ended_at": 1791675012.5097842
-            },
             {
                 "food": "Extra crispy chicken wings",
                 "verdict": "eat",
@@ -80,6 +73,13 @@
                 "eats": 0,
                 "yeets": 0,
                 "ended_at": 1792671311.7549055
+            },
+            {
+                "food": "Cacik",
+                "verdict": "eat",
+                "eats": 1,
+                "yeets": 0,
+                "ended_at": 1793096725.3462799
             }
         ]
     }
