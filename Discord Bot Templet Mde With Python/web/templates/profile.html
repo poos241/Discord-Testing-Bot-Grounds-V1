@@ -4,7 +4,7 @@
 
 {% block body %}
 <!-- Custom profile background (fixed, behind everything) -->
-<div id="page-bg" style="display:none;position:fixed;inset:0;z-index:-1;
+<div id="page-bg" style="display:none;position:fixed;inset:0;z-index:-1;transform:translateZ(0);-webkit-transform:translateZ(0);
     background-size:cover;background-position:center;"></div>
 <div id="page-bg-overlay" style="display:none;position:fixed;inset:0;z-index:-1;
     background:radial-gradient(ellipse at center, rgba(0,0,0,.2) 0%, rgba(0,0,0,.68) 100%), linear-gradient(rgba(0,0,0,.3), rgba(0,0,0,.72));"></div>
@@ -18,6 +18,7 @@
 #activity-section { grid-column: 1; grid-row: 3; }
 #badges-section { grid-column: 2; grid-row: 3; }
 #servers-section { grid-column: 2; grid-row: 4; }
+#roles-section { grid-column: 1; grid-row: 4; }
 @media (max-width: 800px) {
   #profile-layout { grid-template-columns: 1fr; }
   #profile-card { grid-column: 1; grid-row: 1; }
@@ -26,12 +27,13 @@
   #featured-box { grid-column: 1; grid-row: 4; }
   #badges-section { grid-column: 1; grid-row: 5; }
   #servers-section { grid-column: 1; grid-row: 6; }
+  #roles-section { grid-column: 1; grid-row: 7; }
   }
 
 /* Steam-style translucent panels + gradient section header bars */
-#profile-card, #stats-section, #badges-section, #activity-section { background: rgba(13,17,28,.85) !important; backdrop-filter: blur(8px); border-color: rgba(255,255,255,.12) !important; }
+#profile-card, #stats-section, #badges-section, #activity-section, #roles-section { background: rgba(13,17,28,.85) !important; backdrop-filter: blur(8px); border-color: rgba(255,255,255,.12) !important; }
 #servers-section { background: rgba(13,17,28,.85); backdrop-filter: blur(8px); border:1px solid rgba(255,255,255,.12); border-radius:12px; padding:24px; }
-#stats-section > h3, #badges-section > h3, #activity-section > h3, #featured-box > h3 { background: linear-gradient(90deg, rgba(42,71,94,.95), rgba(42,71,94,0)); margin: -24px -32px 16px !important; padding: 12px 32px !important; border-radius: 12px 12px 0 0; }
+#stats-section > h3, #badges-section > h3, #activity-section > h3, #featured-box > h3, #roles-section > h3 { background: linear-gradient(90deg, rgba(42,71,94,.95), rgba(42,71,94,0)); margin: -24px -32px 16px !important; padding: 12px 32px !important; border-radius: 12px 12px 0 0; }
 #servers-section > h3 { background: linear-gradient(90deg, rgba(42,71,94,.95), rgba(42,71,94,0)); margin: -24px -24px 16px !important; padding: 12px 24px !important; border-radius: 12px 12px 0 0; }
 #profile-card h2 { font-size: 2rem; }
 #profile-avatar-img, #profile-avatar-fallback { width:112px !important; height:112px !important; }
@@ -85,7 +87,7 @@
                 <a href="/profile/edit" style="display:inline-block;border:1px solid rgba(255,255,255,.25);border-radius:99px;padding:6px 16px;color:#fff;text-decoration:none;font-size:.85rem;font-weight:700;">Edit profile</a>
             </div>
             </div>
-            <div style="text-align:center;flex-shrink:0;padding-top:8px;">
+            <div style="text-align:center;flex-shrink:0;padding-top:56px;">
                 <div id="header-level-wrap" style="position:relative;width:96px;height:96px;margin:0 auto;">
                     <svg width="96" height="96" viewBox="0 0 96 96">
                         <circle cx="48" cy="48" r="42" fill="none" stroke="rgba(255,255,255,.12)" stroke-width="5"/>
@@ -154,6 +156,14 @@
     </div>
 
 
+    <div id="roles-section" style="display:none;background:rgba(255,255,255,.03);
+        border:1px solid rgba(255,255,255,.08);border-radius:16px;
+        padding:24px 32px;">
+        <h3 style="margin:0 0 16px;">Server roles</h3>
+        <div id="roles-guild-name" style="font-size:.85rem;opacity:.6;margin-bottom:10px;"></div>
+        <div id="roles-list" style="display:flex;gap:8px;flex-wrap:wrap;"></div>
+    </div>
+
     <div id="servers-section" style="margin-top:20px;">
         <h3 style="margin:0 0 12px;padding:0 8px;">My servers</h3>
         <div id="server-list" style="display:grid;gap:12px;">
@@ -207,7 +217,7 @@
         $("progress-bar").style.background = c;
         avatarImg.style.boxShadow = "0 0 0 3px " + c + ", 0 0 24px rgba(0,0,0,.6)";
         avatarFallback.style.boxShadow = "0 0 0 3px " + c + ", 0 0 24px rgba(0,0,0,.6)";
-        document.querySelectorAll("#stats-section > h3, #badges-section > h3, #activity-section > h3, #featured-box > h3, #servers-section > h3").forEach(function(h) {
+        document.querySelectorAll("#stats-section > h3, #badges-section > h3, #activity-section > h3, #featured-box > h3, #servers-section > h3, #roles-section > h3").forEach(function(h) {
             h.style.background = "linear-gradient(90deg, " + hexA(c, .45) + ", " + hexA(c, 0) + ")";
         });
     }
@@ -257,6 +267,26 @@
         }).join("");
     }
 
+    function showBackground(url) {
+        if (!url) {
+            pageBg.style.display = "none";
+            pageBgOverlay.style.display = "none";
+            return;
+        }
+        var img = new Image();
+        img.onload = function() {
+            pageBg.style.backgroundImage = "url(" + url + ")";
+            pageBg.style.display = "";
+            pageBgOverlay.style.display = "";
+        };
+        img.onerror = function() {
+            pageBg.style.display = "none";
+            pageBgOverlay.style.display = "none";
+            if (window.console) console.warn("[Profile] Background image failed to load: " + url);
+        };
+        img.src = url;
+    }
+
     function applyProfile(p) {
         setAccent(p.accent || "#5865F2");
         refreshBanner(p);
@@ -283,14 +313,7 @@
             avatarImg.style.display = "none";
         }
 
-        if (p.background_url) {
-            pageBg.style.backgroundImage = "url(" + p.background_url + ")";
-            pageBg.style.display = "";
-            pageBgOverlay.style.display = "";
-        } else {
-            pageBg.style.display = "none";
-            pageBgOverlay.style.display = "none";
-        }
+        showBackground(p.background_url);
 
         var uid = "{{ user.id }}";
         if (p.public) {
@@ -299,6 +322,26 @@
             publicLinkBox.style.display = "";
         } else {
             publicLinkBox.style.display = "none";
+        }
+        if (p.show_roles && p.roles_guild_id) {
+            fetch("/api/profile/roles?guild_id=" + encodeURIComponent(p.roles_guild_id), {credentials: "same-origin"})
+                .then(function(r) { return r.ok ? r.json() : null; })
+                .then(function(data) {
+                    if (!data || !data.roles || !data.roles.length) {
+                        $("roles-section").style.display = "none";
+                        return;
+                    }
+                    $("roles-guild-name").textContent = data.guild_name ? ("Roles in " + data.guild_name) : "Server roles";
+                    $("roles-list").innerHTML = data.roles.map(function(r) {
+                        var c = r.color || "#888888";
+                        return '<span style="display:inline-flex;align-items:center;gap:6px;border:1px solid ' + c + '55;border-radius:20px;padding:4px 12px;font-size:.85rem;">'
+                            + '<span style="width:10px;height:10px;border-radius:50%;background:' + c + ';flex-shrink:0;"></span>' + esc(r.name) + "</span>";
+                    }).join("");
+                    $("roles-section").style.display = "";
+                })
+                .catch(function() {});
+        } else {
+            $("roles-section").style.display = "none";
         }
     }
 
