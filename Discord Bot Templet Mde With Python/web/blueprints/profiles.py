@@ -74,6 +74,110 @@ URL_RE = re.compile(r"^https?://\S+$")
 SOCIAL_FIELDS = ("twitch", "youtube", "twitter", "website")
 FEATURED_STATS = ("level", "xp", "played", "points", "daily_streak")
 
+# Timezones offered on the edit page (IANA names). The frontend
+# renders the viewer-facing local time from the stored name.
+TIMEZONES = (
+    "UTC",
+    "America/New_York",
+    "America/Chicago",
+    "America/Denver",
+    "America/Los_Angeles",
+    "America/Anchorage",
+    "Pacific/Honolulu",
+    "America/Toronto",
+    "America/Mexico_City",
+    "America/Bogota",
+    "America/Sao_Paulo",
+    "America/Santiago",
+    "Atlantic/Reykjavik",
+    "Europe/London",
+    "Europe/Dublin",
+    "Europe/Paris",
+    "Europe/Berlin",
+    "Europe/Madrid",
+    "Europe/Amsterdam",
+    "Europe/Stockholm",
+    "Europe/Moscow",
+    "Europe/Istanbul",
+    "Africa/Cairo",
+    "Africa/Lagos",
+    "Africa/Johannesburg",
+    "Asia/Dubai",
+    "Asia/Karachi",
+    "Asia/Kolkata",
+    "Asia/Dhaka",
+    "Asia/Bangkok",
+    "Asia/Singapore",
+    "Asia/Shanghai",
+    "Asia/Hong_Kong",
+    "Asia/Taipei",
+    "Asia/Tokyo",
+    "Asia/Seoul",
+    "Australia/Sydney",
+    "Australia/Melbourne",
+    "Australia/Perth",
+    "Pacific/Auckland",
+    "Pacific/Fiji",
+)
+TIMEZONE_SET = frozenset(TIMEZONES)
+
+# Country codes offered for the flag on the bio card. The stored
+# value is the 2-letter code; the frontend turns it into a flag.
+COUNTRIES = (
+    "US",
+    "CA",
+    "MX",
+    "BR",
+    "AR",
+    "CL",
+    "GB",
+    "IE",
+    "FR",
+    "DE",
+    "ES",
+    "PT",
+    "IT",
+    "NL",
+    "BE",
+    "CH",
+    "AT",
+    "SE",
+    "NO",
+    "DK",
+    "FI",
+    "PL",
+    "CZ",
+    "GR",
+    "TR",
+    "RU",
+    "UA",
+    "IL",
+    "ZA",
+    "EG",
+    "NG",
+    "KE",
+    "AE",
+    "SA",
+    "IN",
+    "PK",
+    "BD",
+    "TH",
+    "VN",
+    "MY",
+    "SG",
+    "ID",
+    "PH",
+    "CN",
+    "HK",
+    "TW",
+    "JP",
+    "KR",
+    "AU",
+    "NZ",
+    "FJ",
+)
+COUNTRY_SET = frozenset(COUNTRIES)
+
 DEFAULT_PROFILE = {
     "bio": "",
     "accent": "#5865F2",
@@ -90,6 +194,12 @@ DEFAULT_PROFILE = {
     "public": False,
     "show_roles": False,
     "roles_guild_id": "",
+    "roles_position": "bottom",
+    "timezone": "",
+    "location": "",
+    "country": "",
+    "show_local_info": False,
+    "dm_status": "",
 }
 
 
@@ -124,8 +234,20 @@ def _clean_profile(saved):
         "public": bool(saved.get("public", False)),
         "show_roles": bool(saved.get("show_roles", False)),
         "roles_guild_id": str(saved.get("roles_guild_id", ""))[:32],
+        "roles_position": "bio" if saved.get("roles_position") == "bio" else "bottom",
+        "timezone": str(saved.get("timezone", "")),
+        "location": str(saved.get("location", ""))[:120],
+        "country": str(saved.get("country", "")).upper()[:2],
+        "show_local_info": bool(saved.get("show_local_info", False)),
+        "dm_status": str(saved.get("dm_status", "")),
     }
 
+    if profile["timezone"] not in TIMEZONE_SET:
+        profile["timezone"] = ""
+    if profile["dm_status"] not in ("", "open", "closed", "ask"):
+        profile["dm_status"] = ""
+    if profile["country"] not in COUNTRY_SET:
+        profile["country"] = ""
     if not ACCENT_RE.match(str(profile["accent"])):
 
         profile["accent"] = DEFAULT_PROFILE["accent"]
@@ -805,6 +927,12 @@ def save_profile():
         "public": body.get("public", False),
         "show_roles": body.get("show_roles", False),
         "roles_guild_id": body.get("roles_guild_id", ""),
+        "roles_position": body.get("roles_position", "bottom"),
+        "timezone": body.get("timezone", ""),
+        "location": body.get("location", ""),
+        "country": body.get("country", ""),
+        "show_local_info": body.get("show_local_info", False),
+        "dm_status": body.get("dm_status", ""),
     }
 
     profile = _clean_profile(incoming)
@@ -1062,6 +1190,12 @@ def get_public_profile(user_id):
     else:
 
         public_profile.pop("roles_guild_id", None)
+
+    # Location/timezone show only when the owner opted in; otherwise
+    # strip them so a public page never leaks them.
+    if not profile.get("show_local_info"):
+        for _f in ("timezone", "location", "country"):
+            public_profile.pop(_f, None)
 
     # Public profiles never expose per-server details: guild names
     # would reveal which servers the user is in.
