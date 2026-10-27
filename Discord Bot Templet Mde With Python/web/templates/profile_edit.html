@@ -45,6 +45,8 @@
                 <p id="edit-preview-bio" style="opacity:.8;margin:8px 0 0;line-height:1.5;">
                     No bio yet.
                 </p>
+                <div id="edit-preview-local" style="display:none;opacity:.75;margin:8px 0 0;font-size:.9rem;"></div>
+                <div id="edit-preview-dm" style="display:none;opacity:.75;margin:8px 0 0;font-size:.9rem;"></div>
                 <div id="edit-preview-tags" style="display:flex;gap:8px;
                     flex-wrap:wrap;margin-top:10px;"></div>
                 <div id="edit-preview-socials" style="display:flex;gap:10px;
@@ -212,6 +214,286 @@
             border:1px solid rgba(255,255,255,.12);border-radius:10px;
             color:#fff;padding:12px;font-family:inherit;">
             <option value="">Pick a server...</option>
+        </select>
+
+        <label style="display:flex;align-items:center;gap:6px;font-size:.85rem;color:rgba(255,255,255,.75);margin:16px 0 6px;"
+            for="roles-position-input">Where should your roles show?
+            <span class="help-tip"><button type="button" class="help-btn" aria-label="Help for roles position">?</button><span class="help-text">Pick where your roles show up. Bio card puts them right under your name at the top. Bottom puts them in their own section lower down. Only used when server roles are turned on above.</span></span></label>
+        <select id="roles-position-input"
+            style="width:100%;box-sizing:border-box;background:#1e1f24;
+            border:1px solid rgba(255,255,255,.12);border-radius:10px;
+            color:#fff;padding:12px;font-family:inherit;">
+            <option value="bottom">At the bottom of my profile</option>
+            <option value="bio">On my bio card at the top</option>
+        </select>
+
+        <label style="display:flex;gap:10px;align-items:center;margin-top:20px;
+            cursor:pointer;">
+            <input id="show-local-toggle" type="checkbox" style="width:18px;height:18px;">
+            <span>Show where I am from and my local time on my bio card</span>
+            <span class="help-tip"><button type="button" class="help-btn" aria-label="Help for local info">?</button><span class="help-text">Turn this on to show where you are from and what time it is for you on your bio card, so other people can see it. Turn it off to keep that private.</span></span>
+        </label>
+
+        <label style="display:flex;align-items:center;gap:6px;font-size:.85rem;color:rgba(255,255,255,.75);margin:16px 0 6px;"
+            for="timezone-input">My time zone
+            <span class="help-tip"><button type="button" class="help-btn" aria-label="Help for time zone">?</button><span class="help-text">Pick the time zone you live in. This is what the clock on your bio card uses to show your local time.</span></span></label>
+        <select id="timezone-input"
+            style="width:100%;box-sizing:border-box;background:#1e1f24;
+            border:1px solid rgba(255,255,255,.12);border-radius:10px;
+            color:#fff;padding:12px;font-family:inherit;">
+            <option value="">No timezone picked</option>
+            <option value="UTC">UTC (Coordinated Universal Time)</option>
+            <option value="America/New_York">Eastern Time, New York</option>
+            <option value="America/Chicago">Central Time, Chicago</option>
+            <option value="America/Denver">Mountain Time, Denver</option>
+            <option value="America/Los_Angeles">Pacific Time, Los Angeles</option>
+            <option value="America/Anchorage">Alaska Time, Anchorage</option>
+            <option value="Pacific/Honolulu">Hawaii Time, Honolulu</option>
+            <option value="America/Toronto">Toronto</option>
+            <option value="America/Mexico_City">Mexico City</option>
+            <option value="America/Bogota">Bogota</option>
+            <option value="America/Sao_Paulo">Sao Paulo</option>
+            <option value="America/Santiago">Santiago</option>
+            <option value="Atlantic/Reykjavik">Reykjavik</option>
+            <option value="Europe/London">London</option>
+            <option value="Europe/Dublin">Dublin</option>
+            <option value="Europe/Paris">Paris</option>
+            <option value="Europe/Berlin">Berlin</option>
+            <option value="Europe/Madrid">Madrid</option>
+            <option value="Europe/Amsterdam">Amsterdam</option>
+            <option value="Europe/Stockholm">Stockholm</option>
+            <option value="Europe/Moscow">Moscow</option>
+            <option value="Europe/Istanbul">Istanbul</option>
+            <option value="Africa/Cairo">Cairo</option>
+            <option value="Africa/Lagos">Lagos</option>
+            <option value="Africa/Johannesburg">Johannesburg</option>
+            <option value="Asia/Dubai">Dubai</option>
+            <option value="Asia/Karachi">Karachi</option>
+            <option value="Asia/Kolkata">Kolkata</option>
+            <option value="Asia/Dhaka">Dhaka</option>
+            <option value="Asia/Bangkok">Bangkok</option>
+            <option value="Asia/Singapore">Singapore</option>
+            <option value="Asia/Shanghai">Shanghai</option>
+            <option value="Asia/Hong_Kong">Hong Kong</option>
+            <option value="Asia/Taipei">Taipei</option>
+            <option value="Asia/Tokyo">Tokyo</option>
+            <option value="Asia/Seoul">Seoul</option>
+            <option value="Australia/Sydney">Sydney</option>
+            <option value="Australia/Melbourne">Melbourne</option>
+            <option value="Australia/Perth">Perth</option>
+            <option value="Pacific/Auckland">Auckland</option>
+            <option value="Pacific/Fiji">Fiji</option>
+        </select>
+
+        <label style="display:flex;align-items:center;gap:6px;font-size:.85rem;color:rgba(255,255,255,.75);margin:16px 0 6px;"
+            for="location-input">Where I am from
+            <span class="help-tip"><button type="button" class="help-btn" aria-label="Help for location">?</button><span class="help-text">Pick where in the world you are. Only the country and a broad area are shown, never your city or town, so it stays private. If your place is not on the list, let us know and we will add it.</span></span></label>
+        <select id="location-input"
+            style="width:100%;box-sizing:border-box;background:#1e1f24;
+            border:1px solid rgba(255,255,255,.12);border-radius:10px;
+            color:#fff;padding:12px;font-family:inherit;">
+            <option value="">No place picked</option>
+            <optgroup label="United States">
+                <option value="United States">United States</option>
+                <option value="United States (West Coast)">United States (West Coast)</option>
+                <option value="United States (East Coast)">United States (East Coast)</option>
+                <option value="United States (Midwest)">United States (Midwest)</option>
+                <option value="United States (South)">United States (South)</option>
+                <option value="United States (Central)">United States (Central)</option>
+                <option value="United States (Mountain)">United States (Mountain)</option>
+                <option value="United States (Alaska & Hawaii)">United States (Alaska & Hawaii)</option>
+            </optgroup>
+            <optgroup label="Canada">
+                <option value="Canada">Canada</option>
+                <option value="Canada (West Coast)">Canada (West Coast)</option>
+                <option value="Canada (Prairies)">Canada (Prairies)</option>
+                <option value="Canada (Central)">Canada (Central)</option>
+                <option value="Canada (East Coast)">Canada (East Coast)</option>
+                <option value="Canada (North)">Canada (North)</option>
+            </optgroup>
+            <optgroup label="Latin America">
+                <option value="Mexico">Mexico</option>
+                <option value="Mexico (North)">Mexico (North)</option>
+                <option value="Mexico (Central)">Mexico (Central)</option>
+                <option value="Mexico (South)">Mexico (South)</option>
+                <option value="Brazil">Brazil</option>
+                <option value="Brazil (North)">Brazil (North)</option>
+                <option value="Brazil (South)">Brazil (South)</option>
+                <option value="Argentina">Argentina</option>
+                <option value="Chile">Chile</option>
+                <option value="Colombia">Colombia</option>
+                <option value="Peru">Peru</option>
+                <option value="Uruguay">Uruguay</option>
+                <option value="Ecuador">Ecuador</option>
+                <option value="Venezuela">Venezuela</option>
+            </optgroup>
+            <optgroup label="Europe">
+                <option value="United Kingdom">United Kingdom</option>
+                <option value="United Kingdom (England)">United Kingdom (England)</option>
+                <option value="United Kingdom (Scotland)">United Kingdom (Scotland)</option>
+                <option value="United Kingdom (Wales)">United Kingdom (Wales)</option>
+                <option value="United Kingdom (Northern Ireland)">United Kingdom (Northern Ireland)</option>
+                <option value="Ireland">Ireland</option>
+                <option value="France">France</option>
+                <option value="Germany">Germany</option>
+                <option value="Spain">Spain</option>
+                <option value="Portugal">Portugal</option>
+                <option value="Italy">Italy</option>
+                <option value="Netherlands">Netherlands</option>
+                <option value="Belgium">Belgium</option>
+                <option value="Switzerland">Switzerland</option>
+                <option value="Austria">Austria</option>
+                <option value="Sweden">Sweden</option>
+                <option value="Norway">Norway</option>
+                <option value="Denmark">Denmark</option>
+                <option value="Finland">Finland</option>
+                <option value="Poland">Poland</option>
+                <option value="Czechia">Czechia</option>
+                <option value="Greece">Greece</option>
+                <option value="Türkiye">Türkiye</option>
+                <option value="Ukraine">Ukraine</option>
+                <option value="Iceland">Iceland</option>
+                <option value="Hungary">Hungary</option>
+                <option value="Russia">Russia</option>
+                <option value="Russia (Western)">Russia (Western)</option>
+                <option value="Russia (Eastern)">Russia (Eastern)</option>
+            </optgroup>
+            <optgroup label="Africa">
+                <option value="Egypt">Egypt</option>
+                <option value="Nigeria">Nigeria</option>
+                <option value="South Africa">South Africa</option>
+                <option value="Kenya">Kenya</option>
+                <option value="Ghana">Ghana</option>
+                <option value="Morocco">Morocco</option>
+                <option value="Algeria">Algeria</option>
+                <option value="Ethiopia">Ethiopia</option>
+            </optgroup>
+            <optgroup label="Middle East">
+                <option value="United Arab Emirates">United Arab Emirates</option>
+                <option value="Saudi Arabia">Saudi Arabia</option>
+                <option value="Israel">Israel</option>
+                <option value="Qatar">Qatar</option>
+                <option value="Kuwait">Kuwait</option>
+                <option value="Iraq">Iraq</option>
+                <option value="Iran">Iran</option>
+                <option value="Lebanon">Lebanon</option>
+                <option value="Jordan">Jordan</option>
+            </optgroup>
+            <optgroup label="South Asia">
+                <option value="India">India</option>
+                <option value="India (North)">India (North)</option>
+                <option value="India (South)">India (South)</option>
+                <option value="India (East)">India (East)</option>
+                <option value="India (West)">India (West)</option>
+                <option value="Pakistan">Pakistan</option>
+                <option value="Bangladesh">Bangladesh</option>
+                <option value="Sri Lanka">Sri Lanka</option>
+                <option value="Nepal">Nepal</option>
+            </optgroup>
+            <optgroup label="East Asia">
+                <option value="China">China</option>
+                <option value="China (North)">China (North)</option>
+                <option value="China (South)">China (South)</option>
+                <option value="China (East)">China (East)</option>
+                <option value="China (West)">China (West)</option>
+                <option value="Hong Kong">Hong Kong</option>
+                <option value="Taiwan">Taiwan</option>
+                <option value="Japan">Japan</option>
+                <option value="South Korea">South Korea</option>
+                <option value="Mongolia">Mongolia</option>
+            </optgroup>
+            <optgroup label="Southeast Asia">
+                <option value="Thailand">Thailand</option>
+                <option value="Singapore">Singapore</option>
+                <option value="Malaysia">Malaysia</option>
+                <option value="Indonesia">Indonesia</option>
+                <option value="Philippines">Philippines</option>
+                <option value="Vietnam">Vietnam</option>
+                <option value="Myanmar">Myanmar</option>
+            </optgroup>
+            <optgroup label="Oceania">
+                <option value="Australia">Australia</option>
+                <option value="Australia (East Coast)">Australia (East Coast)</option>
+                <option value="Australia (West Coast)">Australia (West Coast)</option>
+                <option value="Australia (Central)">Australia (Central)</option>
+                <option value="New Zealand">New Zealand</option>
+                <option value="Fiji">Fiji</option>
+                <option value="Papua New Guinea">Papua New Guinea</option>
+            </optgroup>
+        </select>
+
+        <label style="display:flex;align-items:center;gap:6px;font-size:.85rem;color:rgba(255,255,255,.75);margin:16px 0 6px;"
+            for="country-input">My country (for a flag)
+            <span class="help-tip"><button type="button" class="help-btn" aria-label="Help for country">?</button><span class="help-text">Pick your country if you want a little flag next to where you are from. Pick No flag if you do not want one.</span></span></label>
+        <select id="country-input"
+            style="width:100%;box-sizing:border-box;background:#1e1f24;
+            border:1px solid rgba(255,255,255,.12);border-radius:10px;
+            color:#fff;padding:12px;font-family:inherit;">
+            <option value="">No flag</option>
+            <option value="US">🇺🇸 United States</option>
+            <option value="CA">🇨🇦 Canada</option>
+            <option value="MX">🇲🇽 Mexico</option>
+            <option value="BR">🇧🇷 Brazil</option>
+            <option value="AR">🇦🇷 Argentina</option>
+            <option value="CL">🇨🇱 Chile</option>
+            <option value="GB">🇬🇧 United Kingdom</option>
+            <option value="IE">🇮🇪 Ireland</option>
+            <option value="FR">🇫🇷 France</option>
+            <option value="DE">🇩🇪 Germany</option>
+            <option value="ES">🇪🇸 Spain</option>
+            <option value="PT">🇵🇹 Portugal</option>
+            <option value="IT">🇮🇹 Italy</option>
+            <option value="NL">🇳🇱 Netherlands</option>
+            <option value="BE">🇧🇪 Belgium</option>
+            <option value="CH">🇨🇭 Switzerland</option>
+            <option value="AT">🇦🇹 Austria</option>
+            <option value="SE">🇸🇪 Sweden</option>
+            <option value="NO">🇳🇴 Norway</option>
+            <option value="DK">🇩🇰 Denmark</option>
+            <option value="FI">🇫🇮 Finland</option>
+            <option value="PL">🇵🇱 Poland</option>
+            <option value="CZ">🇨🇿 Czechia</option>
+            <option value="GR">🇬🇷 Greece</option>
+            <option value="TR">🇹🇷 Turkiye</option>
+            <option value="RU">🇷🇺 Russia</option>
+            <option value="UA">🇺🇦 Ukraine</option>
+            <option value="IL">🇮🇱 Israel</option>
+            <option value="ZA">🇿🇦 South Africa</option>
+            <option value="EG">🇪🇬 Egypt</option>
+            <option value="NG">🇳🇬 Nigeria</option>
+            <option value="KE">🇰🇪 Kenya</option>
+            <option value="AE">🇦🇪 United Arab Emirates</option>
+            <option value="SA">🇸🇦 Saudi Arabia</option>
+            <option value="IN">🇮🇳 India</option>
+            <option value="PK">🇵🇰 Pakistan</option>
+            <option value="BD">🇧🇩 Bangladesh</option>
+            <option value="TH">🇹🇭 Thailand</option>
+            <option value="VN">🇻🇳 Vietnam</option>
+            <option value="MY">🇲🇾 Malaysia</option>
+            <option value="SG">🇸🇬 Singapore</option>
+            <option value="ID">🇮🇩 Indonesia</option>
+            <option value="PH">🇵🇭 Philippines</option>
+            <option value="CN">🇨🇳 China</option>
+            <option value="HK">🇭🇰 Hong Kong</option>
+            <option value="TW">🇹🇼 Taiwan</option>
+            <option value="JP">🇯🇵 Japan</option>
+            <option value="KR">🇰🇷 South Korea</option>
+            <option value="AU">🇦🇺 Australia</option>
+            <option value="NZ">🇳🇿 New Zealand</option>
+            <option value="FJ">🇫🇯 Fiji</option>
+        </select>
+
+        <label style="display:flex;align-items:center;gap:6px;font-size:.85rem;color:rgba(255,255,255,.75);margin:16px 0 6px;"
+            for="dm-status-input">My DM status
+            <span class="help-tip"><button type="button" class="help-btn" aria-label="Help for DM status">?</button><span class="help-text">Tell people if your DMs are open, closed, or if they should ask first. This shows on your bio card. Leave it on Not set if you do not want to show anything.</span></span></label>
+        <select id="dm-status-input"
+            style="width:100%;box-sizing:border-box;background:#1e1f24;
+            border:1px solid rgba(255,255,255,.12);border-radius:10px;
+            color:#fff;padding:12px;font-family:inherit;">
+            <option value="">Not set (do not show)</option>
+            <option value="open">Open, DMs welcome</option>
+            <option value="closed">Closed, please do not DM me</option>
+            <option value="ask">Ask first, ask before DMing me</option>
         </select>
 
         <label style="display:flex;gap:10px;align-items:center;margin-top:20px;
@@ -477,6 +759,101 @@
         document.querySelectorAll(".help-tip.open").forEach(function(t) { t.classList.remove("open"); });
     });
 
+    function countryFlag(code) {
+        if (!code || code.length !== 2) return "";
+        var a = code.charCodeAt(0), b = code.charCodeAt(1);
+        if (a < 65 || a > 90 || b < 65 || b > 90) return "";
+        return String.fromCodePoint(a + 127397, b + 127397);
+    }
+    function fmtLocalTime(tz) {
+        if (!tz) return "";
+        try {
+            return new Intl.DateTimeFormat([], {timeZone: tz, hour: "numeric", minute: "2-digit"}).format(new Date());
+        } catch (e) { return ""; }
+    }
+    var TIMEZONE_LABELS = {
+        "UTC": "UTC",
+        "America/New_York": "Eastern Time",
+        "America/Chicago": "Central Time",
+        "America/Denver": "Mountain Time",
+        "America/Los_Angeles": "Pacific Time",
+        "America/Anchorage": "Alaska Time",
+        "Pacific/Honolulu": "Hawaii Time",
+        "America/Toronto": "Toronto Time",
+        "America/Mexico_City": "Mexico City Time",
+        "America/Bogota": "Bogota Time",
+        "America/Sao_Paulo": "Sao Paulo Time",
+        "America/Santiago": "Santiago Time",
+        "Atlantic/Reykjavik": "Reykjavik Time",
+        "Europe/London": "London Time",
+        "Europe/Dublin": "Dublin Time",
+        "Europe/Paris": "Paris Time",
+        "Europe/Berlin": "Berlin Time",
+        "Europe/Madrid": "Madrid Time",
+        "Europe/Amsterdam": "Amsterdam Time",
+        "Europe/Stockholm": "Stockholm Time",
+        "Europe/Moscow": "Moscow Time",
+        "Europe/Istanbul": "Istanbul Time",
+        "Africa/Cairo": "Cairo Time",
+        "Africa/Lagos": "Lagos Time",
+        "Africa/Johannesburg": "Johannesburg Time",
+        "Asia/Dubai": "Dubai Time",
+        "Asia/Karachi": "Karachi Time",
+        "Asia/Kolkata": "Kolkata Time",
+        "Asia/Dhaka": "Dhaka Time",
+        "Asia/Bangkok": "Bangkok Time",
+        "Asia/Singapore": "Singapore Time",
+        "Asia/Shanghai": "Shanghai Time",
+        "Asia/Hong_Kong": "Hong Kong Time",
+        "Asia/Taipei": "Taipei Time",
+        "Asia/Tokyo": "Tokyo Time",
+        "Asia/Seoul": "Seoul Time",
+        "Australia/Sydney": "Sydney Time",
+        "Australia/Melbourne": "Melbourne Time",
+        "Australia/Perth": "Perth Time",
+        "Pacific/Auckland": "Auckland Time",
+        "Pacific/Fiji": "Fiji Time",
+    };
+    function tzLabel(tz) {
+        if (TIMEZONE_LABELS[tz]) return TIMEZONE_LABELS[tz];
+        if (!tz) return "";
+        var parts = tz.split("/");
+        var city = parts[parts.length - 1].replace(/_/g, " ");
+        return city + " Time";
+    }
+    function fmtZoneTime(tz) {
+        var t = fmtLocalTime(tz);
+        if (!t) return "";
+        var label = tzLabel(tz);
+        return label ? (t + " " + label) : t;
+    }
+    function previewDm() {
+        var box = $("edit-preview-dm");
+        var v = $("dm-status-input").value;
+        var map = {"open": ["#57F287", "DMs: Open"], "closed": ["#ED4245", "DMs: Closed"], "ask": ["#FEE75C", "DMs: Ask first"]};
+        if (!map[v]) { box.style.display = "none"; return; }
+        box.innerHTML = "";
+        var dot = document.createElement("span");
+        dot.style.cssText = "display:inline-block;width:8px;height:8px;border-radius:50%;background:" + map[v][0] + ";margin-right:6px;";
+        box.appendChild(dot);
+        box.appendChild(document.createTextNode(map[v][1]));
+        box.style.display = "";
+    }
+    function previewLocalInfo() {
+        var box = $("edit-preview-local");
+        if (!$("show-local-toggle").checked) { box.style.display = "none"; return; }
+        var parts = [];
+        var flag = countryFlag($("country-input").value);
+        var loc = $("location-input").value.trim();
+        var t = fmtZoneTime($("timezone-input").value);
+        if (flag) parts.push(flag);
+        if (loc) parts.push(loc);
+        if (t) parts.push(t);
+        if (!parts.length) { box.style.display = "none"; return; }
+        box.textContent = parts.join(" \u00B7 ");
+        box.style.display = "";
+    }
+
     // ---- Live preview listeners ----
     accentInput.addEventListener("input", function() { setAccent(accentInput.value); });
     bannerInput.addEventListener("input", function() {
@@ -504,6 +881,12 @@
         renderPreviewTags($("tags-input").value.split(",").map(function(t) { return t.trim(); }).filter(function(t) { return t; }));
     });
     avatarInput.addEventListener("input", updateAvatarPreview);
+    ["timezone-input", "location-input", "country-input"].forEach(function(id) {
+        $(id).addEventListener("input", previewLocalInfo);
+        $(id).addEventListener("change", previewLocalInfo);
+    });
+    $("show-local-toggle").addEventListener("change", previewLocalInfo);
+    $("dm-status-input").addEventListener("change", previewDm);
     backgroundInput.addEventListener("input", updateBackgroundPreview);
 
     // ---- Completion meter (reads live inputs) ----
@@ -578,6 +961,25 @@
         var opt = document.querySelector('#featured-badge-input option[value="' + pendingFeaturedBadge + '"]');
         if (opt) $("featured-badge-input").value = pendingFeaturedBadge;
         $("featured-stat-input").value = p.featured_stat || "";
+        $("roles-position-input").value = (p.roles_position === "bio") ? "bio" : "bottom";
+        $("show-local-toggle").checked = !!p.show_local_info;
+        $("timezone-input").value = p.timezone || "";
+        var locSel = $("location-input");
+        var locFound = false;
+        for (var li = 0; li < locSel.options.length; li++) {
+            if (locSel.options[li].value === p.location) { locFound = true; break; }
+        }
+        if (p.location && !locFound) {
+            var tmpOpt = document.createElement("option");
+            tmpOpt.value = p.location;
+            tmpOpt.textContent = p.location;
+            locSel.appendChild(tmpOpt);
+        }
+        locSel.value = p.location || "";
+        $("country-input").value = p.country || "";
+        $("dm-status-input").value = p.dm_status || "";
+        previewLocalInfo();
+        previewDm();
         updateCompletion();
     }
 
@@ -653,6 +1055,12 @@
                         featured_stat: $("featured-stat-input").value,
                         show_roles: $("show-roles-toggle").checked,
                         roles_guild_id: $("roles-guild-input").value,
+                        roles_position: $("roles-position-input").value,
+                        timezone: $("timezone-input").value,
+                        location: $("location-input").value,
+                        country: $("country-input").value,
+                        show_local_info: $("show-local-toggle").checked,
+                        dm_status: $("dm-status-input").value,
                         public: publicToggle.checked
                     })
                 });
