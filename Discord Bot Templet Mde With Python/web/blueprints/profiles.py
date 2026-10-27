@@ -23,7 +23,7 @@ from flask import (
     session,
 )
 
-from web.blueprints.auth import get_csrf_token
+from web.blueprints.auth import get_csrf_token, get_user_guilds
 from web.security.decorators import require_login
 from web.services.discord_state import discord_state, run_coro_threadsafe
 
@@ -65,6 +65,9 @@ MAX_PRONOUNS_LEN = 40
 MAX_DISPLAY_NAME_LEN = 64
 MAX_TAGS = 10
 MAX_SOCIAL_LINKS = 10
+MAX_UPLOAD_BYTES = 5 * 1024 * 1024
+UPLOAD_EXTS = {"png", "jpg", "jpeg", "gif", "webp"}
+UPLOAD_PATH_RE = re.compile(r"^/static/uploads/backgrounds/[A-Za-z0-9_.\-]+\.(png|jpg|jpeg|gif|webp)$")
 MAX_TAG_LEN = 24
 ACCENT_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
 URL_RE = re.compile(r"^https?://\S+$")
@@ -85,6 +88,8 @@ DEFAULT_PROFILE = {
     "socials": [],
     "tags": [],
     "public": False,
+    "show_roles": False,
+    "roles_guild_id": "",
 }
 
 
@@ -117,17 +122,27 @@ def _clean_profile(saved):
         "socials": [],
         "tags": [],
         "public": bool(saved.get("public", False)),
+        "show_roles": bool(saved.get("show_roles", False)),
+        "roles_guild_id": str(saved.get("roles_guild_id", ""))[:32],
     }
 
     if not ACCENT_RE.match(str(profile["accent"])):
 
         profile["accent"] = DEFAULT_PROFILE["accent"]
 
-    for field in ("banner", "avatar_url", "background_url"):
+    for field in ("banner", "avatar_url"):
 
         if not URL_RE.match(profile[field]):
 
             profile[field] = ""
+
+    # Backgrounds may also be user uploads served from our own static folder.
+    if not (
+        URL_RE.match(profile["background_url"])
+        or UPLOAD_PATH_RE.match(profile["background_url"])
+    ):
+
+        profile["background_url"] = ""
 
     socials = saved.get("socials", [])
 
@@ -600,6 +615,118 @@ def get_user_activity(user_id, limit=20):
     ]
 
 
+def _member_roles(guild_id, user_id):
+
+    """[{name, color}] for a user in a guild, highest role first, plus guild name."""
+
+    try:
+
+        bot = discord_state.bot
+
+        if bot is None or not discord_state.ready:
+
+            return [], None
+
+        guild = bot.get_guild(int(guild_id))
+
+        if guild is None:
+
+            return [], None
+
+        member = guild.get_member(int(user_id))
+
+        if member is None:
+
+            try:
+
+                member = run_coro_threadsafe(
+                    guild.fetch_member(int(user_id))
+                ).result(timeout=15)
+
+            except Exception:
+
+                member = None
+
+        if member is None:
+
+            return [], guild.name
+
+        roles = []
+
+        for r in getattr(member, "roles", []):
+
+            if r.name == "@everyone":
+
+                continue
+
+            color = r.color.value if hasattr(r, "color") else 0
+
+            roles.append({
+                "name": r.name,
+                "color": ("#%06x" % color) if color else "",
+            })
+
+        roles.reverse()
+
+        return roles, guild.name
+
+    except Exception:
+
+        return [], None
+
+
+@profiles_api.get(
+    "/profile/roles"
+)
+@require_login
+def get_self_roles():
+
+    user = session.get("user") or {}
+    user_id = str(user.get("id", ""))
+
+    guild_id = (request.args.get("guild_id") or "").strip()
+
+    if not user_id or not guild_id:
+
+        return jsonify({
+            "success": False,
+            "error": "Missing guild.",
+        }), 400
+
+    try:
+
+        my_guilds = get_user_guilds() or []
+
+        my_ids = {
+            str(g.get("id"))
+            for g in my_guilds
+            if isinstance(g, dict)
+        }
+
+    except Exception:
+
+        my_ids = set()
+
+    if guild_id not in my_ids:
+
+        return jsonify({
+            "success": False,
+            "error": "You are not a member of that server.",
+        }), 403
+
+    roles, guild_name = _member_roles(guild_id, user_id)
+
+    return jsonify({
+
+        "success": True,
+
+        "roles": roles,
+
+        "guild_name": guild_name,
+
+    })
+
+
 # =========================================================
 # SELF PROFILE
 # =========================================================
@@ -676,6 +803,8 @@ def save_profile():
         "socials": body.get("socials", []),
         "tags": tags,
         "public": body.get("public", False),
+        "show_roles": body.get("show_roles", False),
+        "roles_guild_id": body.get("roles_guild_id", ""),
     }
 
     profile = _clean_profile(incoming)
@@ -702,6 +831,142 @@ def save_profile():
         "success": True,
 
         "profile": profile,
+
+    })
+
+
+def _upload_background_dir():
+
+    return os.path.normpath(
+        os.path.join(
+            DATA_DIR,
+            "..",
+            "web",
+            "static",
+            "uploads",
+            "backgrounds",
+        )
+    )
+
+
+def _is_image_bytes(data, ext):
+
+    if ext == "png":
+        return data.startswith(b"\x89PNG\r\n\x1a\n")
+    if ext in ("jpg", "jpeg"):
+        return data.startswith(b"\xff\xd8\xff")
+    if ext == "gif":
+        return data.startswith(b"GIF8")
+    if ext == "webp":
+        return len(data) > 11 and data.startswith(b"RIFF") and data[8:12] == b"WEBP"
+    return False
+
+
+@profiles_api.post(
+    "/profile/background-upload"
+)
+@require_login
+def upload_background():
+
+    denied = _check_csrf()
+
+    if denied is not None:
+
+        return denied
+
+    user = session.get("user") or {}
+    user_id = re.sub(r"[^0-9]", "", str(user.get("id", "")))
+
+    if not user_id:
+
+        return jsonify({
+            "success": False,
+            "error": "Not logged in.",
+        }), 401
+
+    f = request.files.get("file")
+
+    if f is None or not f.filename:
+
+        return jsonify({
+            "success": False,
+            "error": "No file uploaded.",
+        }), 400
+
+    ext = f.filename.rsplit(".", 1)[-1].lower() if "." in f.filename else ""
+
+    if ext not in UPLOAD_EXTS:
+
+        return jsonify({
+            "success": False,
+            "error": "That file type is not allowed. Use PNG, JPG, GIF, or WebP.",
+        }), 400
+
+    data = f.read()
+
+    if len(data) > MAX_UPLOAD_BYTES:
+
+        return jsonify({
+            "success": False,
+            "error": "That image is too big. Max size is 5 MB.",
+        }), 413
+
+    if not _is_image_bytes(data, ext):
+
+        return jsonify({
+            "success": False,
+            "error": "That file does not look like an image.",
+        }), 400
+
+    outdir = _upload_background_dir()
+
+    try:
+
+        os.makedirs(outdir, exist_ok=True)
+
+        gitignore = os.path.join(outdir, ".gitignore")
+
+        if not os.path.exists(gitignore):
+
+            with open(gitignore, "w", encoding="utf-8") as fh:
+
+                fh.write("*\n!.gitignore\n")
+
+        import glob
+
+        for old in glob.glob(os.path.join(outdir, user_id + ".*")):
+
+            try:
+
+                os.remove(old)
+
+            except OSError:
+
+                pass
+
+        outpath = os.path.join(outdir, user_id + "." + ext)
+
+        with open(outpath, "wb") as fh:
+
+            fh.write(data)
+
+    except Exception as exc:
+
+        print(
+            "[Profiles API] Failed to save background upload: "
+            f"{exc}"
+        )
+
+        return jsonify({
+            "success": False,
+            "error": "Could not save the upload.",
+        }), 500
+
+    return jsonify({
+
+        "success": True,
+
+        "url": "/static/uploads/backgrounds/" + user_id + "." + ext,
 
     })
 
@@ -782,6 +1047,22 @@ def get_public_profile(user_id):
 
     stats = get_user_stats(user_id)
 
+    # Roles are shown only when the owner opted in with show_roles;
+    # otherwise even the picked guild id is stripped from the response.
+    roles = []
+    roles_guild_name = None
+    public_profile = dict(profile)
+
+    if profile.get("show_roles") and profile.get("roles_guild_id"):
+
+        roles, roles_guild_name = _member_roles(
+            profile["roles_guild_id"], str(user_id)
+        )
+
+    else:
+
+        public_profile.pop("roles_guild_id", None)
+
     # Public profiles never expose per-server details: guild names
     # would reveal which servers the user is in.
     public_stats = {
@@ -802,12 +1083,16 @@ def get_public_profile(user_id):
             "banner_url": banner_url,
         },
 
-        "profile": profile,
+        "profile": public_profile,
 
         "stats": public_stats,
 
         "badges": get_badges(stats),
 
         "activity": get_user_activity(user_id),
+
+        "roles": roles,
+
+        "roles_guild_name": roles_guild_name,
 
     })
