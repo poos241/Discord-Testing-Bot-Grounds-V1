@@ -71,6 +71,7 @@ from web.blueprints.profiles import profiles_api
 from web.blueprints.notifications import notifications_api
 from web.blueprints.friends import friends_api
 from web.blueprints.directory import directory_api
+from web.blueprints.feed import feed_api
 from web.blueprints.backups import backups_api
 
 from web.blueprints.logger import logger_api
@@ -220,6 +221,7 @@ def create_app(bot):
     app.register_blueprint(notifications_api)
     app.register_blueprint(friends_api)
     app.register_blueprint(directory_api)
+    app.register_blueprint(feed_api)
     app.register_blueprint(backups_api)
     
     app.register_blueprint(auth_api)

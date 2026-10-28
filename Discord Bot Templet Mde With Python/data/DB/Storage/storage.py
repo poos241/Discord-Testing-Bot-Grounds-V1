@@ -164,6 +164,37 @@ async def get_activity(user_id: str, limit: int = 20):
     )
     return [dict(r) for r in rows]
 
+async def list_public_activity(limit: int = 30, offset: int = 0, kind: str = None):
+    """Global activity rows, restricted to public profiles only.
+
+    Same privacy rule as list_public_profiles / the member
+    directory: activity from a user whose profile is not public
+    never appears here. Callers must still strip guild_id
+    before responding -- it is in the row but is never part
+    of the feed output, so the feed cannot reveal which
+    servers a person is in.
+    """
+    public_rows = await list_public_profiles()
+    user_ids = [
+        str(r.get("user_id"))
+        for r in public_rows
+        if r.get("user_id")
+    ]
+    if not user_ids:
+        return []
+    query = profile_activity.select().where(
+        profile_activity.c.user_id.in_(user_ids)
+    )
+    if kind:
+        query = query.where(profile_activity.c.kind == kind)
+    query = (
+        query.order_by(profile_activity.c.id.desc())
+        .limit(limit)
+        .offset(offset)
+    )
+    rows = await database.fetch_all(query)
+    return [dict(r) for r in rows]
+
 
 # ---------------- Question of the Day (QOTD) ----------------
 # Questions live in one global pool; config/history/exclusions are

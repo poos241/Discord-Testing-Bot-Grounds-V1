@@ -198,6 +198,13 @@
             Directory
         </a>
 
+        <a
+            href="{{ url_for('feed.feed_page') }}"
+            class="nav-link-item"
+        >
+            Feed
+        </a>
+
         {% if can_any("admin") %}
         <a
             href="{{ url_for('logger') }}"

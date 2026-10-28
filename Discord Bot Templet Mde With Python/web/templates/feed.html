@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+
+{% block title %}
+    Community Feed - Kush Bush
+{% endblock %}
+
+{% block head %}
+    <link
+        rel="stylesheet"
+        href="{{ url_for('static', filename='css/feed.css') }}"
+    >
+{% endblock %}
+
+{% block body %}
+
+<div class="feed-page">
+
+    <h1>Community Feed</h1>
+
+    <p>
+        Recent activity from across the community: level-ups,
+        daily rewards, Eat It or Yeet It rounds, and badge awards.
+        Only members who opted in to a public profile show up
+        here, and entries link to their public profile. Server
+        lists and per-server details are never shown.
+    </p>
+
+    <p>
+        <a href="{{ url_for('profile_edit') }}">Turn on "Public profile"</a>
+        on your own profile to appear in this feed.
+    </p>
+
+    <div class="feed-filters" id="feed-filters">
+        <button type="button" data-kind="" class="feed-filter selected">
+            All activity
+        </button>
+        <button type="button" data-kind="level_up" class="feed-filter">
+            Level-ups
+        </button>
+        <button type="button" data-kind="daily_claim" class="feed-filter">
+            Daily rewards
+        </button>
+        <button type="button" data-kind="game_round" class="feed-filter">
+            Game rounds
+        </button>
+        <button type="button" data-kind="badge_award" class="feed-filter">
+            Badges
+        </button>
+        <button type="button" id="feed-refresh" class="feed-refresh">
+            Refresh
+        </button>
+    </div>
+
+    <p class="feed-count" id="feed-count"></p>
+
+    <div class="feed-list" id="feed-list">
+        <p class="feed-loading">Loading activity...</p>
+    </div>
+
+    <p class="feed-empty" id="feed-empty" style="display: none;">
+        Nothing here yet. Once members with public profiles level
+        up, claim dailies, play games, or earn badges, their
+        activity shows up here.
+    </p>
+
+    <div class="feed-pager" id="feed-pager">
+        <button type="button" id="feed-prev" disabled>
+            Newer
+        </button>
+        <span id="feed-page-label"></span>
+        <button type="button" id="feed-next" disabled>
+            Older
+        </button>
+    </div>
+
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+    <script
+        src="{{ url_for('static', filename='js/feed.js') }}"
+    ></script>
+{% endblock %}
