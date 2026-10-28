@@ -53,6 +53,10 @@ LEGACY_BACKUP_PATH = os.path.join(
     DATA_DIR,
     "profiles.json.migrated",
 )
+# Legacy path only: eatyeet stats now live in SQLite (bot.db,
+# eatyeet_stats table) via utils/json_sqlite_store.py. The JSON file
+# stays on disk untouched as the pre-migration rollback copy and is
+# no longer read here; see _load_eatyeet.
 EATYEET_PATH = os.path.join(
     DATA_DIR,
     "eatyeet_stats.json",
@@ -457,20 +461,21 @@ def _check_csrf():
 
 def _load_eatyeet():
 
+    # Eat It or Yeet It stats moved from data/eatyeet_stats.json to
+    # SQLite (bot.db, eatyeet_stats table) in the 2026-10-28 JSON to
+    # SQLite migration. Read through the same store the game cog
+    # uses, so the profile stats always match the live game data.
     try:
 
-        with open(
-            EATYEET_PATH,
-            encoding="utf-8",
-        ) as f:
+        from utils.json_sqlite_store import load_store
 
-            data = json.load(f)
+        data = load_store("eatyeet_stats.json")
 
         if isinstance(data, dict):
 
             return data
 
-    except (OSError, ValueError):
+    except Exception:
 
         pass
 
@@ -707,6 +712,44 @@ def get_badges(stats):
         })
 
     return earned
+
+
+def get_custom_badges(user_id):
+
+    """Custom badges awarded to this user, in badge-shelf shape.
+
+    Same {key, icon, name, description, earned} shape as get_badges
+    so both profile pages render them with no template change. Keys
+    are namespaced ("custom:<id>") so they never collide with the
+    hard-coded BADGE_DEFS keys, and no guild id is ever returned --
+    a public page must not reveal which server a badge came from
+    (same strip rule as roles and local info). Failures return []
+    so a badge-table hiccup never breaks the whole stats response.
+    """
+
+    from data.DB.Storage.storage import list_custom_badge_awards_for_user
+
+    try:
+
+        rows = run_coro_threadsafe(
+            list_custom_badge_awards_for_user(str(user_id))
+        ).result(timeout=10)
+
+    except Exception:
+
+        return []
+
+    return [
+        {
+            "key": f"custom:{row['id']}",
+            "icon": row.get("icon") or "🏅",
+            "name": row.get("name") or "Custom badge",
+            "description": row.get("description") or "",
+            "earned": True,
+            "custom": True,
+        }
+        for row in rows
+    ]
 
 
 # =========================================================
@@ -1120,7 +1163,7 @@ def get_self_stats():
 
         "stats": stats,
 
-        "badges": get_badges(stats),
+        "badges": get_badges(stats) + get_custom_badges(user_id),
 
         "activity": get_user_activity(user_id),
 
@@ -1221,7 +1264,7 @@ def get_public_profile(user_id):
 
         "stats": public_stats,
 
-        "badges": get_badges(stats),
+        "badges": get_badges(stats) + get_custom_badges(user_id),
 
         "activity": get_user_activity(user_id),
 

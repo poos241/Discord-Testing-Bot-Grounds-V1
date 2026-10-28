@@ -3017,6 +3017,123 @@ function updateLastUpdated() {
    HELPERS
    ========================================================= */
 
+/* Stat count-up (overnight polish): the dashboard's stat numbers
+   (members, channels, roles, events, online/human/bot members, text/
+   voice channels, categories) animate from 0 up to their first loaded
+   value instead of popping in. Only the first real value per number
+   animates; later auto-refreshes set the value directly, so the page
+   never re-animates on every refresh cycle. Honors
+   prefers-reduced-motion by setting the final value at once. */
+
+const COUNT_UP_STAT_IDS =
+    new Set(
+        [
+            "member-count",
+            "channel-count",
+            "role-count",
+            "event-count",
+            "online-members",
+            "human-members",
+            "bot-members",
+            "text-channels",
+            "voice-channels",
+            "categories"
+        ]
+    );
+
+
+const countedUpStats =
+    new Set();
+
+
+let countUpTokenCounter =
+    0;
+
+
+function animateCountUp(
+    element,
+    target
+) {
+
+    const token =
+        String(
+            ++countUpTokenCounter
+        );
+
+    element.dataset.countUpToken =
+        token;
+
+
+    if (
+        window.matchMedia(
+            "(prefers-reduced-motion: reduce)"
+        ).matches
+    ) {
+
+        element.textContent =
+            target.toLocaleString();
+
+        return;
+
+    }
+
+
+    const durationMs =
+        900;
+
+    const startTime =
+        performance.now();
+
+
+    function frame(
+        now
+    ) {
+
+        if (
+            element.dataset.countUpToken !==
+            token
+        ) {
+
+            return;
+
+        }
+
+
+        const progress =
+            Math.min(
+                (now - startTime) / durationMs,
+                1
+            );
+
+        const eased =
+            1 - Math.pow(
+                1 - progress,
+                3
+            );
+
+        element.textContent =
+            Math.round(
+                target * eased
+            ).toLocaleString();
+
+        if (progress < 1) {
+
+            requestAnimationFrame(
+                frame
+            );
+
+        }
+
+    }
+
+
+    requestAnimationFrame(
+        frame
+    );
+
+}
+
+
 function setText(
     id,
     value
@@ -3029,6 +3146,49 @@ function setText(
 
 
     if (element) {
+
+        if (
+            COUNT_UP_STAT_IDS.has(id) &&
+            !countedUpStats.has(id)
+        ) {
+
+            const target =
+                Number(
+                    String(
+                        value ?? ""
+                    ).replace(
+                        /[^0-9.-]/g,
+                        ""
+                    )
+                );
+
+            if (Number.isFinite(target)) {
+
+                countedUpStats.add(id);
+
+                animateCountUp(
+                    element,
+                    target
+                );
+
+                return;
+
+            }
+
+        }
+
+
+        if (COUNT_UP_STAT_IDS.has(id)) {
+
+            /* A later direct set cancels any count-up still running
+               on this number, so a refresh can never fight the
+               animation for the same element. */
+
+            element.dataset.countUpToken =
+                "stopped";
+
+        }
+
 
         element.textContent =
             value ?? "--";

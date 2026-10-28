@@ -1185,7 +1185,7 @@ class UserinfoModView(discord.ui.View):
             if dm_enabled:
                 ok = await _dm_target(
                     member,
-                    f"\u23f1\ufe0f You've been timed out in **{guild.name}** for `{raw}`\n**Reason:** {reason}",
+                    f"\u23f1\ufe0f You've been timed out in **{guild.name}** for `{raw}`\n**Reason:** {reason}\n\nTo appeal this, DM me the word `appeal`.",
                 )
                 note = f"\n{dm_note(ok)}"
             try:
@@ -1228,7 +1228,7 @@ class UserinfoModView(discord.ui.View):
                 dur_text = f" for {dur_desc}" if duration else " permanently"
                 ok = await _dm_target(
                     target,
-                    f"\U0001f528 You've been banned from **{guild.name}**{dur_text}\n**Reason:** {reason}",
+                    f"\U0001f528 You've been banned from **{guild.name}**{dur_text}\n**Reason:** {reason}\n\nTo appeal this, DM me the word `appeal`.",
                 )
                 note = f"\n{dm_note(ok)}"
             try:

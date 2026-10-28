@@ -28,8 +28,18 @@ COGS = [
     "cogs.admin_cog",
     "cogs.fun_cog",
     "cogs.Level_system",
+    "cogs.VoiceXP",
     "cogs.WatchList",
     "cogs.DebugCog",
+    "cogs.QOTD",
+    "cogs.Tickets",
+    "cogs.Backup",
+    "cogs.Appeals",
+    "cogs.Lockdown",
+    "cogs.Automod",
+    "cogs.AutoThreads",
+    "cogs.TimeCmd",
+    "cogs.CustomBadges",
 ]
 
 for cog in COGS:

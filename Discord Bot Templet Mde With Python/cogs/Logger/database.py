@@ -8,6 +8,12 @@ DB_PATH = os.path.normpath(os.path.join(
 ))
 
 
+def _like_escape(value):
+    """Escape LIKE wildcards so a filter matches literally."""
+    return (str(value).replace("\\", "\\\\")
+            .replace("%", "\\%").replace("_", "\\_"))
+
+
 class LoggerDatabase:
     """Thread-safe wrapper around the logger SQLite database."""
 
@@ -169,7 +175,17 @@ class LoggerDatabase:
             )
             self._conn.commit()
 
-    def _event_filter(self, guild_id, category=None, event_type=None, search=None):
+    def _event_filter(self, guild_id, category=None, event_type=None, search=None,
+                      user_id=None, channel_id=None, date_from=None, date_to=None):
+        """WHERE fragment for the events table.
+
+        The events table has no user/channel columns: user_id and
+        channel_id match against the recorded summary text, which
+        carries raw IDs (mentions, backticked IDs, author lines) for
+        events recorded after the Logger summary enrichment. Rows with
+        a NULL summary never match a user/channel filter. date_from
+        and date_to are epoch seconds (date_to is exclusive).
+        """
         q = "FROM events WHERE guild_id=?"
         args = [guild_id]
         if category:
@@ -179,14 +195,31 @@ class LoggerDatabase:
             q += " AND event_type=?"
             args.append(event_type)
         if search:
-            q += " AND summary LIKE ?"
-            args.append(f"%{search}%")
+            q += " AND summary LIKE ? ESCAPE '\\'"
+            args.append(f"%{_like_escape(search)}%")
+        if user_id and str(user_id).isdigit():
+            q += " AND summary LIKE ? ESCAPE '\\'"
+            args.append(f"%{user_id}%")
+        if channel_id and str(channel_id).isdigit():
+            q += " AND summary LIKE ? ESCAPE '\\'"
+            args.append(f"%{channel_id}%")
+        if date_from is not None:
+            q += " AND created_at >= ?"
+            args.append(float(date_from))
+        if date_to is not None:
+            q += " AND created_at < ?"
+            args.append(float(date_to))
         return q, args
 
     def query_events(self, guild_id, category=None, event_type=None, search=None,
-                     limit=50, offset=0):
+                     limit=50, offset=0, user_id=None, channel_id=None,
+                     date_from=None, date_to=None):
         """Event history newest-first. Used by the web dashboard."""
-        filt, args = self._event_filter(guild_id, category, event_type, search)
+        filt, args = self._event_filter(
+            guild_id, category=category, event_type=event_type, search=search,
+            user_id=user_id, channel_id=channel_id,
+            date_from=date_from, date_to=date_to,
+        )
         with self._lock:
             cur = self._conn.cursor()
             cur.execute(
@@ -196,8 +229,13 @@ class LoggerDatabase:
             )
             return [dict(r) for r in cur.fetchall()]
 
-    def count_events(self, guild_id, category=None, event_type=None, search=None):
-        filt, args = self._event_filter(guild_id, category, event_type, search)
+    def count_events(self, guild_id, category=None, event_type=None, search=None,
+                     user_id=None, channel_id=None, date_from=None, date_to=None):
+        filt, args = self._event_filter(
+            guild_id, category=category, event_type=event_type, search=search,
+            user_id=user_id, channel_id=channel_id,
+            date_from=date_from, date_to=date_to,
+        )
         with self._lock:
             cur = self._conn.cursor()
             cur.execute(f"SELECT COUNT(*) AS n {filt}", args)

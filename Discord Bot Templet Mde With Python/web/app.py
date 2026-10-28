@@ -44,6 +44,8 @@ from web.blueprints.health import health_api
 
 from web.blueprints.channels import channels_api
 
+from web.blueprints.voice import voice_api
+
 from web.blueprints.member_stats import member_stats_api
 
 from web.blueprints.explorer import explorer_api
@@ -67,6 +69,9 @@ from web.config import SECRET_KEY
 from web.blueprints.roles import roles_api
 from web.blueprints.profiles import profiles_api
 from web.blueprints.notifications import notifications_api
+from web.blueprints.friends import friends_api
+from web.blueprints.directory import directory_api
+from web.blueprints.backups import backups_api
 
 from web.blueprints.logger import logger_api
 from web.blueprints.dashboard import dashboard_api
@@ -191,6 +196,8 @@ def create_app(bot):
     app.register_blueprint(health_api)
     
     app.register_blueprint(channels_api)
+
+    app.register_blueprint(voice_api)
     
     app.register_blueprint(member_stats_api)
     
@@ -211,6 +218,9 @@ def create_app(bot):
     app.register_blueprint(roles_api)
     app.register_blueprint(profiles_api)
     app.register_blueprint(notifications_api)
+    app.register_blueprint(friends_api)
+    app.register_blueprint(directory_api)
+    app.register_blueprint(backups_api)
     
     app.register_blueprint(auth_api)
     
@@ -501,6 +511,51 @@ def create_app(bot):
         
     
     
+# ========================================================
+# LIVE VOICE VIEWER PAGE
+# ========================================================
+
+    @app.get(
+        "/servers/<int:guild_id>/voice"
+    )
+    def server_voice_page(
+        guild_id
+    ):
+
+        from web.services.permissions import (
+            has_access
+        )
+
+
+        if not session.get("user"):
+
+            return redirect(
+                url_for("auth.login")
+            )
+
+
+        if not has_access(
+            guild_id,
+            "moderator"
+        ):
+
+            return render_template(
+                "403.html",
+                guild_id=guild_id,
+            ), 403
+
+        session["selected_guild_id"] = str(
+            guild_id
+        )
+
+
+        return render_template(
+            "voice.html",
+            guild_id=guild_id
+        )
+
+
+
 # ========================================================
 # CHANNEL DETAILS PAGE
 # ========================================================
@@ -855,4 +910,4 @@ if __name__ == "__main__":
     # Standalone test defaults to localhost only
     if os.environ.get("WEB_HOST") is None:
         host = "127.0.0.1"
-    run_server(app, host=host, port=port)
+    run_server(app, host=host, port=port)

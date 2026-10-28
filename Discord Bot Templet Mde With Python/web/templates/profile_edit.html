@@ -15,6 +15,14 @@
 .help-btn:hover { background:rgba(255,255,255,.12); }
 .help-text { display:none; position:absolute; left:0; top:26px; z-index:50; width:260px; max-width:70vw; background:#1e1f24; border:1px solid rgba(255,255,255,.25); border-radius:10px; padding:10px 12px; font-size:.85rem; line-height:1.45; color:#fff; font-weight:400; box-shadow:0 8px 24px rgba(0,0,0,.5); }
 .help-tip:hover .help-text, .help-tip.open .help-text { display:block; }
+/* Save toast: fixed bottom-center confirmation, beyond the button's own "Saved!" flip */
+.kb-toast { position:fixed; left:50%; bottom:24px; transform:translate(-50%, 16px); z-index:200; display:flex; gap:12px; align-items:center; max-width:calc(100vw - 32px); background:#1e1f24; border:1px solid rgba(255,255,255,.25); border-left:4px solid #57F287; border-radius:12px; padding:12px 14px; color:#fff; font-size:.95rem; box-shadow:0 12px 32px rgba(0,0,0,.5); opacity:0; pointer-events:none; transition:opacity .25s ease, transform .25s ease; }
+.kb-toast.show { opacity:1; transform:translate(-50%, 0); pointer-events:auto; }
+.kb-toast.error { border-left-color:#ED4245; }
+.kb-toast-close { background:transparent; border:none; color:#fff; opacity:.7; font-size:1.1rem; line-height:1; cursor:pointer; padding:0 2px; }
+.kb-toast-close:hover { opacity:1; }
+#save-btn:disabled { opacity:.6; cursor:default; }
+@media (prefers-reduced-motion: reduce) { .kb-toast { transition:none; } }
 </style>
 
 <div style="max-width:1000px;margin:40px auto;padding:0 16px;">
@@ -503,6 +511,14 @@
             <span class="help-tip"><button type="button" class="help-btn" aria-label="Help for public profile">?</button><span class="help-text">Turn this on and anyone with your profile link can see it, even if they are not logged in. Your server list is never shown on public profiles.</span></span>
         </label>
 
+        <label style="display:flex;gap:10px;align-items:center;margin-top:20px;
+            cursor:pointer;">
+            <input id="friends-optout-toggle" type="checkbox" style="width:18px;height:18px;">
+            <span>Do not send me friend requests</span>
+            <span class="help-tip"><button type="button" class="help-btn" aria-label="Help for friend requests">?</button><span class="help-text">Turn this on and nobody can send you new friend requests. Requests already waiting are declined right away, and turning this back off later does not bring them back. This saves the moment you tick it — you do not need to press Save profile for this one.</span></span>
+        </label>
+        <div id="friends-optout-status" style="font-size:.9rem;opacity:.7;margin-top:6px;min-height:1.2em;"></div>
+
         <div style="display:flex;gap:12px;align-items:center;margin-top:20px;">
             <button id="save-btn"
                 style="padding:10px 24px;border:none;border-radius:10px;
@@ -512,6 +528,11 @@
             <span id="save-status" style="font-size:.9rem;opacity:.7;"></span>
         </div>
     </div>
+</div>
+
+<div id="save-toast" class="kb-toast" role="status" aria-live="polite">
+    <span id="save-toast-msg"></span>
+    <button type="button" id="save-toast-close" class="kb-toast-close" aria-label="Dismiss notification">&times;</button>
 </div>
 
 <script>
@@ -990,6 +1011,46 @@
         })
         .catch(function() {});
 
+    // Friend-request opt-out: separate setting, saves on toggle.
+    fetch("/api/friends/settings", {credentials: "same-origin"})
+        .then(function(r) { return r.ok ? r.json() : null; })
+        .then(function(data) {
+            if (data && data.success) $("friends-optout-toggle").checked = !data.allow_requests;
+        })
+        .catch(function() {});
+    $("friends-optout-toggle").addEventListener("change", function() {
+        var allow = !$("friends-optout-toggle").checked;
+        var statusEl = $("friends-optout-status");
+        statusEl.textContent = "Saving...";
+        fetch("/api/csrf", {credentials: "same-origin"})
+            .then(function(r) { return r.json(); })
+            .then(function(csrf) {
+                return fetch("/api/friends/settings", {
+                    method: "POST",
+                    credentials: "same-origin",
+                    headers: {"Content-Type": "application/json", "X-CSRF-Token": csrf.token || csrf.csrf_token || ""},
+                    body: JSON.stringify({allow_requests: allow})
+                });
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data && data.success) {
+                    statusEl.textContent = allow
+                        ? "Friend requests turned back on."
+                        : ("Friend requests turned off." + (data.declined_pending
+                            ? " " + data.declined_pending + " waiting request" + (data.declined_pending === 1 ? " was" : "s were") + " declined."
+                            : " No requests were waiting."));
+                } else {
+                    statusEl.textContent = (data && data.error) || "Could not save.";
+                    $("friends-optout-toggle").checked = !allow;
+                }
+            })
+            .catch(function() {
+                statusEl.textContent = "Could not save.";
+                $("friends-optout-toggle").checked = !allow;
+            });
+    });
+
     fetch("/api/servers", {credentials: "same-origin"})
         .then(function(r) { return r.ok ? r.json() : null; })
         .then(function(data) {
@@ -1027,8 +1088,23 @@
         })
         .catch(function() {});
 
+    var saveToast = $("save-toast"), saveToastMsg = $("save-toast-msg"), saveToastTimer = null;
+    function showToast(msg, isError) {
+        saveToastMsg.textContent = msg;
+        saveToast.className = "kb-toast" + (isError ? " error" : "") + " show";
+        if (saveToastTimer) { clearTimeout(saveToastTimer); saveToastTimer = null; }
+        if (!isError) {
+            saveToastTimer = setTimeout(function() { saveToast.className = "kb-toast"; }, 4000);
+        }
+    }
+    $("save-toast-close").addEventListener("click", function() {
+        if (saveToastTimer) { clearTimeout(saveToastTimer); saveToastTimer = null; }
+        saveToast.className = "kb-toast";
+    });
+
     saveBtn.addEventListener("click", function() {
         saveStatus.textContent = "Saving...";
+        saveBtn.disabled = true;
         fetch("/api/csrf", {credentials: "same-origin"})
             .then(function(r) { return r.json(); })
             .then(function(csrf) {
@@ -1073,13 +1149,18 @@
                     var oldLabel = saveBtn.textContent;
                     saveBtn.textContent = "Saved!";
                     setTimeout(function() { saveBtn.textContent = oldLabel; }, 1500);
+                    showToast("Profile saved.", false);
                 } else {
                     saveStatus.textContent = (data && data.error) || "Could not save.";
+                    showToast((data && data.error) || "Could not save.", true);
                 }
                 setTimeout(function() { saveStatus.textContent = ""; }, 3000);
+                saveBtn.disabled = false;
             })
             .catch(function() {
                 saveStatus.textContent = "Could not save.";
+                showToast("Could not save.", true);
+                saveBtn.disabled = false;
             });
     });
 })();

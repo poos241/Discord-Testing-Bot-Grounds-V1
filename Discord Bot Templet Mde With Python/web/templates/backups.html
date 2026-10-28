@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+
+{% block title %}
+    Backups - Kush Bush
+{% endblock %}
+
+{% block body %}
+
+<div style="max-width: 900px; margin: 0 auto; padding: 24px 16px;">
+
+    <h1>Backups</h1>
+
+    <p>
+        Snapshots of the bot's data: <strong>bot.db</strong>,
+        <strong>message_log.db</strong>, and the JSON data files
+        (mod data, watchlist, Eat It or Yeet It data). A snapshot is
+        taken automatically every day at
+        <strong>{{ "%02d:00" % scheduled_hour }} PC local time</strong>,
+        and you can take one by hand any time before a risky change.
+    </p>
+
+    <p>
+        Restoring is moderator-only and always takes a
+        <strong>pre-restore safety snapshot</strong> first, so a restore
+        can itself be undone. After restoring,
+        <strong>restart the bot</strong> so every cog picks up the
+        restored data. Retention: the newest 14 daily snapshots plus
+        the newest 10 manual / pre-restore snapshots are kept.
+    </p>
+
+    <p style="color: #888;">
+        Not backed up on purpose: notification read-state (dismissing a
+        notification is not bot data) and debug logs.
+    </p>
+
+    {% if notice %}
+    <div style="background: #1e4634; border: 1px solid #2e7d52; padding: 12px 16px; border-radius: 8px; margin: 16px 0;">
+        {{ notice }}
+    </div>
+    {% endif %}
+
+    {% if error %}
+    <div style="background: #4a1f1f; border: 1px solid #a33; padding: 12px 16px; border-radius: 8px; margin: 16px 0;">
+        {{ error }}
+    </div>
+    {% endif %}
+
+    <form method="post" action="{{ url_for('backups.create') }}" style="margin: 20px 0;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" style="padding: 10px 20px; font-size: 1rem; cursor: pointer;">
+            Take a snapshot now
+        </button>
+    </form>
+
+    {% if snapshots %}
+    <table style="width: 100%; border-collapse: collapse;">
+        <thead>
+            <tr style="text-align: left; border-bottom: 2px solid #444;">
+                <th style="padding: 8px;">Snapshot</th>
+                <th style="padding: 8px;">Taken</th>
+                <th style="padding: 8px;">Files</th>
+                <th style="padding: 8px;">Size</th>
+                <th style="padding: 8px;">Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+        {% for snap in snapshots %}
+            <tr style="border-bottom: 1px solid #333;">
+                <td style="padding: 8px;">
+                    {{ snap.name }}
+                    {% if not snap.ok %}
+                    <span style="color: #f88;">(unreadable)</span>
+                    {% endif %}
+                </td>
+                <td style="padding: 8px;">{{ snap.created_at or "unknown" }}</td>
+                <td style="padding: 8px;">{{ snap.files | length }}</td>
+                <td style="padding: 8px;">{{ "%.1f" % (snap.size / 1024) }} KB</td>
+                <td style="padding: 8px; white-space: nowrap;">
+                    <form method="post" action="{{ url_for('backups.restore') }}" style="display: inline;"
+                          onsubmit="return confirm('Restore {{ snap.name }}? A pre-restore safety snapshot will be taken first, and you will need to restart the bot afterwards.');">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="hidden" name="name" value="{{ snap.name }}">
+                        <button type="submit" {% if not snap.ok %}disabled{% endif %} style="cursor: pointer;">Restore</button>
+                    </form>
+                    <a href="{{ url_for('backups.download', name=snap.name) }}" style="margin: 0 8px;">Download</a>
+                    <form method="post" action="{{ url_for('backups.delete') }}" style="display: inline;"
+                          onsubmit="return confirm('Delete {{ snap.name }}? This cannot be undone.');">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="hidden" name="name" value="{{ snap.name }}">
+                        <button type="submit" style="cursor: pointer;">Delete</button>
+                    </form>
+                </td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p>No snapshots yet. Daily snapshots start after the next bot restart; use the button above to take one now.</p>
+    {% endif %}
+
+    <p style="margin-top: 24px;">
+        From Discord, mods can also run <strong>/backup now</strong> and
+        <strong>/backup status</strong>.
+    </p>
+
+</div>
+
+{% endblock %}

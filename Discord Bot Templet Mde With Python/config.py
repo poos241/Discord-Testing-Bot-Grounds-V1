@@ -37,12 +37,20 @@ emojis = {
 
 COMMAND_TAGS = {
     "moderation": ["kick", "ban", "warn"],
-    "levels": ["level", "leaderboard", "set_xp_rate", "set_cooldown", "set_level_channel", "add_xp", "resetxp", "cleardata", "getxpsettings", "backupdb"],
-    "tickets": ["ticket_open", "ticket_close", "ticket_config", "ticket_manage_roles", "send_ticket_panel", "set_verification_role", "ticket_verification"],
+    "levels": ["level", "leaderboard", "set_xp_rate", "set_cooldown", "set_level_channel", "add_xp", "resetxp", "cleardata", "getxpsettings"],
+    "voicexp": ["voicexp optin", "voicexp optout", "voicexp status", "voicexp leaderboard", "voicexp config", "voicexp setrate", "voicexp setcap", "voicexp enable", "voicexp disable"],
+    "backups": ["backup now", "backup status"],
+    "tickets": ["ticket panel", "ticket config", "ticket show", "ticket open", "ticket close", "ticket reopen", "ticket claim", "ticket delete", "ticket add", "ticket remove", "ticket list"],
     "fun": ["eatyeet", "eatyeet_end", "eatyeet_leaderboard", "eatyeet_stats", "eatyeet_suggest", "eatyeet_history", "flip_coin", "conch", "roll", "rps", "leaderboard_rps", "clear_leaderboard_rps"],
-    "utility": ["userinfo", "clear_user", "rename_user", "autocategorize", "diagnose_docs", "show_categories"],
+    "utility": ["userinfo", "clear_user", "rename_user", "autocategorize", "diagnose_docs", "show_categories", "time"],
     "auto_thread": ["auto_thread", "set_auto_thread_channel", "remove_auto_thread_channel", "auto_thread_status"],
     "welcome": ["set_welcome_channel", "welcome_message", "welcome_embed_image", "welcome_embed_title", "welcome_embed_description"],
+    "qotd": ["qotd today", "qotd history", "qotd submit", "qotd post", "qotd skip", "qotd config", "qotd pending", "qotd approve", "qotd reject", "qotd remove"],
+    "appeals": ["appeal submit", "appeal list", "appeal review", "appeal config"],
+    "lockdown": ["lockdown lock", "lockdown unlock", "lockdown lockall", "lockdown unlockall", "lockdown slowmode", "lockdown status"],
+    "automod": ["automod status", "automod toggle", "automod config"],
+    "badges": ["badge create", "badge award", "badge remove", "badge delete", "badge list"],
+    "modnotes": ["modnotes search"],
     "custom_dm": ["set_reply_embed", "set_reply_image", "set_reply_title", "set_reply_description"],
     
     
@@ -121,7 +129,27 @@ player_stats = {}
 DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
 os.makedirs(DATA_DIR, exist_ok=True)
 
+# JSON stores that now live in SQLite (bot.db) instead of data/*.json.
+# The redirect is here, in the one load/save pair every cog and web
+# blueprint already uses, so no call site had to change and the dict
+# API is identical. The original JSON files are kept on disk untouched
+# as the rollback copy; see utils/json_sqlite_store.py for the
+# one-time migration, the per-store tables, and the rollback rules.
+_SQLITE_JSON_FILES = frozenset({
+    "mod_data.json",
+    "watchlist_data.json",
+    "eatyeet_stats.json",
+    "eatyeet_suggestions.json",
+    "eatyeet_active.json",
+    "eatyeet_rematch.json",
+})
+
+
 def load_json(filename):
+    if filename in _SQLITE_JSON_FILES:
+        from utils.json_sqlite_store import load_store
+        return load_store(filename)
+
     path = os.path.join(DATA_DIR, filename)
     if not os.path.exists(path):
         with open(path, 'w') as f:
@@ -140,6 +168,11 @@ def load_json(filename):
         return {}
 
 def save_json(filename, data):
+    if filename in _SQLITE_JSON_FILES:
+        from utils.json_sqlite_store import save_store
+        save_store(filename, data)
+        return
+
     path = os.path.join(DATA_DIR, filename)
     with open(path, "w", encoding='utf-8') as f:
         json.dump(data, f, indent=4)

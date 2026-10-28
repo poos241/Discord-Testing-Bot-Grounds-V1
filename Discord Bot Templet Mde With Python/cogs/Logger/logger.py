@@ -4,6 +4,37 @@ import discord
 from .database import db
 
 
+def _rich_summary(embed):
+    """Flatten an embed into the searchable text recorded for the event.
+
+    Logger embeds carry the who/where in fields and the author line,
+    not in ``description`` -- recording only the description left the
+    event history (and CSV export) with NULL summaries and no way to
+    filter by user or channel. Field values contain the raw IDs
+    (``User: name (`123...`)``, ``<#123...>`` mentions, author lines
+    like ``name (123...)``), so this flattened text is what the
+    per-user / per-channel export filters match against. Capped so one
+    chatty event can't bloat the history table.
+    """
+    parts = []
+    description = getattr(embed, "description", None)
+    if description:
+        parts.append(str(description))
+    author = getattr(embed, "author", None)
+    author_name = getattr(author, "name", None) if author else None
+    if author_name:
+        parts.append(f"Author: {author_name}")
+    for field in getattr(embed, "fields", None) or []:
+        name = getattr(field, "name", None)
+        value = getattr(field, "value", None)
+        if name and value:
+            parts.append(f"{name}: {value}")
+    text = "\n".join(parts)
+    if len(text) > 2000:
+        text = text[:1997] + "..."
+    return text or None
+
+
 class Logger:
     def __init__(self, bot):
         self.bot = bot
@@ -20,7 +51,7 @@ class Logger:
                 guild.id,
                 category,
                 event_type=getattr(embed, "title", None),
-                summary=getattr(embed, "description", None),
+                summary=_rich_summary(embed),
             )
         except Exception:
             pass

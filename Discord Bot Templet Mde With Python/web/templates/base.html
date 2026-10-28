@@ -43,12 +43,82 @@
     >
 
 
+    <!-- Navbar bell dropdown open/close animation -->
+    <style>
+        @keyframes bell-drop-in {
+            from { opacity: 0; transform: translateY(-6px) scale(.98); }
+            to { opacity: 1; transform: none; }
+        }
+        @keyframes bell-drop-out {
+            from { opacity: 1; transform: none; }
+            to { opacity: 0; transform: translateY(-6px) scale(.98); }
+        }
+        #navbar-bell-panel.bell-open { animation: bell-drop-in 180ms ease-out; }
+        #navbar-bell-panel.bell-closing { animation: bell-drop-out 140ms ease-in forwards; }
+        @media (prefers-reduced-motion: reduce) {
+            #navbar-bell-panel.bell-open, #navbar-bell-panel.bell-closing { animation: none; }
+        }
+
+        /* Smooth scrolling + back-to-top button (all pages using this layout) */
+        html { scroll-behavior: smooth; }
+        /* Bottom-left on purpose: the debug FAB + panel live bottom-right
+           (see web/templates/debug_panel.html, injected by web/blueprints/debug.py),
+           so keeping back-to-top on the left keeps both controls visible
+           and clickable at once on desktop, mobile, and long pages. */
+        #back-to-top {
+            position: fixed;
+            left: 24px;
+            bottom: 24px;
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            border: 1px solid rgba(255,255,255,.2);
+            background: #1e1f24;
+            color: #fff;
+            font-size: 1.25rem;
+            line-height: 1;
+            cursor: pointer;
+            box-shadow: 0 8px 24px rgba(0,0,0,.45);
+            z-index: 1500;
+            opacity: 0;
+            transform: translateY(8px);
+            pointer-events: none;
+            transition: opacity 200ms ease-out, transform 200ms ease-out;
+        }
+        #back-to-top.back-to-top-visible {
+            opacity: 1;
+            transform: none;
+            pointer-events: auto;
+        }
+        #back-to-top:focus-visible {
+            outline: 2px solid #8ea2ff;
+            outline-offset: 2px;
+        }
+        @media (prefers-reduced-motion: reduce) {
+            html { scroll-behavior: auto; }
+            #back-to-top { transition: none; }
+        }
+        /* Small screens: tuck slightly closer to the corner (and above the
+           iOS home-indicator safe area) while staying clear of the
+           bottom-right debug FAB. */
+        @media (max-width: 640px) {
+            #back-to-top {
+                left: 16px;
+                bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+            }
+        }
+    </style>
+
+
     {% block head %}{% endblock %}
 
 </head>
 
 
 <body>
+
+    <!-- Scroll progress bar: thin accent bar at the very top of the viewport -->
+    <div id="scroll-progress" aria-hidden="true"></div>
 
 
 
@@ -85,7 +155,18 @@
     </div>
 
 
-    <div class="nav-links">
+    <button
+        id="nav-toggle"
+        type="button"
+        aria-label="Toggle navigation menu"
+        aria-expanded="false"
+        aria-controls="main-nav-links"
+    >
+        &#9776;
+    </button>
+
+
+    <div class="nav-links" id="main-nav-links">
 
         <a
             href="{{ url_for('home') }}"
@@ -108,6 +189,13 @@
             class="nav-link-item"
         >
             Servers
+        </a>
+
+        <a
+            href="{{ url_for('directory.directory_page') }}"
+            class="nav-link-item"
+        >
+            Directory
         </a>
 
         {% if can_any("admin") %}
@@ -147,6 +235,13 @@
             rel="noopener"
         >
             Staff Handbook
+        </a>
+
+        <a
+            href="{{ url_for('backups.page') }}"
+            class="nav-link-item"
+        >
+            Backups
         </a>
         {% endif %}
 
@@ -225,6 +320,20 @@
                         <button id="navbar-bell-read" type="button"
                             style="border:none;background:transparent;color:#8ea2ff;cursor:pointer;font-size:.8rem;">Mark all read</button>
                     </div>
+                    <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;padding:2px 10px 8px;">
+                        <span id="navbar-bell-filters" style="display:flex;gap:4px;">
+                            <button type="button" data-filter="all" style="border:1px solid rgba(255,255,255,.25);background:rgba(88,101,242,.25);color:#fff;border-radius:99px;padding:3px 9px;cursor:pointer;font-size:.75rem;">All</button>
+                            <button type="button" data-filter="mod" style="border:1px solid rgba(255,255,255,.15);background:transparent;color:#fff;border-radius:99px;padding:3px 9px;cursor:pointer;font-size:.75rem;">Mod cases</button>
+                            <button type="button" data-filter="level" style="border:1px solid rgba(255,255,255,.15);background:transparent;color:#fff;border-radius:99px;padding:3px 9px;cursor:pointer;font-size:.75rem;">Level-ups</button>
+                            <button type="button" data-filter="friend" style="border:1px solid rgba(255,255,255,.15);background:transparent;color:#fff;border-radius:99px;padding:3px 9px;cursor:pointer;font-size:.75rem;">Friends</button>
+                        </span>
+                        <span style="display:flex;gap:8px;">
+                            <button id="navbar-bell-clear-read" type="button" title="Remove notifications you have already read"
+                                style="border:none;background:transparent;color:#8ea2ff;cursor:pointer;font-size:.8rem;">Clear read</button>
+                            <button id="navbar-bell-clear-all" type="button" title="Remove all notifications (can't be undone)"
+                                style="border:none;background:transparent;color:#ED4245;cursor:pointer;font-size:.8rem;">Clear all</button>
+                        </span>
+                    </div>
                     <div id="navbar-bell-list"></div>
                 </div>
             </div>
@@ -250,18 +359,56 @@
                     if (diff < 604800000) return Math.floor(diff / 86400000) + "d ago";
                     return d.toLocaleDateString();
                 }
-                function render(items) {
+                var allItems = [];
+                var currentFilter = "all";
+                function filteredItems() {
+                    if (currentFilter === "all") return allItems;
+                    return allItems.filter(function(n) { return n.type === currentFilter; });
+                }
+                function setFilter(f) {
+                    currentFilter = f;
+                    var btns = document.querySelectorAll("#navbar-bell-filters [data-filter]");
+                    btns.forEach(function(b) {
+                        var active = b.getAttribute("data-filter") === f;
+                        b.style.background = active ? "rgba(88,101,242,.25)" : "transparent";
+                        b.style.borderColor = active ? "rgba(255,255,255,.25)" : "rgba(255,255,255,.15)";
+                    });
+                    render();
+                }
+                function render() {
+                    var items = filteredItems();
+                    if (!allItems.length) {
+                        list.innerHTML = '<div style="padding:16px 12px;text-align:center;">'
+                            + '<div style="font-size:1.4rem;">&#127881;</div>'
+                            + '<div style="font-size:.9rem;margin-top:6px;">You\'re all caught up</div>'
+                            + '<div style="font-size:.8rem;opacity:.6;margin-top:2px;">New mod cases, level-ups, and friend requests will show up here.</div></div>';
+                        return;
+                    }
                     if (!items.length) {
-                        list.innerHTML = '<div style="padding:12px;opacity:.6;font-size:.9rem;">No notifications yet.</div>';
+                        list.innerHTML = '<div style="padding:12px;opacity:.6;font-size:.9rem;">No notifications of this type yet.</div>';
                         return;
                     }
                     list.innerHTML = items.map(function(n) {
-                        return '<div style="padding:10px 12px;border-top:1px solid rgba(255,255,255,.08);'
+                        var markLabel = n.unread ? "Mark read" : "Mark unread";
+                        var markUnread = n.unread ? "0" : "1";
+                        return '<div style="display:flex;gap:8px;padding:10px 12px;border-top:1px solid rgba(255,255,255,.08);'
                             + (n.unread ? 'background:rgba(88,101,242,.12);' : '') + '">'
+                            + '<div style="flex:1;min-width:0;">'
                             + '<div style="font-size:.9rem;">' + n.icon + ' ' + esc(n.title) + '</div>'
                             + (n.text ? '<div style="font-size:.85rem;opacity:.7;margin-top:2px;">' + esc(n.text) + '</div>' : '')
                             + '<div style="font-size:.75rem;opacity:.5;margin-top:4px;">'
-                            + (n.guild_name ? esc(n.guild_name) + " \u00B7 " : "") + fmtTime(n.ts) + '</div></div>';
+                            + (n.guild_name ? esc(n.guild_name) + " \u00B7 " : "") + fmtTime(n.ts)
+                            + ' \u00B7 <button type="button" data-act="mark" data-id="' + esc(n.id) + '" data-unread="' + markUnread + '"'
+                            + ' style="border:none;background:transparent;color:#8ea2ff;cursor:pointer;font-size:.75rem;padding:0;">' + markLabel + '</button>'
+                            + (n.type === "friend"
+                                ? ' \u00B7 <button type="button" data-act="friend-accept" data-id="' + esc(n.friend_request_id) + '"'
+                                + ' style="border:none;background:transparent;color:#57F287;cursor:pointer;font-size:.75rem;padding:0;font-weight:700;">Accept</button>'
+                                + ' \u00B7 <button type="button" data-act="friend-decline" data-id="' + esc(n.friend_request_id) + '"'
+                                + ' style="border:none;background:transparent;color:#ED4245;cursor:pointer;font-size:.75rem;padding:0;">Decline</button>'
+                                : '')
+                            + '</div></div>'
+                            + '<button type="button" data-act="dismiss" data-id="' + esc(n.id) + '" title="Dismiss"'
+                            + ' style="border:none;background:transparent;color:rgba(255,255,255,.5);cursor:pointer;font-size:1rem;line-height:1;padding:0 2px;align-self:flex-start;">&times;</button></div>';
                     }).join("");
                 }
                 function load() {
@@ -269,32 +416,82 @@
                         .then(function(r) { return r.ok ? r.json() : null; })
                         .then(function(data) {
                             if (!data) return;
-                            render(data.notifications || []);
+                            allItems = data.notifications || [];
+                            render();
                             var u = data.unread || 0;
                             badge.textContent = u > 99 ? "99+" : String(u);
                             badge.style.display = u ? "grid" : "none";
                         })
                         .catch(function() {});
                 }
-                btn.addEventListener("click", function(ev) {
-                    ev.stopPropagation();
-                    panel.style.display = (panel.style.display === "none" || !panel.style.display) ? "block" : "none";
-                });
-                document.addEventListener("click", function(ev) {
-                    if (!panel.contains(ev.target) && ev.target !== btn) panel.style.display = "none";
-                });
-                document.getElementById("navbar-bell-read").addEventListener("click", function() {
-                    fetch("/api/csrf", {credentials: "same-origin"})
+                function postAction(url, body) {
+                    return fetch("/api/csrf", {credentials: "same-origin"})
                         .then(function(r) { return r.json(); })
                         .then(function(csrf) {
-                            return fetch("/api/notifications/read", {
+                            return fetch(url, {
                                 method: "POST",
                                 credentials: "same-origin",
-                                headers: {"X-CSRF-Token": csrf.token || csrf.csrf_token || ""}
+                                headers: {
+                                    "Content-Type": "application/json",
+                                    "X-CSRF-Token": csrf.token || csrf.csrf_token || ""
+                                },
+                                body: JSON.stringify(body || {})
                             });
                         })
                         .then(function() { load(); })
                         .catch(function() {});
+                }
+                list.addEventListener("click", function(ev) {
+                    var t = ev.target.closest ? ev.target.closest("[data-act]") : null;
+                    if (!t) return;
+                    var act = t.getAttribute("data-act");
+                    var id = t.getAttribute("data-id");
+                    if (act === "dismiss") postAction("/api/notifications/dismiss", {id: id});
+                    else if (act === "mark") postAction("/api/notifications/mark", {id: id, unread: t.getAttribute("data-unread") === "1"});
+                    else if (act === "friend-accept") postAction("/api/friends/respond", {request_id: id, action: "accept"});
+                    else if (act === "friend-decline") postAction("/api/friends/respond", {request_id: id, action: "decline"});
+                });
+                document.getElementById("navbar-bell-filters").addEventListener("click", function(ev) {
+                    var t = ev.target.closest ? ev.target.closest("[data-filter]") : null;
+                    if (t) setFilter(t.getAttribute("data-filter"));
+                });
+                document.getElementById("navbar-bell-clear-read").addEventListener("click", function() {
+                    postAction("/api/notifications/clear", {scope: "read"});
+                });
+                document.getElementById("navbar-bell-clear-all").addEventListener("click", function() {
+                    if (confirm("Clear all notifications? This can't be undone.")) {
+                        postAction("/api/notifications/clear", {scope: "all"});
+                    }
+                });
+                var closeTimer = null;
+                function openPanel() {
+                    if (closeTimer) { clearTimeout(closeTimer); closeTimer = null; }
+                    panel.classList.remove("bell-closing");
+                    panel.style.display = "block";
+                    void panel.offsetWidth;
+                    panel.classList.add("bell-open");
+                }
+                function closePanel() {
+                    if (panel.style.display === "none" || !panel.style.display) return;
+                    panel.classList.remove("bell-open");
+                    panel.classList.add("bell-closing");
+                    if (closeTimer) clearTimeout(closeTimer);
+                    closeTimer = setTimeout(function() {
+                        panel.style.display = "none";
+                        panel.classList.remove("bell-closing");
+                        closeTimer = null;
+                    }, 150);
+                }
+                btn.addEventListener("click", function(ev) {
+                    ev.stopPropagation();
+                    if (panel.style.display === "none" || !panel.style.display) openPanel();
+                    else closePanel();
+                });
+                document.addEventListener("click", function(ev) {
+                    if (!panel.contains(ev.target) && ev.target !== btn) closePanel();
+                });
+                document.getElementById("navbar-bell-read").addEventListener("click", function() {
+                    postAction("/api/notifications/read", {});
                 });
                 load();
             })();
@@ -348,6 +545,79 @@
 
 </nav>
 
+    <script>
+    // Mobile nav: collapse the link row behind a hamburger button on
+    // small screens. No-JS safe: the links are hidden ONLY once this
+    // script adds .nav-collapsed, so without JS they stay visible.
+    (function() {
+        var nav = document.querySelector(".top-navbar");
+        var btn = document.getElementById("nav-toggle");
+        var links = document.getElementById("main-nav-links");
+        if (!nav || !btn || !links) return;
+        var BREAKPOINT = 820;
+        function isSmall() { return window.innerWidth <= BREAKPOINT; }
+        function sync() {
+            if (isSmall()) {
+                if (!nav.classList.contains("nav-open")) nav.classList.add("nav-collapsed");
+            } else {
+                nav.classList.remove("nav-collapsed");
+                nav.classList.remove("nav-open");
+                btn.setAttribute("aria-expanded", "false");
+            }
+        }
+        btn.addEventListener("click", function(ev) {
+            ev.stopPropagation();
+            var open = nav.classList.toggle("nav-open");
+            btn.setAttribute("aria-expanded", open ? "true" : "false");
+        });
+        document.addEventListener("click", function(ev) {
+            if (nav.classList.contains("nav-open") && !nav.contains(ev.target)) {
+                nav.classList.remove("nav-open");
+                btn.setAttribute("aria-expanded", "false");
+            }
+        });
+        document.addEventListener("keydown", function(ev) {
+            if (ev.key === "Escape" && nav.classList.contains("nav-open")) {
+                nav.classList.remove("nav-open");
+                btn.setAttribute("aria-expanded", "false");
+                btn.focus();
+            }
+        });
+        window.addEventListener("resize", sync);
+        sync();
+    })();
+    </script>
+
+    <script>
+    // Navbar active-page highlight: mark the nav link for the current page.
+    // Same-origin links only, so the external GitHub/Handbook links never
+    // match. First exact pathname match wins: Dashboard and Servers both
+    // point at /servers, so on that page only Dashboard lights up.
+    // Runs at parse time; if this script fails, links simply stay unmarked.
+    (function() {
+        var links = document.querySelectorAll("#main-nav-links .nav-link-item");
+        if (!links.length) return;
+        function norm(p) {
+            if (!p) return "/";
+            if (p.length > 1 && p.charAt(p.length - 1) === "/") p = p.slice(0, -1);
+            return p;
+        }
+        var current = norm(window.location.pathname);
+        for (var i = 0; i < links.length; i++) {
+            var a = links[i];
+            if (a.getAttribute("target") === "_blank") continue;
+            var href = a.getAttribute("href");
+            if (!href || href.charAt(0) !== "/") continue;
+            var path = norm(href.split("?")[0].split("#")[0]);
+            if (path === current) {
+                a.classList.add("nav-active");
+                a.setAttribute("aria-current", "page");
+                break;
+            }
+        }
+    })();
+    </script>
+
     {% if session.get("user") %}
     {% set _u = session.get("user") %}
     <div id="welcome-banner" style="
@@ -393,7 +663,7 @@
     </script>
     {% endif %}
 
-    <div class="container-fluid px-3 px-lg-4 py-3">
+    <div class="container-fluid px-3 px-lg-4 py-3 page-fade">
 
         {% block body %}
 
@@ -437,6 +707,51 @@
     {% endblock %}
 
 <script src="{{ url_for('static', filename='js/server_context.js') }}"></script>
+
+    <!-- Back-to-top button: appears once the page is scrolled down -->
+    <button id="back-to-top" type="button" aria-label="Back to top" title="Back to top">&#8593;</button>
+    <script>
+    (function() {
+        var btn = document.getElementById("back-to-top");
+        if (!btn) return;
+        var reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+        var ticking = false;
+        function sync() {
+            ticking = false;
+            if (window.scrollY > 400) btn.classList.add("back-to-top-visible");
+            else btn.classList.remove("back-to-top-visible");
+        }
+        window.addEventListener("scroll", function() {
+            if (!ticking) { ticking = true; requestAnimationFrame(sync); }
+        }, { passive: true });
+        btn.addEventListener("click", function() {
+            window.scrollTo({ top: 0, behavior: reduced ? "auto" : "smooth" });
+        });
+        sync();
+    })();
+    </script>
+
+    <script>
+    // Scroll progress bar: fills the thin bar at the top of the viewport
+    // as the page scrolls. No CSS transition, so it stays still for
+    // prefers-reduced-motion users; it simply tracks the scroll position.
+    (function() {
+        var bar = document.getElementById("scroll-progress");
+        if (!bar) return;
+        var ticking = false;
+        function sync() {
+            ticking = false;
+            var max = document.documentElement.scrollHeight - window.innerHeight;
+            var pct = max > 0 ? (window.scrollY / max) * 100 : 0;
+            bar.style.width = pct + "%";
+        }
+        window.addEventListener("scroll", function() {
+            if (!ticking) { ticking = true; requestAnimationFrame(sync); }
+        }, { passive: true });
+        window.addEventListener("resize", sync);
+        sync();
+    })();
+    </script>
 
 </body>
 

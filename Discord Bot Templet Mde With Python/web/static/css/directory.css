@@ -1,0 +1,163 @@
+/* Member directory: tag cloud + member cards. */
+
+.directory-page {
+    max-width: 1000px;
+    margin: 0 auto;
+    padding: 24px 16px;
+}
+
+.directory-search-row {
+    display: flex;
+    gap: 12px;
+    margin: 20px 0 12px;
+}
+
+.directory-search-row input[type="search"] {
+    flex: 1;
+    padding: 10px 12px;
+    font-size: 1rem;
+    border-radius: 8px;
+    border: 1px solid #444;
+    background: #1e1f22;
+    color: #fff;
+}
+
+.directory-search-row button {
+    padding: 10px 16px;
+    font-size: 1rem;
+    border-radius: 8px;
+    border: 1px solid #444;
+    background: #2b2d31;
+    color: #fff;
+    cursor: pointer;
+}
+
+.directory-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 8px 0 16px;
+}
+
+.directory-tag {
+    padding: 6px 12px;
+    border-radius: 999px;
+    border: 1px solid #5865f2;
+    background: #2b2d31;
+    color: #fff;
+    cursor: pointer;
+    font-size: 0.9rem;
+}
+
+.directory-tag.selected {
+    background: #5865f2;
+}
+
+.directory-count {
+    color: #aaa;
+}
+
+.directory-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 16px;
+}
+
+.directory-card {
+    background: #2b2d31;
+    border: 1px solid #1e1f22;
+    border-radius: 12px;
+    padding: 16px;
+    overflow-wrap: anywhere;
+}
+
+.directory-card-head {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.directory-card-head img {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    object-fit: cover;
+}
+
+.directory-card-name {
+    font-size: 1.1rem;
+    font-weight: 600;
+}
+
+.directory-card-name a {
+    color: #fff;
+    text-decoration: none;
+}
+
+.directory-card-pronouns {
+    color: #aaa;
+    font-size: 0.9rem;
+}
+
+.directory-card-status {
+    color: #ccc;
+    font-style: italic;
+    margin: 10px 0 0;
+}
+
+.directory-card-bio {
+    margin: 10px 0 0;
+    white-space: pre-wrap;
+}
+
+.directory-card-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 12px 0 0;
+}
+
+.directory-card-tag {
+    padding: 3px 9px;
+    border-radius: 999px;
+    background: #1e1f22;
+    border: 1px solid #5865f2;
+    font-size: 0.85rem;
+}
+
+.directory-card-tag.selected {
+    background: #5865f2;
+}
+
+.directory-card-stats {
+    color: #aaa;
+    font-size: 0.9rem;
+    margin: 12px 0 0;
+}
+
+.directory-card-badges {
+    margin: 8px 0 0;
+    font-size: 1.1rem;
+}
+
+.directory-card-socials {
+    margin: 10px 0 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.directory-card-socials a {
+    color: #8ea2ff;
+    word-break: break-all;
+}
+
+.directory-card-dm {
+    margin: 10px 0 0;
+    font-size: 0.9rem;
+    color: #aaa;
+}
+
+.directory-loading {
+    color: #aaa;
+}

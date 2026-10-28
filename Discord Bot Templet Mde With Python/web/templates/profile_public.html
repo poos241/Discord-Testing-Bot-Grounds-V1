@@ -40,7 +40,7 @@
 </style>
 <div id="public-layout" style="max-width:1000px;margin:40px auto;padding:0 16px;">
 
-    <div id="public-card" style="display:none;background:rgba(255,255,255,.03);
+    <div id="public-card" class="reveal" style="display:none;background:rgba(255,255,255,.03);
         border:1px solid rgba(255,255,255,.08);border-radius:16px;overflow:hidden;">
         <div id="public-banner" style="height:140px;background:#5865F2;
             background-size:cover;background-position:center;"></div>
@@ -76,6 +76,9 @@
             <div style="margin-top:14px;">
                 <a href="/profile/edit" style="display:inline-block;border:1px solid rgba(255,255,255,.25);border-radius:99px;padding:6px 16px;color:#fff;text-decoration:none;font-size:.85rem;font-weight:700;">Edit profile</a>
             </div>
+            {% elif viewer %}
+            <div id="public-friend-action" style="margin-top:14px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;"></div>
+            <div id="public-friend-status" style="font-size:.85rem;opacity:.7;margin-top:6px;min-height:1.2em;"></div>
             {% endif %}
             </div>
             <div style="text-align:center;flex-shrink:0;padding-top:56px;">
@@ -93,14 +96,14 @@
         </div>
     </div>
 
-    <div id="public-featured" style="display:none;background:rgba(255,255,255,.03);
+    <div id="public-featured" class="reveal" style="display:none;background:rgba(255,255,255,.03);
         border:1px solid rgba(255,255,255,.08);border-radius:16px;
         padding:24px 32px;margin-top:20px;">
         <h3 style="margin:0 0 16px;">Featured</h3>
         <div id="public-featured-content" style="display:flex;gap:12px;flex-wrap:wrap;"></div>
     </div>
 
-    <div id="public-stats" style="display:none;background:rgba(255,255,255,.03);
+    <div id="public-stats" class="reveal" style="display:none;background:rgba(255,255,255,.03);
         border:1px solid rgba(255,255,255,.08);border-radius:16px;
         padding:24px 32px;margin-top:20px;">
         <h3 style="margin:0 0 16px;">Bot stats</h3>
@@ -120,26 +123,34 @@
         </div>
     </div>
 
-    <div id="public-badges" style="display:none;background:rgba(255,255,255,.03);
+    <div id="public-badges" class="reveal" style="display:none;background:rgba(255,255,255,.03);
         border:1px solid rgba(255,255,255,.08);border-radius:16px;
         padding:24px 32px;margin-top:20px;">
         <h3 id="public-badges-title" style="margin:0 0 16px;">Achievements</h3>
         <div id="public-badge-grid" style="display:flex;gap:12px;flex-wrap:wrap;"></div>
     </div>
 
-    <div id="public-activity" style="display:none;background:rgba(255,255,255,.03);
+    <div id="public-activity" class="reveal" style="display:none;background:rgba(255,255,255,.03);
         border:1px solid rgba(255,255,255,.08);border-radius:16px;
         padding:24px 32px;margin-top:20px;">
         <h3 style="margin:0 0 16px;">Recent activity</h3>
         <div id="public-activity-list" style="display:grid;gap:10px;"></div>
     </div>
 
-    <div id="public-roles" style="display:none;background:rgba(255,255,255,.03);
+    <div id="public-roles" class="reveal" style="display:none;background:rgba(255,255,255,.03);
         border:1px solid rgba(255,255,255,.08);border-radius:16px;
         padding:24px 32px;">
         <h3 style="margin:0 0 16px;">Server roles</h3>
         <div id="public-roles-guild-name" style="font-size:.85rem;opacity:.6;margin-bottom:10px;"></div>
         <div id="public-roles-list" style="display:flex;gap:8px;flex-wrap:wrap;"></div>
+    </div>
+
+    <div id="public-friends" class="reveal" style="display:none;background:rgba(255,255,255,.03);
+        border:1px solid rgba(255,255,255,.08);border-radius:16px;
+        padding:24px 32px;margin-top:20px;">
+        <h3 style="margin:0 0 16px;">Friends</h3>
+        <div id="public-friends-list" style="display:grid;gap:10px;"></div>
+        <div style="opacity:.6;font-size:.8rem;margin-top:10px;">Only friends with public profiles are listed here.</div>
     </div>
 
     <div id="public-error" style="display:none;text-align:center;padding:64px 24px;">
@@ -170,6 +181,7 @@
         var d = a.detail || {};
         if (a.kind === "level_up") return "\uD83C\uDF89 Reached level " + (d.level || "?");
         if (a.kind === "daily_claim") return "\uD83C\uDF81 Claimed daily reward (" + (d.streak || 1) + "-day streak)";
+        if (a.kind === "badge_award") return "\uD83C\uDFC5 Awarded the \"" + (d.badge || "?") + "\" badge";
         if (a.kind === "game_round") {
             var pts = d.majority ? "(+" + (d.points || 0) + " pts, with the majority)" : "(against the crowd)";
             return "\uD83C\uDFAE Eat It or Yeet It: " + (d.food || "something") + " \u2014 voted " + (d.voted || "?") + ", verdict " + (d.verdict || "?") + " " + pts;
@@ -509,10 +521,97 @@ function fmtAgo(ts) {
                         + '<div style="opacity:.5;font-size:.8rem;white-space:nowrap;">' + when + "</div></div>";
                 }).join("")
                 : '<div style="opacity:.5;">No activity yet.</div>';
+
+            // Public friends: only friends who are themselves public.
+            fetch("/api/friends/public/" + encodeURIComponent(userId), {credentials: "same-origin"})
+                .then(function(r) { return r.ok ? r.json() : null; })
+                .then(function(fdata) {
+                    if (!fdata || !fdata.success || !(fdata.friends || []).length) return;
+                    $("public-friends").style.display = "";
+                    $("public-friends-list").innerHTML = fdata.friends.map(function(f) {
+                        var av = f.avatar_url
+                            ? '<img src="' + esc(f.avatar_url) + '" alt="" style="width:40px;height:40px;border-radius:50%;object-fit:cover;">'
+                            : '<div style="width:40px;height:40px;border-radius:50%;background:#2b2d31;display:grid;place-items:center;font-weight:800;">' + esc((f.display_name || "?").slice(0, 1).toUpperCase()) + "</div>";
+                        return '<a href="/profile/' + encodeURIComponent(f.user_id) + '" style="display:flex;gap:12px;align-items:center;background:#1e1f24;border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:10px 14px;text-decoration:none;color:#fff;">'
+                            + av + '<span style="font-weight:700;">' + esc(f.display_name) + "</span></a>";
+                    }).join("");
+                })
+                .catch(function() {});
+
+            // Friend action for a logged-in viewer (div only exists
+            // for logged-in non-owners, per the Jinja above).
+            loadPublicFriendAction();
         })
         .catch(function() {
             $("public-error").style.display = "";
         });
+
+    function publicFriendBtn(label, act, id, disabled, title) {
+        return '<button type="button" data-public-friend-act="' + act + '" data-id="' + esc(id || "") + '"'
+            + (disabled ? " disabled" : "")
+            + ' title="' + esc(title || "") + '"'
+            + ' style="border:1px solid rgba(255,255,255,.25);border-radius:99px;padding:6px 16px;'
+            + 'background:' + (disabled ? "transparent" : "#5865F2") + ';color:#fff;font-weight:700;'
+            + 'font-size:.85rem;cursor:' + (disabled ? "default" : "pointer") + ';opacity:' + (disabled ? ".6" : "1") + ';">'
+            + label + "</button>";
+    }
+    function loadPublicFriendAction() {
+        var box = $("public-friend-action");
+        if (!box) return;
+        fetch("/api/friends/status/" + encodeURIComponent(userId), {credentials: "same-origin"})
+            .then(function(r) { return r.ok ? r.json() : null; })
+            .then(function(data) {
+                if (!data || !data.success) return;
+                if (data.status === "self") return;
+                if (data.status === "friends") {
+                    box.innerHTML = '<span style="font-size:.85rem;font-weight:700;">Friends \u2713</span>'
+                        + publicFriendBtn("Unfriend", "unfriend", userId, false, "");
+                } else if (data.status === "pending_outgoing") {
+                    box.innerHTML = '<span style="font-size:.85rem;opacity:.7;">Friend request pending</span>'
+                        + publicFriendBtn("Cancel request", "cancel", data.request_id, false, "");
+                } else if (data.status === "pending_incoming") {
+                    box.innerHTML = publicFriendBtn("Accept request", "accept", data.request_id, false, "")
+                        + publicFriendBtn("Decline", "decline", data.request_id, false, "");
+                } else if (!data.allow_requests) {
+                    box.innerHTML = publicFriendBtn("Add friend", "add", "", true, "This user is not accepting friend requests right now.");
+                } else {
+                    box.innerHTML = publicFriendBtn("Add friend", "add", "", false, "");
+                }
+            })
+            .catch(function() {});
+    }
+    document.addEventListener("click", function(ev) {
+        var t = ev.target.closest ? ev.target.closest("[data-public-friend-act]") : null;
+        if (!t || t.disabled) return;
+        var act = t.getAttribute("data-public-friend-act");
+        var id = t.getAttribute("data-id");
+        var statusEl = $("public-friend-status");
+        function postFriend(url, body) {
+            fetch("/api/csrf", {credentials: "same-origin"})
+                .then(function(r) { return r.json(); })
+                .then(function(csrf) {
+                    return fetch(url, {
+                        method: "POST",
+                        credentials: "same-origin",
+                        headers: {"Content-Type": "application/json", "X-CSRF-Token": csrf.token || csrf.csrf_token || ""},
+                        body: JSON.stringify(body || {})
+                    });
+                })
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    statusEl.textContent = data.success ? "Done." : ("Could not do that: " + (data.error || "Unknown error."));
+                    loadPublicFriendAction();
+                })
+                .catch(function() { statusEl.textContent = "Could not reach the server. Try again."; });
+        }
+        if (act === "add") postFriend("/api/friends/request", {user_id: userId});
+        else if (act === "accept") postFriend("/api/friends/respond", {request_id: id, action: "accept"});
+        else if (act === "decline") postFriend("/api/friends/respond", {request_id: id, action: "decline"});
+        else if (act === "cancel") postFriend("/api/friends/cancel", {request_id: id});
+        else if (act === "unfriend") {
+            if (confirm("Unfriend this person? You can send a new request later.")) postFriend("/api/friends/unfriend", {user_id: userId});
+        }
+    });
 })();
 </script>
 {% endblock %}

@@ -1,0 +1,161 @@
+/* =========================================================
+   LIVE VOICE VIEWER PAGE
+   Layout mirrors channels.css; class names are vc-prefixed
+   here as voice-* so the two pages never collide.
+========================================================= */
+
+.voice-list {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.voice-channel {
+    border: 1px solid #202630;
+    border-radius: 12px;
+    padding: 14px 16px;
+    background: #0f141c;
+    opacity: 0.75;
+}
+
+.voice-channel-occupied {
+    opacity: 1;
+    border-color: #2e3a4d;
+    background: #121826;
+}
+
+.voice-channel-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 10px;
+}
+
+.voice-channel-icon {
+    margin-right: 4px;
+}
+
+.voice-channel-name {
+    font-size: 16px;
+}
+
+.voice-channel-type {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #9aa7bd;
+    border: 1px solid #2a3342;
+    border-radius: 999px;
+    padding: 2px 8px;
+    margin-left: 6px;
+    white-space: nowrap;
+}
+
+.voice-channel-category {
+    font-size: 12px;
+    color: #8b98ad;
+    margin-left: 8px;
+}
+
+.voice-channel-head-right {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.voice-channel-count {
+    font-size: 13px;
+    color: #c6d0e0;
+}
+
+.voice-join-button {
+    display: inline-block;
+    padding: 6px 14px;
+    border-radius: 999px;
+    background: #5865f2;
+    color: #ffffff;
+    text-decoration: none;
+    font-size: 13px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.voice-join-button:hover {
+    background: #4752c4;
+    color: #ffffff;
+}
+
+.voice-members {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.voice-member {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 10px 5px 5px;
+    border: 1px solid #242e3d;
+    border-radius: 999px;
+    background: #0b0e13;
+    font-size: 13px;
+    max-width: 100%;
+}
+
+.voice-member-avatar {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    object-fit: cover;
+    flex: 0 0 28px;
+}
+
+.voice-member-fallback {
+    display: grid;
+    place-items: center;
+    background: #2b2d31;
+    font-weight: 700;
+}
+
+.voice-member-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.voice-badge {
+    font-size: 11px;
+    color: #c6d0e0;
+    border: 1px solid #2a3342;
+    border-radius: 999px;
+    padding: 1px 7px;
+    white-space: nowrap;
+}
+
+.voice-badge-bot {
+    background: #5865f2;
+    border-color: #5865f2;
+    color: #ffffff;
+}
+
+.voice-badge-live {
+    color: #ff5a5a;
+    border-color: #ff5a5a;
+}
+
+.voice-empty-note {
+    font-size: 13px;
+    color: #8b98ad;
+}
+
+.voice-error {
+    padding: 16px;
+    border: 1px solid #5a2a2a;
+    border-radius: 12px;
+    background: #1c1111;
+    color: #f0c0c0;
+    font-size: 14px;
+}

@@ -19,6 +19,7 @@
 #badges-section { grid-column: 2; grid-row: 3; }
 #servers-section { grid-column: 2; grid-row: 4; }
 #roles-section { grid-column: 1; grid-row: 4; }
+#friends-section { grid-column: 1; grid-row: 5; }
 @media (max-width: 800px) {
   #profile-layout { grid-template-columns: 1fr; }
   #profile-card { grid-column: 1; grid-row: 1; }
@@ -28,12 +29,13 @@
   #badges-section { grid-column: 1; grid-row: 5; }
   #servers-section { grid-column: 1; grid-row: 6; }
   #roles-section { grid-column: 1; grid-row: 7; }
+  #friends-section { grid-column: 1; grid-row: 8; }
   }
 
 /* Steam-style translucent panels + gradient section header bars */
-#profile-card, #stats-section, #badges-section, #activity-section, #roles-section { background: rgba(13,17,28,.85) !important; backdrop-filter: blur(8px); border-color: rgba(255,255,255,.12) !important; }
+#profile-card, #stats-section, #badges-section, #activity-section, #roles-section, #friends-section { background: rgba(13,17,28,.85) !important; backdrop-filter: blur(8px); border-color: rgba(255,255,255,.12) !important; }
 #servers-section { background: rgba(13,17,28,.85); backdrop-filter: blur(8px); border:1px solid rgba(255,255,255,.12); border-radius:12px; padding:24px; }
-#stats-section > h3, #badges-section > h3, #activity-section > h3, #featured-box > h3, #roles-section > h3 { background: linear-gradient(90deg, rgba(42,71,94,.95), rgba(42,71,94,0)); margin: -24px -32px 16px !important; padding: 12px 32px !important; border-radius: 12px 12px 0 0; }
+#stats-section > h3, #badges-section > h3, #activity-section > h3, #featured-box > h3, #roles-section > h3, #friends-section > h3 { background: linear-gradient(90deg, rgba(42,71,94,.95), rgba(42,71,94,0)); margin: -24px -32px 16px !important; padding: 12px 32px !important; border-radius: 12px 12px 0 0; }
 #servers-section > h3 { background: linear-gradient(90deg, rgba(42,71,94,.95), rgba(42,71,94,0)); margin: -24px -24px 16px !important; padding: 12px 24px !important; border-radius: 12px 12px 0 0; }
 #profile-card h2 { font-size: 2rem; }
 #profile-avatar-img, #profile-avatar-fallback { width:112px !important; height:112px !important; }
@@ -46,7 +48,7 @@
 <div id="profile-layout" style="max-width:1000px;margin:40px auto;padding:0 16px;">
 
     <!-- HEADER CARD -->
-    <div id="profile-card" style="background:rgba(255,255,255,.03);
+    <div id="profile-card" class="reveal" style="background:rgba(255,255,255,.03);
         border:1px solid rgba(255,255,255,.08);border-radius:16px;
         overflow:hidden;">
         <div id="profile-banner" style="height:140px;background:#5865F2;
@@ -109,7 +111,7 @@
     </div>
 
     <!-- FEATURED SHOWCASE -->
-    <div id="featured-box" style="display:none;background:rgba(255,255,255,.03);
+    <div id="featured-box" class="reveal" style="display:none;background:rgba(255,255,255,.03);
         border:1px solid rgba(255,255,255,.08);border-radius:16px;
         padding:24px 32px;margin-top:20px;">
         <h3 style="margin:0 0 16px;">Featured</h3>
@@ -119,7 +121,7 @@
     <!-- STATS -->
     <div style="background:rgba(255,255,255,.03);
         border:1px solid rgba(255,255,255,.08);border-radius:16px;
-        padding:24px 32px;margin-top:20px;" id="stats-section">
+        padding:24px 32px;margin-top:20px;" class="reveal" id="stats-section">
         <h3 style="margin:0 0 16px;">Bot stats</h3>
         <div id="stats-grid" style="display:grid;
             grid-template-columns:repeat(3,1fr);gap:12px;">
@@ -143,7 +145,7 @@
     <!-- BADGES -->
     <div style="background:rgba(255,255,255,.03);
         border:1px solid rgba(255,255,255,.08);border-radius:16px;
-        padding:24px 32px;margin-top:20px;" id="badges-section">
+        padding:24px 32px;margin-top:20px;" class="reveal" id="badges-section">
         <h3 id="badges-title" style="margin:0 0 16px;">Achievements</h3>
         <div id="badge-grid" style="display:flex;gap:12px;flex-wrap:wrap;">
             <div style="opacity:.5;">Loading badges...</div>
@@ -154,7 +156,7 @@
     <!-- ACTIVITY -->
     <div style="background:rgba(255,255,255,.03);
         border:1px solid rgba(255,255,255,.08);border-radius:16px;
-        padding:24px 32px;margin-top:20px;" id="activity-section">
+        padding:24px 32px;margin-top:20px;" class="reveal" id="activity-section">
         <h3 style="margin:0 0 16px;">Recent activity</h3>
         <div id="activity-list" style="display:grid;gap:10px;">
             <div style="opacity:.5;">Loading activity...</div>
@@ -162,7 +164,7 @@
     </div>
 
 
-    <div id="roles-section" style="display:none;background:rgba(255,255,255,.03);
+    <div id="roles-section" class="reveal" style="display:none;background:rgba(255,255,255,.03);
         border:1px solid rgba(255,255,255,.08);border-radius:16px;
         padding:24px 32px;">
         <h3 style="margin:0 0 16px;">Server roles</h3>
@@ -170,11 +172,32 @@
         <div id="roles-list" style="display:flex;gap:8px;flex-wrap:wrap;"></div>
     </div>
 
-    <div id="servers-section" style="margin-top:20px;">
+    <div id="servers-section" class="reveal" style="margin-top:20px;">
         <h3 style="margin:0 0 12px;padding:0 8px;">My servers</h3>
         <div id="server-list" style="display:grid;gap:12px;">
             <div style="opacity:.5;padding:12px 8px;">Loading servers...</div>
         </div>
+    </div>
+
+    <!-- FRIENDS -->
+    <div id="friends-section" class="reveal" style="background:rgba(255,255,255,.03);
+        border:1px solid rgba(255,255,255,.08);border-radius:16px;
+        padding:24px 32px;">
+        <h3 style="margin:0 0 16px;">Friends</h3>
+        <div id="friends-incoming" style="display:grid;gap:10px;"></div>
+        <div id="friends-outgoing" style="display:grid;gap:10px;margin-top:10px;"></div>
+        <div id="friends-list" style="display:grid;gap:10px;margin-top:10px;">
+            <div style="opacity:.5;">Loading friends...</div>
+        </div>
+        <form id="friends-add-form" style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap;">
+            <input id="friends-add-id" type="text" inputmode="numeric" placeholder="Friend's Discord user ID"
+                style="flex:1;min-width:200px;background:#1e1f24;border:1px solid rgba(255,255,255,.12);
+                border-radius:10px;color:#fff;padding:10px 14px;font-family:inherit;">
+            <button type="submit" style="border:none;border-radius:10px;background:#5865F2;color:#fff;
+                font-weight:700;padding:10px 18px;cursor:pointer;">Send friend request</button>
+        </form>
+        <div style="opacity:.6;font-size:.8rem;margin-top:8px;">Find someone's user ID on their public profile page (the number in its link). Requests only go to people who share a server with you, and only if they have friend requests turned on. <a href="/profile/edit" style="color:#8ea2ff;">Change who can send you requests</a></div>
+        <div id="friends-status" style="font-size:.9rem;margin-top:10px;min-height:1.2em;"></div>
     </div>
 
 </div>
@@ -223,7 +246,7 @@
         $("progress-bar").style.background = c;
         avatarImg.style.boxShadow = "0 0 0 3px " + c + ", 0 0 24px rgba(0,0,0,.6)";
         avatarFallback.style.boxShadow = "0 0 0 3px " + c + ", 0 0 24px rgba(0,0,0,.6)";
-        document.querySelectorAll("#stats-section > h3, #badges-section > h3, #activity-section > h3, #featured-box > h3, #servers-section > h3, #roles-section > h3").forEach(function(h) {
+        document.querySelectorAll("#stats-section > h3, #badges-section > h3, #activity-section > h3, #featured-box > h3, #servers-section > h3, #roles-section > h3, #friends-section > h3").forEach(function(h) {
             h.style.background = "linear-gradient(90deg, " + hexA(c, .45) + ", " + hexA(c, 0) + ")";
         });
     }
@@ -489,6 +512,7 @@
         var d = a.detail || {};
         if (a.kind === "level_up") return "\uD83C\uDF89 Reached level " + (d.level || "?");
         if (a.kind === "daily_claim") return "\uD83C\uDF81 Claimed daily reward (" + (d.streak || 1) + "-day streak)";
+        if (a.kind === "badge_award") return "\uD83C\uDFC5 Awarded the \"" + (d.badge || "?") + "\" badge";
         if (a.kind === "game_round") {
             var pts = d.majority ? "(+" + (d.points || 0) + " pts, with the majority)" : "(against the crowd)";
             return "\uD83C\uDFAE Eat It or Yeet It: " + (d.food || "something") + " \u2014 voted " + (d.voted || "?") + ", verdict " + (d.verdict || "?") + " " + pts;
@@ -643,6 +667,105 @@ function fmtAgo(ts) {
                 : '<div style="opacity:.5;">No activity yet — play, claim your daily, and level up to fill this in.</div>';
         })
         .catch(function() {});
+
+    // Friends: pending requests, friends list, add-by-ID, unfriend.
+    function friendAvatar(f) {
+        if (f.avatar_url) return '<img src="' + esc(f.avatar_url) + '" alt="" style="width:40px;height:40px;border-radius:50%;object-fit:cover;">';
+        return '<div style="width:40px;height:40px;border-radius:50%;background:#2b2d31;display:grid;place-items:center;font-weight:800;">' + esc((f.display_name || "?").slice(0, 1).toUpperCase()) + "</div>";
+    }
+    function friendRow(f, buttons) {
+        return '<div style="display:flex;gap:12px;align-items:center;background:#1e1f24;border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:10px 14px;">'
+            + friendAvatar(f)
+            + '<a href="/profile/' + encodeURIComponent(f.user_id) + '" style="flex:1;min-width:0;font-weight:700;color:#fff;text-decoration:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(f.display_name) + "</a>"
+            + buttons + "</div>";
+    }
+    function friendBtn(act, id, label, color) {
+        return '<button type="button" data-friend-act="' + act + '" data-id="' + esc(id) + '"'
+            + ' style="border:none;background:transparent;color:' + color + ';cursor:pointer;font-size:.85rem;font-weight:700;padding:4px 6px;">' + label + "</button>";
+    }
+    function postFriend(url, body, done) {
+        fetch("/api/csrf", {credentials: "same-origin"})
+            .then(function(r) { return r.json(); })
+            .then(function(csrf) {
+                return fetch(url, {
+                    method: "POST",
+                    credentials: "same-origin",
+                    headers: {"Content-Type": "application/json", "X-CSRF-Token": csrf.token || csrf.csrf_token || ""},
+                    body: JSON.stringify(body || {})
+                });
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                $("friends-status").textContent = data.success
+                    ? "Done."
+                    : ("Could not do that: " + (data.error || "Unknown error."));
+                if (done) done(data);
+                loadFriends(false);
+            })
+            .catch(function() {
+                $("friends-status").textContent = "Could not reach the server. Try again.";
+            });
+    }
+    function renderFriends(data) {
+        var incoming = data.incoming || [];
+        var outgoing = data.outgoing || [];
+        var friends = data.friends || [];
+        $("friends-incoming").innerHTML = incoming.length
+            ? '<div style="font-size:.85rem;opacity:.7;margin-bottom:2px;">Friend requests</div>' + incoming.map(function(f) {
+                return friendRow(f, friendBtn("accept", f.request_id, "Accept", "#57F287") + friendBtn("decline", f.request_id, "Decline", "#ED4245"));
+            }).join("")
+            : "";
+        $("friends-outgoing").innerHTML = outgoing.length
+            ? '<div style="font-size:.85rem;opacity:.7;margin-bottom:2px;">Requests you sent</div>' + outgoing.map(function(f) {
+                return friendRow(f, '<span style="font-size:.85rem;opacity:.6;margin-right:6px;">Waiting</span>' + friendBtn("cancel", f.request_id, "Cancel", "#ED4245"));
+            }).join("")
+            : "";
+        $("friends-list").innerHTML = friends.length
+            ? '<div style="font-size:.85rem;opacity:.7;margin-bottom:2px;">Your friends (' + friends.length + ")</div>" + friends.map(function(f) {
+                return friendRow(f, friendBtn("unfriend", f.user_id, "Unfriend", "#ED4245"));
+            }).join("")
+            : '<div style="opacity:.5;">No friends yet — send someone a request below, or add them from their public profile page.</div>';
+    }
+    function loadFriends(showLoading) {
+        if (showLoading) $("friends-list").innerHTML = '<div style="opacity:.5;">Loading friends...</div>';
+        fetch("/api/friends", {credentials: "same-origin"})
+            .then(function(r) { return r.ok ? r.json() : null; })
+            .then(function(data) {
+                if (!data || !data.success) {
+                    $("friends-list").innerHTML = '<div style="opacity:.5;">Could not load friends.</div>';
+                    return;
+                }
+                renderFriends(data);
+            })
+            .catch(function() {
+                $("friends-list").innerHTML = '<div style="opacity:.5;">Could not load friends.</div>';
+            });
+    }
+    $("friends-section").addEventListener("click", function(ev) {
+        var t = ev.target.closest ? ev.target.closest("[data-friend-act]") : null;
+        if (!t) return;
+        var act = t.getAttribute("data-friend-act");
+        var id = t.getAttribute("data-id");
+        if (act === "accept") postFriend("/api/friends/respond", {request_id: id, action: "accept"});
+        else if (act === "decline") postFriend("/api/friends/respond", {request_id: id, action: "decline"});
+        else if (act === "cancel") postFriend("/api/friends/cancel", {request_id: id});
+        else if (act === "unfriend") {
+            if (confirm("Unfriend this person? You can send a new request later.")) postFriend("/api/friends/unfriend", {user_id: id});
+        }
+    });
+    $("friends-add-form").addEventListener("submit", function(ev) {
+        ev.preventDefault();
+        var id = $("friends-add-id").value.trim();
+        if (!id) return;
+        $("friends-status").textContent = "Sending...";
+        postFriend("/api/friends/request", {user_id: id}, function(data) {
+            if (data.success) {
+                $("friends-add-id").value = "";
+                $("friends-status").textContent = "Friend request sent.";
+            }
+        });
+    });
+    loadFriends(true);
 
     // My servers
     var list = $("server-list");

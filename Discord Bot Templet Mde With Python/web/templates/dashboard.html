@@ -22,7 +22,7 @@
 
 <body>
 
-<div class="app">
+<div class="app page-fade">
 
     <!-- ================================================= -->
     <!-- SIDEBAR -->
@@ -347,7 +347,7 @@
 <!-- QUICK ACTIONS -->
 <!-- ================================================= -->
 
-<section class="quick-actions-section">
+<section class="quick-actions-section reveal">
 
     <div class="section-heading">
 
@@ -550,7 +550,7 @@
      SERVER BREAKDOWN
 ===================================================== -->
 
-<section class="dashboard-section">
+<section class="dashboard-section reveal">
 
     <div class="section-header">
 
@@ -718,7 +718,7 @@
 <!-- SERVER HEALTH -->
 <!-- ================================================= -->
 
-<section class="dashboard-health panel">
+<section class="dashboard-health panel reveal">
 
     <div class="panel-header">
 
@@ -886,7 +886,7 @@
 <!-- ACTIVITY FILTER -->
 <!-- ================================================= -->
 
-<section class="activity-controls panel">
+<section class="activity-controls panel reveal">
 
     <div>
 
@@ -964,7 +964,7 @@
 
                 <!-- ACTIVITY -->
 
-                <section class="panel activity-panel">
+                <section class="panel activity-panel reveal">
 
                     <div class="panel-header">
 
@@ -1006,7 +1006,7 @@
 
                 <!-- SERVER -->
 
-                <section class="panel">
+                <section class="panel reveal">
 
                     <div class="panel-header">
 
@@ -1103,7 +1103,7 @@
             <!-- ANALYTICS -->
             <!-- ================================================= -->
 
-            <section class="panel dashboard-analytics">
+            <section class="panel dashboard-analytics reveal">
 
                 <div class="panel-header">
 
@@ -1507,6 +1507,30 @@ window.GUILD_ID =
 ></script>
 
 <script src="{{ url_for('static', filename='js/server_context.js') }}"></script>
+
+<script>
+/* Scroll-reveal for .reveal sections (dashboard standalone page).
+   Sections already in view show immediately; sections below the fold
+   are hidden by JS only until they scroll into view. If this script
+   never runs, nothing stays hidden. Honors prefers-reduced-motion. */
+(function () {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    var els = document.querySelectorAll(".reveal");
+    if (!els.length) return;
+    function show(el) { el.classList.add("is-visible"); el.classList.remove("reveal-pending"); }
+    if (!("IntersectionObserver" in window)) { els.forEach(show); return; }
+    var io = new IntersectionObserver(function (entries) {
+        entries.forEach(function (entry) {
+            if (entry.isIntersecting) { show(entry.target); io.unobserve(entry.target); }
+        });
+    }, { rootMargin: "0px 0px -8% 0px", threshold: 0.05 });
+    els.forEach(function (el) {
+        var r = el.getBoundingClientRect();
+        if (r.bottom > 0 && r.top < window.innerHeight) { show(el); }
+        else { el.classList.add("reveal-pending"); io.observe(el); }
+    });
+})();
+</script>
 
 </body>
 

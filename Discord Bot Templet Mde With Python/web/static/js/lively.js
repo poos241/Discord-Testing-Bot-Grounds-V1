@@ -44,3 +44,25 @@
     };
 
 })();
+
+// Scroll-reveal for .reveal sections (base-layout pages).
+// Sections already in view show immediately; sections below the fold
+// are hidden by JS only until they scroll into view. If this script
+// never runs, nothing stays hidden. Honors prefers-reduced-motion.
+(function initReveal() {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    var els = document.querySelectorAll(".reveal");
+    if (!els.length) return;
+    function show(el) { el.classList.add("is-visible"); el.classList.remove("reveal-pending"); }
+    if (!("IntersectionObserver" in window)) { els.forEach(show); return; }
+    var io = new IntersectionObserver(function (entries) {
+        entries.forEach(function (entry) {
+            if (entry.isIntersecting) { show(entry.target); io.unobserve(entry.target); }
+        });
+    }, { rootMargin: "0px 0px -8% 0px", threshold: 0.05 });
+    els.forEach(function (el) {
+        var r = el.getBoundingClientRect();
+        if (r.bottom > 0 && r.top < window.innerHeight) { show(el); }
+        else { el.classList.add("reveal-pending"); io.observe(el); }
+    });
+})();

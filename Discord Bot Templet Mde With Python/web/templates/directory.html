@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+
+{% block title %}
+    Member Directory - Kush Bush
+{% endblock %}
+
+{% block head %}
+    <link
+        rel="stylesheet"
+        href="{{ url_for('static', filename='css/directory.css') }}"
+    >
+{% endblock %}
+
+{% block body %}
+
+<div class="directory-page">
+
+    <h1>Member Directory</h1>
+
+    <p>
+        Find members by interest tag. Only profiles whose owner
+        opted in to a public profile show up here, and only what a
+        public profile is allowed to show: bio, status, socials,
+        stats, badges, and tags. Server lists and per-server
+        details are never shown.
+    </p>
+
+    <p>
+        <a href="{{ url_for('profile_edit') }}">Edit your own profile and tags</a>
+        to appear here: set your tags (up to 10) and turn on
+        "Public profile".
+    </p>
+
+    <div class="directory-search-row">
+        <input
+            type="search"
+            id="directory-search"
+            placeholder="Search name, bio, or tag..."
+            autocomplete="off"
+        >
+        <button type="button" id="directory-clear">
+            Clear filters
+        </button>
+    </div>
+
+    <div class="directory-tags" id="directory-tag-cloud">
+        <span class="directory-loading">Loading tags...</span>
+    </div>
+
+    <p class="directory-count" id="directory-count"></p>
+
+    <div class="directory-grid" id="directory-results">
+        <p class="directory-loading">Loading members...</p>
+    </div>
+
+    <p class="directory-empty" id="directory-empty" style="display: none;">
+        No public profiles match those filters yet. Try fewer tags,
+        or check back once more members opt in to public profiles.
+    </p>
+
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+    <script
+        src="{{ url_for('static', filename='js/directory.js') }}"
+    ></script>
+{% endblock %}

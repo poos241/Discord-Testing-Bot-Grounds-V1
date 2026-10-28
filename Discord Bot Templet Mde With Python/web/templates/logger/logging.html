@@ -12,6 +12,7 @@
   <div id="settings-alert" class="alert d-none"></div>
   <div class="card logger-settings-card"><div class="card-header"><h5 class="mb-0">Log Channels</h5></div><div class="card-body"><p class="text-secondary">Each category is independent. Select <strong>Disabled</strong> if you do not want that category sent to a Discord log channel.</p><div id="channel-fields"></div><button id="save-settings" class="btn btn-primary mt-3" type="button">Save Logger Settings</button></div></div>
   <div class="card logger-settings-card mt-4"><div class="card-header"><h5 class="mb-0">Event Toggles</h5></div><div class="card-body"><p class="text-secondary">Choose which events get logged. Disabled events are not recorded.</p><div id="toggle-fields"><div class="text-secondary">Loading toggles...</div></div></div></div>
+  <div class="card logger-settings-card mt-4"><div class="card-header"><h5 class="mb-0">Automod</h5></div><div class="card-body"><p class="text-secondary">Small message filter. Everything is off until you turn it on. Offending messages are deleted and logged to the moderation log channel (and Logger history). Members with Manage Messages are exempt. The same settings are available in Discord via /automod.</p><div id="automod-fields"><div class="text-secondary">Loading automod settings...</div></div><div class="d-flex gap-2 align-items-end flex-wrap mt-3"><div><label class="form-label" for="automod-threshold">Spam threshold (messages)</label><input id="automod-threshold" type="number" min="1" max="50" class="form-control" style="background:#101319;color:#f4f5f7;border:1px solid rgba(255,255,255,.12);max-width:120px"></div><div><label class="form-label" for="automod-window">Spam window (seconds)</label><input id="automod-window" type="number" min="5" max="300" class="form-control" style="background:#101319;color:#f4f5f7;border:1px solid rgba(255,255,255,.12);max-width:120px"></div><button id="save-automod" class="btn btn-primary" type="button">Save Spam Settings</button></div></div></div>
 </div>
 {% endblock %}
 {% block scripts %}
@@ -43,6 +44,45 @@ async function loadToggles(){
   });
 }
 loadToggles().catch(e=>show('Toggles: '+e.message,false));
+async function loadAutomod(){
+  const data=await getJson(`/api/servers/${guildId}/logger/automod`);
+  const cfg=data.automod||{};
+  const rules=[['spam_enabled','Spam bursts',`Delete when one member sends ${cfg.spam_threshold||5} messages within ${cfg.spam_window_seconds||10} seconds`],['invites_enabled','Invite links','Delete discord.gg / discord.com/invite links (your own vanity invite is allowed)'],['external_links_enabled','External links','Delete http(s) links outside Discord (discord.com / discord.gg links still pass)'],['caps_enabled','All-caps messages','Delete messages with 10+ letters that are 80% or more uppercase']];
+  document.getElementById('automod-fields').innerHTML=rules.map(([key,title,desc])=>`
+      <div class="d-flex justify-content-between align-items-center py-2" style="border-bottom:1px solid rgba(255,255,255,.05);">
+        <span><span class="logger-setting-title">${esc(title)}</span><div class="logger-setting-desc" style="margin:0">${esc(desc)}</div></span>
+        <div class="form-check form-switch">
+          <input class="form-check-input automod-switch" type="checkbox" data-automod-key="${esc(key)}" ${cfg[key]?'checked':''} style="cursor:pointer;">
+        </div>
+      </div>`).join('');
+  document.getElementById('automod-threshold').value=cfg.spam_threshold||5;
+  document.getElementById('automod-window').value=cfg.spam_window_seconds||10;
+  document.querySelectorAll('.automod-switch').forEach(sw=>{
+    sw.addEventListener('change',async()=>{
+      const key=sw.dataset.automodKey;
+      const enabled=sw.checked;
+      sw.disabled=true;
+      try{
+        const saved=await getJson(`/api/servers/${guildId}/logger/automod`,{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':csrfToken},body:JSON.stringify({[key]:enabled})});
+        const c=saved.automod||{};
+        document.getElementById('automod-threshold').value=c.spam_threshold||5;
+        document.getElementById('automod-window').value=c.spam_window_seconds||10;
+      }catch(e){show(e.message,false);sw.checked=!enabled;}
+      finally{sw.disabled=false;}
+    });
+  });
+  document.getElementById('save-automod').addEventListener('click',async()=>{
+    const button=document.getElementById('save-automod');
+    button.disabled=true;
+    try{
+      await getJson(`/api/servers/${guildId}/logger/automod`,{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':csrfToken},body:JSON.stringify({spam_threshold:parseInt(document.getElementById('automod-threshold').value,10),spam_window_seconds:parseInt(document.getElementById('automod-window').value,10)})});
+      show('Spam settings saved successfully.',true);
+    }catch(e){show(e.message,false);}
+    finally{button.disabled=false;}
+  });
+}
+loadAutomod().catch(e=>show('Automod: '+e.message,false));
+
 load().catch(e=>show(e.message,false))})();
 </script>
 {% endblock %}

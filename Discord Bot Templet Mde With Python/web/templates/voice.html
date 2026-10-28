@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+    <meta charset="UTF-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+
+    <title>
+        Live Voice - Kush Bush
+    </title>
+
+    <link
+        rel="stylesheet"
+        href="{{ url_for(
+            'static',
+            filename='css/dashboard.css'
+        ) }}"
+    >
+
+    <link
+        rel="stylesheet"
+        href="{{ url_for(
+            'static',
+            filename='css/channels.css'
+        ) }}"
+    >
+
+    <link
+        rel="stylesheet"
+        href="{{ url_for(
+            'static',
+            filename='css/voice.css'
+        ) }}"
+    >
+
+</head>
+
+
+<body>
+
+<div class="channels-app">
+
+
+    <!-- =====================================================
+         SIDEBAR
+    ====================================================== -->
+
+    <aside class="channels-sidebar">
+
+        <div class="channels-brand">
+
+            <div class="channels-brand-icon">
+
+                <img
+                    id="bot-avatar"
+                    src=""
+                    alt="Kush Bush Bot"
+                >
+
+                <span
+                    id="bot-avatar-fallback"
+                >
+                    KB
+                </span>
+
+            </div>
+
+
+            <div>
+
+                <div class="channels-brand-title">
+                    Kush Bush
+                </div>
+
+                <div class="channels-brand-subtitle">
+                    Discord Dashboard
+                </div>
+
+            </div>
+
+        </div>
+
+
+        <div class="channels-nav-section">
+
+            <div class="channels-nav-label">
+                DASHBOARD
+            </div>
+
+
+            <a
+                href="/servers/{{ guild_id }}/dashboard"
+                class="channels-nav-item"
+            >
+                <span>⌂</span>
+                Overview
+            </a>
+
+        </div>
+
+
+        <div class="channels-nav-section">
+
+            <div class="channels-nav-label">
+                SERVER
+            </div>
+
+
+            <a
+                href="/servers/{{ guild_id }}"
+                class="channels-nav-item"
+            >
+                <span>◉</span>
+                Server
+            </a>
+
+
+            <a
+                href="/servers/{{ guild_id }}/members"
+                class="channels-nav-item"
+            >
+                <span>♙</span>
+                Members
+            </a>
+
+
+            <a
+                href="/servers/{{ guild_id }}/channels"
+                class="channels-nav-item"
+            >
+                <span>▤</span>
+                Channels
+            </a>
+
+
+            <a
+                href="/servers/{{ guild_id }}/voice"
+                class="channels-nav-item active"
+            >
+                <span>🔊</span>
+                Live Voice
+            </a>
+
+
+            <a
+                href="/servers/{{ guild_id }}/roles"
+                class="channels-nav-item"
+            >
+                <span>◆</span>
+                Roles
+            </a>
+
+        </div>
+
+
+        <div class="channels-nav-section">
+
+            <div class="channels-nav-label">
+                LOGGING
+            </div>
+
+
+            <a
+                href="/servers/{{ guild_id }}/activity"
+                class="channels-nav-item"
+            >
+                <span>◷</span>
+                Activity
+            </a>
+
+
+            <a
+                href="/servers/{{ guild_id }}/activity"
+                class="channels-nav-item"
+            >
+                <span>⚡</span>
+                Events
+            </a>
+
+        </div>
+
+
+        <div class="channels-sidebar-bottom">
+
+            <a
+                href="/servers"
+                class="back-to-servers"
+            >
+                ← Server Selection
+            </a>
+
+        </div>
+
+    </aside>
+
+
+    <!-- =====================================================
+         CONTENT
+    ====================================================== -->
+
+    <main class="channels-content">
+
+
+        <!-- HEADER -->
+
+        <header class="channels-header">
+
+            <div class="channels-header-left">
+
+                <div
+                    class="channels-server-avatar"
+                    id="server-avatar"
+                >
+                    ?
+                </div>
+
+
+                <div>
+
+                    <div class="channels-eyebrow">
+                        LIVE VOICE
+                    </div>
+
+                    <h1 id="server-name">
+                        Loading server...
+                    </h1>
+
+                    <p>
+                        Who is in which voice channel right now.
+                        Refreshes automatically every 15 seconds.
+                    </p>
+
+                </div>
+
+            </div>
+
+
+            <div class="channels-header-actions">
+
+                <button
+                    type="button"
+                    id="refresh-voice"
+                    class="channels-refresh-button"
+                >
+                    ↻ Refresh
+                </button>
+
+            </div>
+
+        </header>
+
+
+        <!-- =================================================
+             STATS
+        ================================================== -->
+
+        <section class="channel-stats-grid">
+
+
+            <div class="channel-stat-card">
+
+                <div class="channel-stat-icon">
+                    🔊
+                </div>
+
+                <div>
+
+                    <span>
+                        In voice now
+                    </span>
+
+                    <strong id="in-voice-count">
+                        0
+                    </strong>
+
+                </div>
+
+            </div>
+
+
+            <div class="channel-stat-card">
+
+                <div class="channel-stat-icon">
+                    📣
+                </div>
+
+                <div>
+
+                    <span>
+                        Occupied channels
+                    </span>
+
+                    <strong id="occupied-count">
+                        0
+                    </strong>
+
+                </div>
+
+            </div>
+
+
+            <div class="channel-stat-card">
+
+                <div class="channel-stat-icon">
+                    ▤
+                </div>
+
+                <div>
+
+                    <span>
+                        Voice channels
+                    </span>
+
+                    <strong id="voice-channel-count">
+                        0
+                    </strong>
+
+                </div>
+
+            </div>
+
+
+            <div class="channel-stat-card">
+
+                <div class="channel-stat-icon">
+                    ◷
+                </div>
+
+                <div>
+
+                    <span>
+                        Last updated
+                    </span>
+
+                    <strong id="last-updated">
+                        —
+                    </strong>
+
+                </div>
+
+            </div>
+
+        </section>
+
+
+        <!-- =================================================
+             VOICE LIST
+        ================================================== -->
+
+        <section class="channels-panel">
+
+            <div class="channels-panel-header">
+
+                <div>
+
+                    <h2>
+                        Voice channels
+                    </h2>
+
+                    <p id="voice-result-count">
+                        Loading...
+                    </p>
+
+                </div>
+
+            </div>
+
+
+            <div
+                id="voice-list"
+                class="voice-list"
+            >
+
+                <div class="channels-loading">
+
+                    <div class="channels-spinner"></div>
+
+                    <span>
+                        Loading voice channels...
+                    </span>
+
+                </div>
+
+            </div>
+
+        </section>
+
+
+    </main>
+
+</div>
+
+
+<script>
+
+window.GUILD_ID =
+    "{{ guild_id }}";
+
+</script>
+
+
+<script
+    src="{{ url_for(
+        'static',
+        filename='js/voice.js'
+    ) }}"
+></script>
+
+<script src="{{ url_for('static', filename='js/server_context.js') }}"></script>
+
+</body>
+
+</html>

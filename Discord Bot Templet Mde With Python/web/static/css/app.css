@@ -1,450 +1,903 @@
 /* =========================================================
+
    KUSH BUSH WEB UI
+
    Shared Application Styles
+
    ========================================================= */
 
 
+
+
+
 /* ---------------------------------------------------------
+
    GLOBAL
+
    --------------------------------------------------------- */
+
+
 
 :root {
 
+
+
     --bg-main: #0f1115;
+
     --bg-panel: #1b2027;
+
     --bg-panel-hover: #20262e;
 
+
+
     --border: #353c46;
+
     --border-hover: #697382;
 
+
+
     --text-main: #f1f3f5;
+
     --text-muted: #aeb7c4;
+
     --text-soft: #c8ced8;
+
+
 
     --accent: #4c9aff;
 
+
+
     --success: #198754;
+
     --warning: #ffc107;
+
     --danger: #dc3545;
 
+
+
 }
+
+
+
 
 
 html,
+
 body {
+
+
 
     min-height: 100%;
 
+
+
 }
+
+
+
 
 
 body {
 
+
+
     background: var(--bg-main);
 
+
+
     color: var(--text-main);
+
+
 
     overflow-x: hidden;
 
+
+
 }
+
+
+
 
 
 /* ---------------------------------------------------------
+
    LINKS
+
    --------------------------------------------------------- */
+
+
 
 a {
 
+
+
     color: var(--text-main);
 
+
+
 }
+
+
+
 
 
 a:hover {
 
+
+
     color: #ffffff;
 
+
+
 }
+
+
+
 
 
 /* ---------------------------------------------------------
+
    SHARED PANELS
+
    --------------------------------------------------------- */
+
+
 
 .ui-card {
 
+
+
     background: var(--bg-panel);
+
+
 
     border: 1px solid var(--border);
 
+
+
     color: var(--text-main);
+
+
 
     border-radius: 10px;
 
+
+
     transition:
+
         border-color 0.2s,
+
         transform 0.2s;
 
+
+
 }
+
+
+
 
 
 .ui-card:hover {
 
+
+
     border-color: var(--border-hover);
 
+
+
 }
+
+
+
 
 
 /* ---------------------------------------------------------
+
    TEXT
+
    --------------------------------------------------------- */
+
+
 
 .ui-title {
 
+
+
     color: #ffffff;
 
+
+
 }
+
+
+
 
 
 .ui-subtitle {
 
+
+
     color: var(--text-muted);
 
+
+
 }
+
+
+
 
 
 .ui-label {
 
+
+
     color: var(--text-soft);
 
+
+
 }
+
+
+
 
 
 .ui-muted {
 
+
+
     color: var(--text-muted);
 
+
+
 }
+
+
+
 
 
 /* ---------------------------------------------------------
+
    STATISTICS
+
    --------------------------------------------------------- */
+
+
 
 .stat-label {
 
+
+
     color: var(--text-muted);
+
+
 
     font-size: 0.9rem;
 
+
+
 }
+
+
+
 
 
 .stat-value {
 
+
+
     color: #ffffff;
+
+
 
     font-size: 2rem;
 
+
+
     font-weight: 700;
 
+
+
 }
+
+
+
 
 
 .stat-small {
 
+
+
     color: var(--text-soft);
+
+
 
     font-size: 0.85rem;
 
+
+
 }
+
+
+
 
 
 /* ---------------------------------------------------------
+
    SIDEBAR
+
    --------------------------------------------------------- */
+
+
 
 .dashboard-sidebar {
 
+
+
     min-height: calc(100vh - 40px);
+
+
 
     border-right: 1px solid var(--border);
 
+
+
     padding-right: 15px;
 
+
+
 }
+
+
+
 
 
 .sidebar-title {
 
+
+
     color: #ffffff;
 
+
+
 }
+
+
+
 
 
 .sidebar-link {
 
+
+
     display: block;
+
+
 
     padding: 11px 14px;
 
+
+
     margin-bottom: 6px;
+
+
 
     color: var(--text-soft) !important;
 
+
+
     text-decoration: none;
+
+
 
     border-radius: 7px;
 
+
+
     transition:
+
         background 0.15s,
+
         color 0.15s;
 
+
+
 }
+
+
+
 
 
 .sidebar-link:hover {
 
+
+
     background: #252b33;
+
+
 
     color: #ffffff !important;
 
+
+
 }
+
+
+
 
 
 .sidebar-link.active {
 
+
+
     background: #343b46;
+
+
 
     color: #ffffff !important;
 
+
+
 }
+
+
+
 
 
 /* ---------------------------------------------------------
+
    EVENT CARDS
+
    --------------------------------------------------------- */
+
+
 
 .event-card {
 
+
+
     background: #1e2329;
+
+
 
     border: 1px solid #3a4149;
 
+
+
     color: var(--text-main);
 
+
+
 }
+
+
+
 
 
 .event-card:hover {
 
+
+
     border-color: var(--border-hover);
 
+
+
 }
+
+
+
 
 
 .event-time {
 
+
+
     color: var(--text-muted);
+
+
 
     font-size: 0.85rem;
 
+
+
 }
+
+
+
 
 
 .event-guild {
 
+
+
     color: #ced4da;
 
+
+
 }
+
+
+
 
 
 .event-divider {
 
+
+
     border-color: var(--border);
 
+
+
 }
+
+
+
 
 
 .event-data {
 
+
+
     background: #111418;
+
+
 
     color: #e9ecef;
 
+
+
     border: 1px solid var(--border);
+
+
 
     font-size: 0.85rem;
 
+
+
     max-height: 400px;
+
+
 
     overflow: auto;
 
+
+
 }
+
+
+
 
 
 /* ---------------------------------------------------------
+
    EMPTY / ERROR STATES
+
    --------------------------------------------------------- */
+
+
 
 .empty-state {
 
+
+
     background: var(--bg-panel);
+
+
 
     border: 1px solid var(--border);
 
+
+
     color: var(--text-muted);
 
+
+
 }
+
+
+
 
 
 .error-state {
 
+
+
     background: #2a1719;
+
+
 
     border: 1px solid #5c2529;
 
+
+
     color: #ffb3b8;
 
+
+
 }
+
+
+
 
 
 /* ---------------------------------------------------------
+
    SERVER CARDS
+
    --------------------------------------------------------- */
+
+
 
 .server-card {
 
+
+
     background: var(--bg-panel);
+
+
 
     border: 1px solid var(--border);
 
+
+
     color: #ffffff;
 
+
+
     transition:
+
         border-color 0.2s,
+
         transform 0.2s;
 
+
+
 }
+
+
+
 
 
 .server-card:hover {
 
+
+
     border-color: var(--border-hover);
+
+
 
     transform: translateY(-2px);
 
+
+
 }
+
+
+
 
 
 .server-id {
 
+
+
     color: var(--text-muted);
+
+
 
     font-size: 0.85rem;
 
+
+
 }
+
+
+
 
 
 .server-stat-label {
 
+
+
     color: #9da7b5;
+
+
 
     font-size: 0.85rem;
 
+
+
 }
+
+
+
 
 
 .server-stat {
 
+
+
     color: #dce1e8;
 
+
+
 }
+
+
+
 
 
 .server-icon {
 
+
+
     width: 52px;
+
+
 
     height: 52px;
 
+
+
     border-radius: 12px;
+
+
 
     background: #343b46;
 
+
+
     display: flex;
+
+
 
     align-items: center;
 
+
+
     justify-content: center;
+
+
 
     font-size: 1.4rem;
 
+
+
     font-weight: bold;
 
+
+
 }
+
+
+
 
 
 /* ---------------------------------------------------------
+
    FORMS
+
    --------------------------------------------------------- */
+
+
 
 .form-label {
 
+
+
     color: #ffffff;
+
+
 
     font-weight: 500;
 
+
+
 }
+
+
+
 
 
 .form-control,
+
 .form-select {
+
+
 
     background-color: #111418 !important;
 
+
+
     color: #ffffff !important;
+
+
 
     border-color: var(--border) !important;
 
+
+
 }
+
+
+
 
 
 .form-control:focus,
+
 .form-select:focus {
+
+
 
     border-color: var(--accent) !important;
 
+
+
     box-shadow:
+
         0 0 0 0.2rem
+
         rgba(76, 154, 255, 0.15) !important;
 
+
+
 }
+
+
+
 
 
 .form-control::placeholder {
 
+
+
     color: #77808c;
 
+
+
 }
+
+
+
 
 
 /* ---------------------------------------------------------
+
    BUTTONS
+
    --------------------------------------------------------- */
+
+
 
 .btn {
 
+
+
     border-radius: 7px;
 
+
+
 }
+
+
+
 
 
 .btn-primary {
 
+
+
     border: none;
 
+
+
 }
+
+
+
+
+
+
+
 
 
 
@@ -452,930 +905,2337 @@ a:hover {
 
 
 /* =========================================================
+
    DASHBOARD ACTIVITY
+
    ========================================================= */
 
+
+
 .activity {
+
     display: flex;
+
     gap: 14px;
+
     padding: 14px 16px;
+
     border-bottom: 1px solid rgba(255,255,255,0.06);
+
     transition:
+
         background-color 0.18s ease,
+
         transform 0.18s ease;
+
 }
 
+
+
 .activity:hover {
+
     background: rgba(255,255,255,0.035);
+
     transform: translateX(2px);
+
 }
+
+
+
 
 
 .activity:last-child {
+
     border-bottom: none;
+
 }
+
+
+
 
 
 .activity-icon {
+
     width: 38px;
+
     height: 38px;
+
     min-width: 38px;
 
+
+
     display: flex;
+
     align-items: center;
+
     justify-content: center;
+
+
 
     border-radius: 10px;
 
+
+
     background: rgba(255,255,255,0.06);
 
+
+
     font-size: 18px;
+
 }
+
+
+
 
 
 .activity-content {
+
     flex: 1;
+
     min-width: 0;
+
 }
+
+
+
 
 
 .activity-header {
+
     display: flex;
+
     align-items: center;
+
     justify-content: space-between;
+
     gap: 12px;
+
 }
+
+
+
 
 
 .activity-type {
+
     font-weight: 600;
+
     text-transform: capitalize;
+
 }
+
+
+
 
 
 .activity-category {
+
     display: inline-block;
+
+
 
     margin-left: 8px;
 
+
+
     padding: 2px 7px;
 
+
+
     border-radius: 999px;
+
+
 
     font-size: 11px;
 
+
+
     background: rgba(255,255,255,0.07);
 
+
+
     color: var(--bs-secondary-color);
+
 }
+
+
+
 
 
 .activity-time {
+
     white-space: nowrap;
+
+
 
     font-size: 12px;
 
+
+
     color: var(--bs-secondary-color);
+
 }
+
+
+
 
 
 .activity-data {
+
     margin-top: 5px;
+
+
 
     font-size: 13px;
 
+
+
     color: var(--bs-secondary-color);
+
+
 
     overflow: hidden;
 
+
+
     text-overflow: ellipsis;
 
+
+
     white-space: nowrap;
+
 }
+
+
+
 
 
 /* =========================================================
+
    EVENT SEVERITY
+
    ========================================================= */
 
+
+
 .event-danger {
+
     border-left: 3px solid #dc3545;
+
 }
+
+
+
 
 
 .event-success {
+
     border-left: 3px solid #198754;
+
 }
+
+
+
 
 
 .event-warning {
+
     border-left: 3px solid #ffc107;
+
 }
+
+
+
 
 
 .event-neutral {
+
     border-left: 3px solid #6c757d;
+
 }
 
 
+
+
+
 /* =========================================================
+
    EMPTY ACTIVITY
+
    ========================================================= */
 
+
+
 .activity-empty {
+
     min-height: 180px;
 
+
+
     display: flex;
+
+
 
     flex-direction: column;
 
+
+
     align-items: center;
 
+
+
     justify-content: center;
+
+
 
     gap: 6px;
 
+
+
     color: var(--bs-secondary-color);
 
+
+
     text-align: center;
+
 }
+
+
+
 
 
 .activity-empty-icon {
+
     font-size: 32px;
+
+
 
     opacity: 0.45;
 
+
+
     margin-bottom: 4px;
+
 }
 
 
+
+
+
 /* =========================================================
+
    EVENT STATISTICS
+
    ========================================================= */
 
+
+
 .event-stat {
+
     display: flex;
+
+
 
     align-items: center;
 
+
+
     justify-content: space-between;
+
+
 
     padding: 9px 0;
 
+
+
     border-bottom: 1px solid rgba(255,255,255,0.05);
+
 }
+
+
+
 
 
 .event-stat:last-child {
+
     border-bottom: none;
+
 }
+
+
+
 
 
 .event-stat > div {
+
     display: flex;
+
+
 
     align-items: center;
 
+
+
     gap: 8px;
+
 }
+
+
+
 
 
 .event-stat-icon {
+
     width: 26px;
+
     height: 26px;
+
+
 
     display: inline-flex;
 
+
+
     align-items: center;
 
+
+
     justify-content: center;
+
+
 
     border-radius: 7px;
 
+
+
     background: rgba(255,255,255,0.06);
 
+
+
     font-size: 13px;
+
 }
 
 
+
+
+
 /* =========================================================
+
    CONNECTION STATUS
+
    ========================================================= */
 
+
+
 .connection-status {
+
     display: inline-flex;
 
+
+
     align-items: center;
+
+
 
     gap: 8px;
 
+
+
     padding: 5px 10px;
+
+
 
     border-radius: 999px;
 
+
+
     background: rgba(255,255,255,0.05);
+
+
 
     font-size: 12px;
 
+
+
     color: var(--bs-secondary-color);
+
 }
+
+
+
 
 
 .connection-dot {
+
     width: 8px;
+
     height: 8px;
+
+
 
     border-radius: 50%;
 
+
+
     background: #dc3545;
 
+
+
     box-shadow:
+
         0 0 0 3px rgba(220,53,69,0.12);
+
 }
+
+
+
 
 
 .connection-dot.online {
+
     background: #198754;
 
+
+
     box-shadow:
+
         0 0 0 3px rgba(25,135,84,0.12);
+
 }
 
 
+
+
+
 /* =========================================================
+
    DASHBOARD LOADING
+
    ========================================================= */
+
+
 
 .dashboard-loading {
+
     opacity: 0.7;
 
+
+
     transition:
+
         opacity 0.2s ease;
+
 }
 
 
+
+
+
 /* =========================================================
+
    LAST UPDATED
+
    ========================================================= */
+
+
 
 #last-updated {
+
     font-size: 12px;
 
+
+
     color: var(--bs-secondary-color);
+
 }
 
 
+
+
+
 /* =========================================================
+
    MOBILE
+
    ========================================================= */
 
+
+
 @media (
+
     max-width: 768px
+
 ) {
 
+
+
     .activity-header {
+
         align-items: flex-start;
+
+
 
         flex-direction: column;
 
+
+
         gap: 4px;
+
     }
+
+
+
 
 
     .activity-time {
+
         font-size: 11px;
+
     }
+
+
+
 
 
     .activity {
+
         padding: 12px;
+
     }
+
+
 
 }
 
 
 
 
+
+
+
+
+
 /* =========================================================
+
    SERVER HEADER
+
    ========================================================= */
 
+
+
 .server-avatar {
+
     width: 64px;
+
     height: 64px;
+
+
 
     display: flex;
 
+
+
     align-items: center;
+
+
 
     justify-content: center;
 
+
+
     border-radius: 18px;
 
+
+
     background:
+
         linear-gradient(
+
             135deg,
+
             rgba(13,110,253,0.85),
+
             rgba(111,66,193,0.85)
+
         );
+
+
 
     color: white;
 
+
+
     font-size: 20px;
+
+
 
     font-weight: 700;
 
+
+
     box-shadow:
+
         0 8px 24px rgba(0,0,0,0.2);
+
 }
+
+
+
 
 
 #server-name {
+
     font-weight: 700;
+
     letter-spacing: -0.02em;
+
 }
+
+
+
 
 
 #server-id {
+
     font-family:
+
         ui-monospace,
+
         SFMono-Regular,
+
         Menlo,
+
         Monaco,
+
         Consolas,
+
         monospace;
+
 }
+
+
+
+
+
 
 
 
 
 /* =========================================================
+
    TOP NAVIGATION
+
 ========================================================= */
+
+
 
 .top-navbar {
 
+
+
     display: flex;
+
+
 
     align-items: center;
 
+
+
     justify-content: space-between;
+
+
 
     gap: 24px;
 
+
+
     padding: 14px 20px;
+
+
 
     margin-bottom: 20px;
 
+
+
     border: 1px solid rgba(255,255,255,0.08);
+
+
 
     border-radius: 14px;
 
+
+
     background:
+
         rgba(18,18,24,0.92);
 
+
+
     backdrop-filter:
+
         blur(14px);
 
+
+
 }
+
+
+
 
 
 .brand-link {
 
+
+
     display: flex;
 
+
+
     align-items: center;
+
+
 
     gap: 10px;
 
+
+
     color: white;
+
+
 
     text-decoration: none;
 
+
+
     font-weight: 700;
+
+
 
     font-size: 17px;
 
+
+
 }
+
+
+
 
 
 .brand-icon,
+
 .auth-logo-icon {
+
+
 
     display: flex;
 
+
+
     align-items: center;
+
+
 
     justify-content: center;
 
+
+
     width: 38px;
+
+
 
     height: 38px;
 
+
+
     border-radius: 10px;
 
+
+
     background:
+
         linear-gradient(
+
             135deg,
+
             #5865f2,
+
             #7b61ff
+
         );
+
+
 
     color: white;
 
+
+
     font-weight: 800;
 
+
+
 }
+
+
+
 
 
 .nav-links {
 
+
+
     display: flex;
+
+
 
     align-items: center;
 
+
+
     gap: 6px;
+
+
 
     flex: 1;
 
+
+
 }
+
+
+
 
 
 .nav-link-item {
 
+
+
     color: #a9a9b5;
+
+
 
     text-decoration: none;
 
+
+
     padding: 8px 12px;
+
+
 
     border-radius: 8px;
 
+
+
     transition:
+
         background .15s ease,
+
         color .15s ease;
 
+
+
 }
+
+
+
 
 
 .nav-link-item:hover {
 
+
+
     color: white;
 
+
+
     background:
+
         rgba(255,255,255,0.07);
 
+
+
 }
+
+
+
 
 
 .user-area {
 
+
+
     display: flex;
+
+
 
     align-items: center;
 
+
+
     gap: 10px;
 
+
+
 }
+
+
+
 
 
 .user-pill {
 
+
+
     display: flex;
+
+
 
     align-items: center;
 
+
+
     gap: 10px;
+
+
 
     padding: 6px 14px 6px 6px;
 
+
+
     background: rgba(255,255,255,0.05);
+
+
 
     border: 1px solid rgba(255,255,255,0.09);
 
+
+
     border-radius: 99px;
+
+
 
     cursor: pointer;
 
+
+
     transition: background .12s, border-color .12s;
+
+
 
     text-decoration: none;
 
+
+
     color: inherit;
 
+
+
 }
+
+
+
 
 
 .user-pill:hover {
 
+
+
     background: rgba(255,255,255,0.09);
+
+
 
     border-color: rgba(255,255,255,0.16);
 
+
+
 }
+
+
+
 
 
 .user-pill .user-avatar,
+
 .user-pill .user-avatar-placeholder {
+
+
 
     width: 32px;
 
+
+
     height: 32px;
 
+
+
 }
+
+
+
 
 
 .user-pill-label {
 
+
+
     font-size: .65rem;
+
+
 
     opacity: .5;
 
+
+
     letter-spacing: .04em;
+
+
 
     line-height: 1;
 
+
+
 }
+
+
+
 
 
 .user-pill-name {
 
+
+
     font-size: .85rem;
+
+
 
     font-weight: 700;
 
+
+
     line-height: 1.2;
 
+
+
 }
+
+
+
 
 
 /* ============================================================
+
    LIVELINESS — entrance animations & value pulses
+
    ============================================================ */
 
+
+
 @keyframes fadeSlideIn {
+
     from { opacity: 0; transform: translateY(12px); }
+
     to   { opacity: 1; transform: translateY(0); }
+
 }
+
+
 
 @keyframes pulseGlow {
+
     0%   { box-shadow: 0 0 0 0 rgba(88,101,242,.45); }
+
     100% { box-shadow: 0 0 0 12px rgba(88,101,242,0); }
+
 }
+
+
 
 @keyframes valueFlash {
+
     0%   { color: #7aa2ff; }
+
     100% { color: inherit; }
+
 }
+
+
 
 .animate-in {
+
     animation: fadeSlideIn .45s ease both;
+
 }
+
+
 
 .animate-in-1 { animation: fadeSlideIn .45s ease both; animation-delay: .05s; }
+
 .animate-in-2 { animation: fadeSlideIn .45s ease both; animation-delay: .12s; }
+
 .animate-in-3 { animation: fadeSlideIn .45s ease both; animation-delay: .19s; }
+
 .animate-in-4 { animation: fadeSlideIn .45s ease both; animation-delay: .26s; }
+
 .animate-in-5 { animation: fadeSlideIn .45s ease both; animation-delay: .33s; }
 
+
+
 .pulse-once {
+
     animation: pulseGlow .8s ease-out;
+
 }
+
+
 
 .value-changed {
+
     animation: valueFlash 1.2s ease-out;
+
 }
 
+
+
 @media (prefers-reduced-motion: reduce) {
+
     .animate-in, .animate-in-1, .animate-in-2, .animate-in-3,
+
     .animate-in-4, .animate-in-5, .pulse-once, .value-changed {
+
         animation: none;
+
     }
+
 }
+
+
+
 
 
 .user-avatar {
 
+
+
     width: 34px;
+
+
 
     height: 34px;
 
+
+
     border-radius: 50%;
 
+
+
 }
+
+
+
 
 
 .user-avatar-placeholder {
 
+
+
     display: flex;
+
+
 
     align-items: center;
 
+
+
     justify-content: center;
+
+
 
     width: 34px;
 
+
+
     height: 34px;
+
+
 
     border-radius: 50%;
 
+
+
     background: #5865f2;
+
+
 
     color: white;
 
+
+
     font-weight: 700;
 
+
+
 }
+
+
+
 
 
 .user-name {
 
+
+
     color: #e5e5ea;
+
+
 
     font-size: 14px;
 
+
+
 }
+
+
+
 
 
 .logout-button,
+
 .login-button-small {
+
+
 
     padding: 7px 12px;
 
+
+
     border-radius: 8px;
+
+
 
     text-decoration: none;
 
+
+
     font-size: 13px;
 
+
+
 }
+
+
+
 
 
 .logout-button {
 
+
+
     color: #ff8d8d;
 
+
+
     background:
+
         rgba(255,70,70,0.08);
 
+
+
 }
+
+
+
 
 
 .logout-button:hover {
 
+
+
     background:
+
         rgba(255,70,70,0.16);
 
+
+
 }
+
+
+
 
 
 /* =========================================================
+
    AUTH PAGE
+
 ========================================================= */
+
+
 
 .auth-page {
 
+
+
     min-height: 85vh;
+
+
 
     display: flex;
 
+
+
     align-items: center;
+
+
 
     justify-content: center;
 
+
+
 }
+
+
+
 
 
 .auth-card {
 
+
+
     width: min(
+
         430px,
+
         calc(100vw - 32px)
+
     );
+
+
 
     padding: 42px;
 
+
+
     border-radius: 22px;
+
+
 
     border: 1px solid rgba(255,255,255,0.08);
 
+
+
     background:
+
         rgba(18,18,25,0.95);
 
+
+
     box-shadow:
+
         0 30px 80px rgba(0,0,0,0.35);
+
+
 
     text-align: center;
 
+
+
 }
+
+
+
 
 
 .auth-logo {
 
+
+
     display: flex;
+
+
 
     justify-content: center;
 
+
+
     margin-bottom: 22px;
 
+
+
 }
+
+
+
 
 
 .auth-logo-icon {
 
+
+
     width: 62px;
+
+
 
     height: 62px;
 
+
+
     border-radius: 16px;
+
+
 
     font-size: 20px;
 
+
+
 }
+
+
+
 
 
 .auth-card h1 {
 
+
+
     color: white;
+
+
 
     font-size: 27px;
 
+
+
     margin-bottom: 10px;
 
+
+
 }
+
+
+
 
 
 .auth-subtitle {
 
+
+
     color: #9696a5;
+
+
 
     line-height: 1.6;
 
+
+
     margin-bottom: 28px;
 
+
+
 }
+
+
+
 
 
 .discord-login-button {
 
+
+
     display: flex;
+
+
 
     align-items: center;
 
+
+
     justify-content: center;
+
+
 
     gap: 10px;
 
+
+
     width: 100%;
+
+
 
     padding: 13px 18px;
 
+
+
     border-radius: 10px;
+
+
 
     background: #5865f2;
 
+
+
     color: white;
+
+
 
     text-decoration: none;
 
+
+
     font-weight: 700;
 
+
+
     transition:
+
         transform .15s ease,
+
         background .15s ease;
 
+
+
 }
+
+
+
 
 
 .discord-login-button:hover {
 
+
+
     background: #4752c4;
+
+
 
     color: white;
 
+
+
     transform: translateY(-1px);
 
+
+
 }
+
+
+
 
 
 .discord-login-icon {
 
+
+
     display: flex;
+
+
 
     align-items: center;
 
+
+
     justify-content: center;
+
+
 
     width: 25px;
 
+
+
     height: 25px;
+
+
 
     border-radius: 7px;
 
+
+
     background: rgba(255,255,255,0.18);
 
+
+
 }
+
+
+
 
 
 .auth-error {
 
+
+
     margin-bottom: 20px;
+
+
 
     padding: 12px;
 
+
+
     border-radius: 9px;
+
+
 
     color: #ffb4b4;
 
+
+
     background:
+
         rgba(255,70,70,0.10);
 
+
+
     border:
+
         1px solid rgba(255,70,70,0.20);
 
+
+
 }
+
+
+
 
 
 .auth-footer {
 
+
+
     margin-top: 22px;
+
+
 
     color: #6f6f7d;
 
+
+
     font-size: 12px;
 
+
+
 }
+
+
+
+
+
+
 
 
 
 
 
 /* =========================================================
+
    GLOBAL BOT AVATAR
+
 ========================================================= */
+
+
 
 .global-bot-brand {
 
+
+
     overflow: hidden;
+
+
 
     position: relative;
 
+
+
 }
+
+
+
 
 
 .global-bot-brand img {
 
+
+
     width: 100%;
+
+
 
     height: 100%;
 
+
+
     object-fit: cover;
+
+
 
     border-radius: inherit;
 
+
+
     display: block;
 
+
+
 }
+
+
+
 
 
 /* =========================================================
+
    AUTH BOT AVATAR
+
 ========================================================= */
+
+
 
 .auth-bot-icon {
 
+
+
     overflow: hidden;
+
+
 
     position: relative;
 
+
+
 }
+
+
+
 
 
 .auth-bot-icon img {
 
+
+
     width: 100%;
+
+
 
     height: 100%;
 
+
+
     object-fit: cover;
+
+
 
     border-radius: inherit;
 
+
+
     display: block;
+
+
 
 }
 
 
+
+
+
 #auth-bot-avatar-fallback,
+
 #global-bot-avatar-fallback {
+
+
 
     width: 100%;
 
+
+
     height: 100%;
+
+
 
     align-items: center;
 
+
+
     justify-content: center;
 
+
+
+}
+
+
+
+/* ============================================================
+
+   PAGE FADE-IN + SCROLL REVEAL (overnight polish)
+
+   .page-fade runs once on load (added to the base layout's main
+
+   container). .reveal sections are hidden by JS only while they
+
+   sit below the fold, then fade/slide in as they scroll into view
+
+   (see lively.js). If JS never runs, nothing stays hidden.
+
+   ============================================================ */
+
+
+
+.page-fade {
+
+    animation: fadeSlideIn .5s ease both;
+
+}
+
+
+
+.reveal {
+
+    transition: opacity .5s ease, transform .5s ease;
+
+}
+
+
+
+.reveal:not(.is-visible).reveal-pending {
+
+    opacity: 0;
+
+    transform: translateY(16px);
+
+}
+
+
+
+.reveal.is-visible {
+
+    opacity: 1;
+
+    transform: none;
+
+}
+
+
+
+@media (prefers-reduced-motion: reduce) {
+
+    .page-fade {
+
+        animation: none;
+
+    }
+
+    .reveal,
+
+    .reveal:not(.is-visible).reveal-pending {
+
+        opacity: 1;
+
+        transform: none;
+
+        transition: none;
+
+    }
+
+}
+
+
+
+/* ========================================================
+
+   Keyboard focus-visible styles (overnight polish)
+
+   A visible ring appears only for keyboard focus, so Tab
+
+   users can always see where they are. Mouse clicks stay
+
+   clean (no ring). Accent is a light blurple that reads
+
+   well on the site's dark backgrounds.
+
+   ======================================================== */
+
+a:focus-visible,
+
+button:focus-visible,
+
+.btn:focus-visible,
+
+input:focus-visible,
+
+select:focus-visible,
+
+textarea:focus-visible,
+
+summary:focus-visible,
+
+[tabindex]:focus-visible {
+
+    outline: 2px solid #8b95f9;
+
+    outline-offset: 3px;
+
+}
+
+
+
+a:focus:not(:focus-visible),
+
+button:focus:not(:focus-visible),
+
+.btn:focus:not(:focus-visible),
+
+input:focus:not(:focus-visible),
+
+select:focus:not(:focus-visible),
+
+textarea:focus:not(:focus-visible),
+
+summary:focus:not(:focus-visible),
+
+[tabindex]:focus:not(:focus-visible) {
+
+    outline: none;
+
+}
+
+
+/* ========================================================
+   PREFERS-REDUCED-MOTION: GLOBAL SAFETY NET (overnight polish)
+   The per-feature overrides above cover the overnight animations
+   one by one, but they cannot catch everything: the older
+   infinite spinners, hover transitions, and any future animation
+   added without its own override would still move for users who
+   asked their OS for reduced motion. This final block is the
+   catch-all, so NOTHING on a base-layout page animates for those
+   users. Durations are shortened to ~0ms rather than set to
+   `none`, so any JS listening for animationend/transitionend
+   still fires. `!important` is required here: a bare `*`
+   selector would otherwise lose to rules like
+   `.icon-button.refreshing`. Only active when the user has
+   "reduce motion" on; everyone else is unaffected.
+   ======================================================== */
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+    }
+}
+
+
+/* =========================================================
+
+   MOBILE NAV / SMALL-SCREEN POLISH (overnight 2026-10-27)
+
+   The hamburger button is hidden on desktop. On screens
+   <= 820px wide the link row collapses behind it; the links
+   are hidden ONLY when JS has added .nav-collapsed to the
+   navbar, so with JS off they stay visible (wrapped).
+   Reverting is just deleting this block plus the button
+   and its script in base.html.
+
+========================================================= */
+
+
+
+#nav-toggle {
+
+
+
+    display: none;
+
+
+
+    width: 40px;
+
+
+
+    height: 40px;
+
+
+
+    flex: none;
+
+
+
+    border: 1px solid rgba(255,255,255,0.2);
+
+
+
+    border-radius: 10px;
+
+
+
+    background: transparent;
+
+
+
+    color: white;
+
+
+
+    font-size: 20px;
+
+
+
+    line-height: 1;
+
+
+
+    cursor: pointer;
+
+
+
+}
+
+
+
+#nav-toggle:hover {
+
+
+
+    background: rgba(255,255,255,0.07);
+
+
+
+}
+
+
+
+@media (max-width: 820px) {
+
+
+
+    #nav-toggle {
+
+
+
+        display: inline-flex;
+
+
+
+        align-items: center;
+
+
+
+        justify-content: center;
+
+
+
+    }
+
+
+
+    .top-navbar {
+
+
+
+        flex-wrap: wrap;
+
+
+
+        gap: 10px;
+
+
+
+        padding: 10px 12px;
+
+
+
+    }
+
+
+
+    .brand-link {
+
+
+
+        font-size: 16px;
+
+
+
+    }
+
+
+
+    .user-area {
+
+
+
+        margin-left: auto;
+
+
+
+    }
+
+
+
+    /* Avatar-only pills: drop the text labels so the row fits. */
+
+
+
+    .user-pill {
+
+
+
+        padding: 6px;
+
+
+
+    }
+
+
+
+    .user-pill-label,
+
+
+
+    .user-pill-name {
+
+
+
+        display: none;
+
+
+
+    }
+
+
+
+    /* Collapsed state (JS-added): links hidden, button visible. */
+
+
+
+    .top-navbar.nav-collapsed .nav-links {
+
+
+
+        display: none;
+
+
+
+    }
+
+
+
+    /* Open state: links drop to a full-width row below. */
+
+
+
+    .top-navbar.nav-open .nav-links {
+
+
+
+        display: flex;
+
+
+
+        flex-direction: column;
+
+
+
+        align-items: stretch;
+
+
+
+        flex-basis: 100%;
+
+
+
+        order: 3;
+
+
+
+        gap: 2px;
+
+
+
+    }
+
+
+
+    .top-navbar.nav-open .nav-link-item {
+
+
+
+        padding: 12px 14px;
+
+
+
+        font-size: 16px;
+
+
+
+    }
+
+
+
+}
+
+/* Overnight run 11 — navbar active-page highlight: the link for the page
+   you are on gets white text, a soft blurple tint, and a blurple
+   underline bar, so you can tell at a glance where you are. No animation,
+   so nothing for prefers-reduced-motion to suppress. */
+.nav-link-item.nav-active {
+    color: white;
+    background: rgba(88,101,242,.18);
+    box-shadow: inset 0 -2px 0 #5865f2;
+}
+
+/* Scroll progress bar (overnight run 2026-10-27): thin accent bar fixed
+   to the very top of the viewport on every page using the base layout.
+   Width is set inline by the script in base.html; no transition, so it
+   never animates for prefers-reduced-motion users. Hidden on short
+   pages automatically because the script leaves the width at 0. */
+#scroll-progress {
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 3px;
+    width: 0;
+    background: var(--accent);
+    z-index: 9999;
+    pointer-events: none;
+}
+
+/* Overnight run 2026-10-27 — themed scrollbars: the page and inner
+   scroll areas get a slim dark scrollbar with a border-grey thumb that
+   turns accent blue on hover, instead of the default bright OS
+   scrollbar that clashed with the dark theme. Firefox uses
+   scrollbar-width/scrollbar-color; Chromium/Safari use the
+   ::-webkit-scrollbar rules. No animation, so nothing for
+   prefers-reduced-motion to suppress. */
+html {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) var(--bg-main);
+}
+::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+::-webkit-scrollbar-track {
+    background: var(--bg-main);
+}
+::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 8px;
+    border: 2px solid var(--bg-main);
+}
+::-webkit-scrollbar-thumb:hover {
+    background: var(--accent);
+}
+
+/* Overnight run 2026-10-27 — accent text selection: highlighted text
+   shows the site's accent blue background with white text instead of
+   the browser's default selection colors, so selecting text on any
+   page matches the dark theme. Purely visual; no animation, so nothing
+   for prefers-reduced-motion to suppress. */
+::selection {
+    background: var(--accent);
+    color: #ffffff;
+}
+::-moz-selection {
+    background: var(--accent);
+    color: #ffffff;
 }
