@@ -10,7 +10,9 @@ parts:
 - **`statuses`** — the messages `change_status()` rotates through.
 - **`load_json(filename)` / `save_json(filename, data)`** — JSON helpers
   (see [Data layer](./data-layer.md)). Missing or corrupt files reset to
-  `{}` with a console warning instead of crashing.
+  `{}` with a console warning instead of crashing. Note: the six
+  migrated names (mod cases, watch list, eatyeet stats/suggestions/
+  active/rematch) route through the SQLite store now, not files.
 - **`admin_required()` / `is_owner()` / `Manage_*_required()`** —
   permission decorators (see [Permissions](./permissions.md)).
 - **`extra_help(text)`** — attaches extended docs to a command.

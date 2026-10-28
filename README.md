@@ -9,9 +9,11 @@ can add new ones without touching the core files.
 - Admin cog: user info, clearing a user's messages, adding/removing roles,
   renaming the bot or users, and owner-only shutdown/restart commands
 - A rotating bot status (cycles through messages every 10–60 seconds)
-- SQLite database layer (SQLAlchemy + `databases`) with ready-made tables for
-  welcome messages, levels/XP, tickets, threads, and voice-channel maps
-- JSON helper functions for simple per-guild config files
+- SQLite database layer (SQLAlchemy + `databases`) with tables for levels/XP,
+  profiles, tickets, appeals, voice XP, lockdowns, automod, badges, friends,
+  and more (see the building-mode batch below)
+- JSON helper functions for the few remaining small files (notification read
+  state); game, mod, and watch data moved to SQLite in October 2026
 - Permission-check decorators (`admin_required`, `is_owner`, etc.) in `config.py`
 
 > The bot code lives in the `Discord Bot Templet Mde With Python` folder —
@@ -70,7 +72,9 @@ python setup.py
 2. Open the **Bot** tab, click **Reset Token**, and copy the token.
    **Keep this secret — never share it or commit it to GitHub.**
 3. In the **Bot** tab, under *Privileged Gateway Intents*, turn on
-   **Server Members Intent**.
+   **Server Members Intent**, **Message Content Intent** (the Logger needs
+   it to log message text), and **Presence Intent** (online/offline status
+   on the web dashboard).
 4. Open the **OAuth2 → URL Generator** tab, tick the scopes
    `bot` and `applications.commands`, then pick bot permissions
    (for a test bot, `Administrator` is easiest).
@@ -101,9 +105,8 @@ python bot.py
 ```
 
 You should see `✅ Logged in as YourBot#1234 ... Commands synced!` in the
-console. The SQLite database (`data/bot.db`) is created automatically on
-first run. Slash commands can take a few minutes to appear in Discord the
-very first time.
+console. The SQLite database (`bot.db` at the bot folder root) is created automatically on first run. Commands are guild-scoped (`GUILD_IDS` in
+`config.py`), so they sync on startup and show up within seconds.
 
 ---
 
@@ -121,10 +124,21 @@ Discord Bot Templet Mde With Python/
 │   ├── fun_cog.py          # Eat It or Yeet It party game (see section below)
 │   ├── Level_system.py     # Message XP, levels, leaderboard (see section below)
 │   ├── WatchList.py        # Watch List system: log watched users' messages (see section below)
+│   ├── DebugCog.py         # /debug toggle + logging
+│   ├── QOTD.py             # Question of the Day
+│   ├── Tickets.py          # Support tickets
+│   ├── Backup.py           # Backup + restore
+│   ├── Appeals.py          # Appeals + mod notes search
+│   ├── VoiceXP.py          # Voice time XP
+│   ├── Lockdown.py         # Lockdown + slowmode
+│   ├── Automod.py          # Automod rules
+│   ├── AutoThreads.py      # Auto-threads
+│   ├── TimeCmd.py          # /time from profile timezones
+│   ├── CustomBadges.py     # Mod-awardable custom badges
 │   └── Logger/             # Server event logging (see section below)
 │       ├── __init__.py     # Registers all Logger cogs
 │       ├── config.py       # Log categories, colors, channel names
-│       ├── database.py     # SQLite: message cache + log channel config
+│       ├── database.py     # SQLite: message cache, log channel config, toggles, event history
 │       ├── logger.py       # Sends embeds to configured log channels
 │       ├── base.py         # BaseLogger cog (shared send/audit helpers)
 │       ├── embeds.py       # LoggerEmbed builders
@@ -138,10 +152,12 @@ Discord Bot Templet Mde With Python/
 │       ├── roles.py        # RoleLogger: role create/delete/update
 │       ├── commands.py     # /setup_logs, /change_logchannel, /log_settings, /log_toggle
 │       └── audit.py        # Audit-log lookup (target-matched)
+├── bot.db                  # Live SQLite database (bot folder root, not data/)
 ├── data/
-│   ├── eatyeet_*.json      # Eat It or Yeet It stats, suggestions, active rounds
-│   ├── watchlist_data.json # Watch List: watched users per server
-│   ├── mod_data.json       # /userinfo panel: warns, notes, case history, tempbans per server
+│   ├── eatyeet_*.json      # Legacy rollback copies (live data is SQLite now)
+│   ├── watchlist_data.json # Legacy rollback copy (live data is SQLite now)
+│   ├── mod_data.json       # Legacy rollback copy (live data is SQLite now)
+│   ├── notification_read.json # Notification bell read/dismissed state
 │   ├── message_log.db      # Logger: cached messages + log channel config
 │   └── DB/
 │       ├── db.py           # Database connection (SQLite)
@@ -149,7 +165,9 @@ Discord Bot Templet Mde With Python/
 │       └── Storage/
 │           └── storage.py  # Async get/save helpers for each table
 └── utils/
-    └── data_utils.py       # Simple JSON load/save helpers
+    ├── data_utils.py       # Simple JSON load/save helpers
+    ├── backup.py           # Snapshot/restore engine
+    └── json_sqlite_store.py # Lazy JSON→SQLite store
 ```
 
 ## Built-in commands (admin cog)
@@ -171,7 +189,8 @@ Discord Bot Templet Mde With Python/
 Moderators can put users on a per-server watch list — every message a
 watched user sends is mirrored to a configured log channel (with author,
 channel, timestamps, content, attachments, stickers, and a jump link).
-State lives in `data/watchlist_data.json`. All commands need **Manage
+State lives in SQLite (`watchlist_data` table; the old JSON file is kept
+as a rollback copy). All commands need **Manage
 Server** or **Administrator**.
 
 | Command | What it does | Who can use it |
@@ -233,7 +252,7 @@ was away gets tallied on startup.
 | `/eatyeet_history` | Last 10 finished rounds and their verdicts | Everyone |
 
 **Food sources** (`/eatyeet` option):
-- **Auto (mix of API + local)** (default) — each round has a 45% chance of a
+- **Auto (mix of API + local)** (default) — each round has a 90% chance of a
   live meal from [TheMealDB](https://www.themealdb.com) (free, no key needed),
   otherwise the local list. API foods show a 🌐 **fresh** rarity and the
   round embed displays the dish's real photo.
@@ -253,9 +272,9 @@ bar (▓▓▓▓▓▓░░░░) plus when voting ends. In the last 15 secon
 button. Anyone can tap it to instantly start a new round with the same
 duration and food source. It works even on old result posts after a restart.
 
-Game data is stored in `data/eatyeet_stats.json`,
-`data/eatyeet_suggestions.json`, and `data/eatyeet_active.json`
-(active rounds — this is what makes restarts safe).
+Game data lives in SQLite (`eatyeet_stats`, `eatyeet_suggestions`,
+`eatyeet_active`, and `eatyeet_rematch` tables; active rounds are what make
+restarts safe). The old JSON files are kept as rollback copies.
 
 ## Built-in commands (level system)
 
@@ -304,9 +323,10 @@ that text with `/set_levelup_message` using `{user}`, `{name}`, and
 ## 🌐 Web dashboard
 
 A Flask web dashboard runs alongside the bot (same process, background thread) at
-`http://127.0.0.1:5000` by default. Log in with Discord — only members with
-**Manage Server** / **Administrator** can use it, and every API route checks
-both login and guild permission.
+`http://127.0.0.1:5000` by default. Log in with Discord — server management
+pages need **Manage Server** / **Administrator**, while profile, directory,
+feed, and friends pages are open to any logged-in member. Every API route
+checks both login and guild permission.
 
 **Setup:** copy `.env.example` to `.env` and fill in `WEB_SECRET_KEY`,
 `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, and `DISCORD_REDIRECT_URI`
@@ -316,8 +336,10 @@ OAuth2 → Redirects). Set `WEB_ENABLED=false` to run the bot without the dashbo
 
 **What it covers:** server overview, member/role/channel browsers, moderation
 actions (timeout/kick/ban/unban — same safety checks as the `/userinfo` panel),
-and a searchable log-event history (the Logger records every event to a
-queryable table for this). Discord write actions from the dashboard are
+a searchable log-event history (the Logger records every event to a
+queryable table for this, with a CSV export), user profiles, the member
+directory, the community activity feed, friends, a live voice-channel
+viewer, and backups. Discord write actions from the dashboard are
 scheduled onto the bot's event loop, so they're safe from the web thread.
 
 ## Adding a new cog
@@ -397,7 +419,7 @@ External links in the nav bar:
 
 ### 👤 User profiles
 
-The profile page (`/profile`) is a customizable end-user page. Layout follows the Steam profile pattern: a header with avatar, name, and status plus a level badge and member-since on the right, a main column (recent activity, stats) and a sidebar (featured, badges, servers), stacking to one column on narrow screens. Visual treatment is Steam-like too: translucent panels over the background art with dark-blue gradient section header bars, a background fade/vignette so content pops, an accent-framed avatar, a badge shelf with an earned-count header, hover lifts on cards, and a level progress ring around the level number (the ring fills with XP progress toward the next level). Cleanup round: XP progress bars use the user's accent color, stat cells sit in a symmetric 3x2 grid with small-caps labels, activity times read as relative times ("2h ago"), panels are slightly more opaque for readability over busy custom backgrounds, and the own page has a Copy button for the public profile link. Ideas round: the customize form live-previews bio/status/name/pronouns/tags/avatar/background as you type, the Badges section shows a 'Next up' teaser with progress toward the closest unearned badge, section header bars tint with the user's accent color, the save button briefly flips to 'Saved!', the customize form shows a profile completion meter, and hovering the level ring shows XP to the next level. Editing moved to its own page (/profile/edit): the profile header has an Edit profile button, the edit page shows a live preview card above the form, social links are now an add-up-to-10 list with a + Add link button that auto-detects each site and shows its icon, and every field has a ? help button (hover or tap) with a plain-language explanation of what goes there. Backgrounds can also be uploaded from the user's PC (Upload image on the edit page, max 5 MB, PNG/JPG/GIF/WebP, stored under web/static/uploads/backgrounds/ and never committed); backgrounds now preload so a dead link hides the dark overlay instead of leaving a veil, and the level ring sits below the banner. A notification bell in the navbar shows mod cases filed against the user plus level-ups, with an unread badge and Mark all read. Profiles can opt in to showing color-coded roles from one picked server (toggle + server picker on the edit page), on the own and public pages. Roles can show either at the bottom of the profile or on the bio card at the top (a placement picker on the edit page; bottom is the default). An opt-in local-info block on the bio card shows where the user is from (country plus a broad area only, picked from a grouped world-places list — never a city or town, so it stays private), the local time in their time zone with the zone name, and a flag from an optional country picker; the time refreshes every 30 seconds. A DM status (not set, open, closed, ask first) shows on the bio card with a green, red, or yellow dot. Time zone, place, and country are stripped from public profiles unless the owner turned the display on. New profile fields land in the profiles table automatically: the bot adds missing columns to an existing database on boot. Profile settings live in the bot's SQLite database (`bot.db` at the bot folder root, `profiles` table) — migrated from the old `data/profiles.json` on first read, with the JSON kept as a `profiles.json.migrated` backup. The API is `GET/POST /api/profile` (login + CSRF), `GET /api/profile/stats` (login), and `GET /api/profile/public/<user-id>` (public), plus `GET /api/profile/roles?guild_id=` (login, membership-checked) for the roles display.
+The profile page (`/profile`) is a customizable end-user page. Layout follows the Steam profile pattern: a header with avatar, name, and status plus a level badge and member-since on the right, a main column (recent activity, stats) and a sidebar (featured, badges, servers), stacking to one column on narrow screens. Visual treatment is Steam-like too: translucent panels over the background art with dark-blue gradient section header bars, a background fade/vignette so content pops, an accent-framed avatar, a badge shelf with an earned-count header, hover lifts on cards, and a level progress ring around the level number (the ring fills with XP progress toward the next level). Cleanup round: XP progress bars use the user's accent color, stat cells sit in a symmetric 3x2 grid with small-caps labels, activity times read as relative times ("2h ago"), panels are slightly more opaque for readability over busy custom backgrounds, and the own page has a Copy button for the public profile link. Ideas round: the customize form live-previews bio/status/name/pronouns/tags/avatar/background as you type, the Badges section shows a 'Next up' teaser with progress toward the closest unearned badge, section header bars tint with the user's accent color, the save button briefly flips to 'Saved!', the customize form shows a profile completion meter, and hovering the level ring shows XP to the next level. Editing moved to its own page (/profile/edit): the profile header has an Edit profile button, the edit page shows a live preview card above the form, social links are now an add-up-to-10 list with a + Add link button that auto-detects each site and shows its icon, and every field has a ? help button (hover or tap) with a plain-language explanation of what goes there. Backgrounds can also be uploaded from the user's PC (Upload image on the edit page, max 5 MB, PNG/JPG/GIF/WebP, stored under web/static/uploads/backgrounds/ and never committed); backgrounds now preload so a dead link hides the dark overlay instead of leaving a veil, and the level ring sits below the banner. A notification bell in the navbar shows mod cases filed against the user plus level-ups, with an unread badge, per-item dismiss and mark read/unread, and Clear read / Clear all. Profiles can opt in to showing color-coded roles from one picked server (toggle + server picker on the edit page), on the own and public pages. Roles can show either at the bottom of the profile or on the bio card at the top (a placement picker on the edit page; bottom is the default). An opt-in local-info block on the bio card shows where the user is from (country plus a broad area only, picked from a grouped world-places list — never a city or town, so it stays private), the local time in their time zone with the zone name, and a flag from an optional country picker; the time refreshes every 30 seconds. A DM status (not set, open, closed, ask first) shows on the bio card with a green, red, or yellow dot. Time zone, place, and country are stripped from public profiles unless the owner turned the display on. New profile fields land in the profiles table automatically: the bot adds missing columns to an existing database on boot. Profile settings live in the bot's SQLite database (`bot.db` at the bot folder root, `profiles` table) — migrated from the old `data/profiles.json` on first read, with the JSON kept as a `profiles.json.migrated` backup. The API is `GET/POST /api/profile` (login + CSRF), `GET /api/profile/stats` (login), and `GET /api/profile/public/<user-id>` (public), plus `GET /api/profile/roles?guild_id=` (login, membership-checked) for the roles display.
 
 **Customization** — bio (500 chars), accent color (picker + 8 swatches) tinting the banner and save button, status message, social links (Twitch, YouTube, Twitter/X, website), pronouns, and a custom display name (falls back to the Discord name). Interest tags (comma-separated, up to 10) render as chips.
 
@@ -473,7 +495,10 @@ ones. Friend requests also appear in the notification bell.
 qualifying minute in voice (not alone, not muted/deafened, not AFK),
 banked in 5-minute chunks, with a 100 base XP/day cap (UTC day, event
 multipliers apply on top). Stage channels are excluded; the leaderboard
-is Discord-only.
+is Discord-only. Hotfix 2026-10-28: `/voicexp optin` crashed on first use
+because the user-row saver passed explicit `NULL`s for missing columns;
+the saver now drops `NULL`s before applying defaults (same fix applied
+to the lockdown and auto-thread savers).
 
 **Lockdown + slowmode** — `/lockdown lock|unlock|lockall|unlockall|
 slowmode|status`, gated to Manage Channels. Locking denies @everyone
@@ -546,9 +571,13 @@ guild IDs are stripped from API responses. Manual Refresh only.
 - **Slash commands don't show up** — wait a few minutes after the first
   start; also confirm you invited the bot with the `applications.commands`
   scope.
-- **Bot can't see members / crashes on startup** — the **Server Members
-  Intent** must be enabled in the Developer Portal (Bot tab, Privileged
-  Gateway Intents), then restart the bot.
+- **Bot can't see members / crashes on startup** — the **Server Members,
+  Message Content, and Presence Intents** must be enabled in the Developer
+  Portal (Bot tab, Privileged Gateway Intents), then restart the bot.
+- **Dashboard pages error after updating files (e.g. a BuildError for a
+  new page)** — the running web process predates the new code. Fully
+  restart the bot (the dashboard runs inside the bot process) so the app
+  rebuilds with the current routes; reloading a page alone is not enough.
 - **`/shutdown_bot` says you're not authorized** — your user ID isn't in
   `OWNER_IDS` in `config.py`.
 - **`pip install` fails on `databases`** — make sure you're on Python 3.10+

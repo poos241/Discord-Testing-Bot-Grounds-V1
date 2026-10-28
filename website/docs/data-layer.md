@@ -58,24 +58,35 @@ and add it to `_PROFILE_COLUMNS` in `data/DB/db.py`, which runs
 existing databases heal themselves. Forgetting the second half is how
 saves start failing with "Unconsumed column names".
 
-## JSON files (`config.load_json` / `save_json`)
+## JSON files — legacy since October 2026
 
-For simple blobs — the game uses these for stats, suggestions, active
-rounds, and rematch settings:
+`config.load_json` / `save_json` still exist, but the six files they used
+to own — mod cases, watch list, and Eat It or Yeet It stats, suggestions,
+active rounds, and rematch settings — moved to SQLite in October 2026
+(see the migration note below). `load_json` / `save_json` route those
+names through `utils/json_sqlite_store.py` now, so old call sites keep
+working while the data lives in tables. The original JSON files stay on
+disk untouched as rollback copies.
 
-```python
-from config import load_json, save_json
+The only JSON file still live is the notification bell's read state
+(`data/notification_read.json`). Missing or corrupt files reset to `{}`
+with a console warning — the bot never crashes on bad JSON.
 
-stats = load_json("eatyeet_stats.json")   # {} if missing/corrupt
-stats["123"] = {"points": 5}
-save_json("eatyeet_stats.json", stats)
-```
+## The JSON → SQLite migration (October 2026)
 
-Files live in `data/`. Missing or corrupt files reset to `{}` with a
-console warning — the bot never crashes on bad JSON.
+`utils/json_sqlite_store.py` maps the six legacy files to seven tables
+(`mod_data`, `watchlist_data`, `eatyeet_stats`, `eatyeet_suggestions`,
+`eatyeet_active`, `eatyeet_rematch`, plus a `json_migrations` tracker).
+Migration is **lazy**: the first load/save after a restart imports the
+JSON into SQLite; the originals are never deleted, so rollback is
+restoring the pre-migration code plus the JSON backups. New code should
+use the store helpers or a new table — not a new JSON file.
 
 ## Which to use?
 
-- Reaching for per-guild structured data (settings, user records)? **SQLite.**
-- Stashing a simple dict the game rewrites often? **JSON file.**
+- Anything new, per-guild or per-user, structured or a simple dict?
+  **SQLite** — either a new table (see
+  [Adding a database table](./adding-a-table.md)) or the store pattern
+  for JSON-shaped data.
+- The only standing JSON exception is the notification bell's read state.
 - When in doubt, follow the existing pattern closest to your feature.

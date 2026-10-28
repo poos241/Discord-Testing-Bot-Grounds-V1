@@ -86,9 +86,9 @@ disaster it is meant to recover from.
 Admin) and a mod-only `/backups` web page (manual snapshot, download,
 delete, restore). Each snapshot is one zip in `data/backups/`
 (`<YYYYMMDD-HHMMSS>_<label>.zip`) with `bot.db` + `message_log.db`
-(via the SQLite backup API, consistent while running) + JSONs
-(`mod_data`, `watchlist`, 4 eatyeet files) + `manifest.json` (sizes +
-SHA-256). Retention: newest 14 daily + 10 manual/pre-restore. Excluded:
+(via the SQLite backup API, consistent while running) + the legacy JSON
+files (`mod_data`, `watchlist`, 4 eatyeet files — the rollback copies)
++ `manifest.json` (sizes + SHA-256). Retention: newest 14 daily + 10 manual/pre-restore. Excluded:
 `notification_read.json`, `profiles.json.migrated`.
 
 **Restore:** hash-verifies first, takes an automatic pre-restore safety
@@ -106,8 +106,8 @@ appeals.
 modal), `/appeal list`, `/appeal review <id>` with Approve/Deny buttons
 (approve lifts the ban/timeout + records a case + DMs the appellant;
 deny records a reason + DMs the outcome). Appeals post to the configured
-appeals channel. `/modnotes search <keyword> [user]` searches
-`mod_data.json` notes/warns/cases server-wide.
+appeals channel. `/modnotes search <keyword> [user]` searches the
+`mod_data` table (SQLite) for notes/warns/cases server-wide.
 
 **Limits:** the review view is non-persistent — buttons may die across a
 restart, so re-run `/appeal review`. No web review page yet, and no
@@ -185,6 +185,14 @@ is Discord-only; the web view is the live VC viewer below.
 
 **Limit:** unbanked minutes live in memory only and are lost on restart
 (≤5 min).
+
+**Hotfix 2026-10-28:** `/voicexp optin` crashed on first use with
+`IntegrityError: NOT NULL constraint failed: voice_xp_users.total_minutes`.
+The user-row saver built values with `payload.get()` (explicit `None`
+for missing columns) and then called `setdefault()`, which only fills
+*absent* keys — so `total_minutes` stayed `NULL`. The saver now drops
+`None` values before applying defaults; the same fix went into the
+lockdown and auto-thread savers, which shared the pattern.
 
 ## 10. Lockdown + slowmode
 

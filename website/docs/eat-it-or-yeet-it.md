@@ -19,11 +19,11 @@ results, awards game XP, and attaches the 🔁 rematch button.
 - Views use `timeout=None` and stable `custom_id`s, and are re-registered
   in `on_ready` (`_ensure_view()`) — see the
   [boot gotcha](./boot-sequence.md#gotcha-views-need-a-running-loop).
-- Active rounds persist in `eatyeet_active.json`; an expiry loop tallies
-  anything that ended while the bot was down.
-- Rematch settings persist per channel in `eatyeet_rematch.json`, so
-  🔁 **Run it back** replays the same duration + food source even after a
-  restart.
+- Active rounds persist in the `eatyeet_active` table (SQLite); an expiry
+  loop tallies anything that ended while the bot was down.
+- Rematch settings persist per channel in the `eatyeet_rematch` table
+  (SQLite), so 🔁 **Run it back** replays the same duration + food source
+  even after a restart.
 
 ## Food sources
 
@@ -40,8 +40,9 @@ Majority voters earn points by rarity: common 1, weird / fresh /
 community 2, cursed 3. Win streaks and best streaks are tracked per user,
 and results name every voter on each side.
 
-## Game data files
+## Game data tables
 
-`data/eatyeet_stats.json` (points, streaks), `data/eatyeet_suggestions.json`
-(community pool), `data/eatyeet_active.json` (live rounds),
-`data/eatyeet_rematch.json` (per-channel rematch settings).
+`eatyeet_stats` (points, streaks), `eatyeet_suggestions` (community
+pool), `eatyeet_active` (live rounds), `eatyeet_rematch` (per-channel
+rematch settings) — all in SQLite since the October 2026 migration. The
+old `data/eatyeet_*.json` files are kept as rollback copies.

@@ -16,9 +16,15 @@ my_feature = sqlalchemy.Table(
 )
 ```
 
-Conventions: `guild_id` is always the primary key (everything is
-per-server), and a `data` JSON column holds the actual payload so you
-rarely need migrations — just add keys to the dict.
+Conventions: per-server tables use `guild_id` as the primary key; other
+tables use their own keys (`profiles` is keyed by `user_id`,
+`voice_xp_users` by `(guild_id, user_id)`, `friendships` by the pair).
+A `data` JSON column holds the actual payload so you rarely need
+migrations — just add keys to the dict. Scalar columns work too (the
+newer tables use them); either way, a new table is always safe because
+`create_all()` creates it on boot — only new *columns* on existing
+tables need the manual migration in `db.py` (see
+[Data layer](./data-layer.md)).
 
 Don't forget to import the table name in `storage.py`.
 
@@ -54,7 +60,9 @@ await save_my_feature(str(ctx.guild.id), data)
 
 ## When not to use SQLite
 
-If the data is a simple blob rewritten constantly (like game round state),
-a JSON file via `config.load_json` is simpler — see
-[Data layer](./data-layer.md). SQLite wins when the data is structured,
-per-guild, and long-lived.
+Short answer: don't reach for JSON for new features. JSON files were the
+old home for game round state and similar blobs, but those all moved to
+SQLite in October 2026 (see [Data layer](./data-layer.md)) — the only
+standing JSON file is the notification bell's read state. If your data
+is JSON-shaped and you want the lightest path, follow the store pattern
+in `utils/json_sqlite_store.py` rather than a new file.

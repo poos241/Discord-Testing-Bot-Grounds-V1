@@ -10,7 +10,8 @@ to the per-user cooldown and the `no_xp_channels` list.
 ## `award_xp()` — the single funnel
 
 **All** XP flows through `award_xp()`: messages, `/add_xp`, `/daily`,
-and game votes. It:
+game votes, and voice time (banked in 5-minute chunks by the VoiceXP
+cog). It:
 
 1. Applies the active XP event multiplier — unless `apply_event=False`,
    which is how manual `/add_xp` grants stay exact.

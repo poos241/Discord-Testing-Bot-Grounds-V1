@@ -14,9 +14,10 @@ in [New-feature checklist](./checklist.md)).
 - **Fundamentals** — start here if you're new to the codebase: the
   project map, how the bot boots, how cogs work, permissions, and the
   helpers in `config.py`.
-- **Data** — the two persistence options (SQLite vs JSON files) and when
-  to use each.
-- **Systems** — deep dives into the level system and Eat It or Yeet It.
+- **Data** — SQLite is the persistence layer (JSON files are legacy
+  rollback copies since the October 2026 migration) and how to add tables.
+- **Systems** — deep dives into the level system, Eat It or Yeet It, the
+  Watch List, the Logger, and the October 2026 building-mode batch.
 - **Guides** — copy-paste recipes, how testing works, and the checklist
   to run through for every new feature.
 

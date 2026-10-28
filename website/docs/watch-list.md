@@ -1,7 +1,8 @@
 # Watch List internals
 
-Source: `cogs/WatchList.py`. State: `data/watchlist_data.json`
-(via `config.load_json` / `save_json`).
+Source: `cogs/WatchList.py`. State: the `watchlist_data` table in SQLite
+(migrated from `data/watchlist_data.json` in October 2026; the JSON is
+kept as a rollback copy).
 
 ## What it does
 
@@ -60,7 +61,7 @@ embed. `AllowedMentions.none()` on the send keeps watched users'
 
 ## `/userinfo` crossover
 
-`/userinfo` (in `admin_cog.py`) reads the same JSON file to show
+`/userinfo` (in `admin_cog.py`) reads the same SQLite table to show
 whether a user is on the watch list, alongside their server XP (from
 the level system's `get_levels`) and ban status (via
 `guild.fetch_ban`). Give it a member pick, or type a user ID, mention,
@@ -82,7 +83,7 @@ is already active.
 Clear first shows a channel picker (plus an All-channels button),
 then asks how many messages to delete or `all`. Notes keeps a
 numbered per-user mod-notes list you can add to and remove from;
-warns are counted on the card (stored in `data/mod_data.json`). The
+warns are counted on the card (stored in the `mod_data` table). The
 **Watch** button adds the user to the watch list (asking for an
 optional reason) or removes them if they're already on it — the
 button flips to **Unwatch** when they're watched, and the card shows
@@ -98,7 +99,8 @@ server).
 
 Every moderation action (warn, timeout, kick, ban/tempban, unban,
 clear, wipe, rename, strip) is appended to the user's case history in
-`data/mod_data.json` (last 50 kept). The **History** button shows the
+the `mod_data` table in SQLite (last 50 kept; migrated from
+`data/mod_data.json` in October 2026). The **History** button shows the
 timeline newest-first with moderator and timestamp, plus warn/note
 counts and any active tempban. **Rename** sets a member's nickname
 (blank resets it); **Strip Roles** removes all roles after a

@@ -20,9 +20,10 @@ server-wide events.
 
 | File | Role |
 |---|---|
-| `__init__.py` | `setup(bot)` — registers all six cogs |
+| `__init__.py` | `setup(bot)` — registers nine cogs (8 loggers +
+  `LoggerCommands`) and the `log_toggle` application command group |
 | `config.py` | Category keys, embed colors, default channel names |
-| `database.py` | SQLite: `messages` (message cache), `guild_logs` (per-guild channel config) |
+| `database.py` | SQLite: `messages` (message cache), `guild_logs` (per-guild channel config), `log_toggles` (per-event toggles), `events` (history for the web History page + export) |
 | `logger.py` | `Logger.send(guild, category, embed)` — resolves the channel, swallows send errors |
 | `base.py` | `BaseLogger` cog — every logger cog extends this for `send()` + `audit_entry()` |
 | `embeds.py` | `LoggerEmbed` — shared embed builders (base, author, field, footer) |
@@ -86,6 +87,18 @@ caps option choices at 25 — one flat list wouldn't fit. Each subcommand flips 
 `db.is_enabled(guild_id, key)` is checked at the top of every handler,
 and `/log_settings` lists what's currently disabled. The state lives in
 the `log_toggles` table, keyed by `(guild_id, event_key)`.
+
+## History + export (web)
+
+The Logger History page reads the `events` table (capped at 5000 rows).
+Its Export CSV button writes real columns — `id, guild_id, timestamp`
+(ISO UTC), `category, event_type, summary` — with a UTF-8 BOM for Excel
+and a `-user-<id>` filename suffix when filtered, and it respects the
+user/channel/date filters. `Logger.send` records a rich summary
+(description + author line + `Field: value` lines, 2000 chars) so
+per-user export works for events logged after the restart that picked
+the fix up; older rows have NULL summaries and can't match user/channel
+filters. Export dates are UTC.
 
 ## Kick detection
 

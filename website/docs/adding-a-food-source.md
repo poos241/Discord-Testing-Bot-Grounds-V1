@@ -11,7 +11,7 @@ image_url)` triple:
 - **Auto** (default): rolls a 90% chance → TheMealDB API for a live meal
   (🌐 *fresh* rarity + dish photo), otherwise the local list.
 - **Local**: hand-written `FOODS` list + community suggestions from
-  `eatyeet_suggestions.json`.
+  the `eatyeet_suggestions` table (SQLite).
 - **API only**: TheMealDB only. If the request fails, **no round starts**
   — an explicit warning instead of a silent fallback.
 
