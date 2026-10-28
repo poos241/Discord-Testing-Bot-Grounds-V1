@@ -15,18 +15,28 @@ Discord Bot Templet Mde With Python/   <- project root (work from here)
 │   ├── Level_system.py     # XP, levels, rank cards, daily, events
 │   ├── WatchList.py        # User watch list for mods
 │   ├── DebugCog.py         # /debug toggle + logging
-│   └── Logger/             # Event logging (29 event keys)
+│   ├── Logger/             # Event logging (29 event keys)
+│   ├── QOTD.py             # Question of the Day
+│   ├── Tickets.py          # Support tickets
+│   ├── Backup.py           # Backup + restore
+│   ├── Appeals.py          # Appeals + mod notes search
+│   ├── VoiceXP.py          # Voice time XP
+│   ├── Lockdown.py         # Lockdown + slowmode
+│   ├── Automod.py          # Automod rules
+│   ├── AutoThreads.py      # Auto-threads
+│   ├── TimeCmd.py          # /time from profile timezones
+│   └── CustomBadges.py     # Mod-awardable custom badges
 ├── web/                    # Flask dashboard (port 5000)
 │   ├── app.py              # App factory + blueprint registration
-│   ├── blueprints/         # One file per page/API area (incl. profiles)
+│   ├── blueprints/         # One file per page/API area (incl. profiles, backups, directory, feed, friends, voice)
 │   ├── templates/          # Jinja pages
 │   ├── static/             # CSS/JS + user background uploads (never committed)
 │   ├── services/           # Discord state, permissions
 │   └── security/           # Login/permission decorators
 ├── data/
-│   ├── eatyeet_*.json      # Game data: stats, suggestions, active rounds, rematch
-│   ├── mod_data.json       # Warns/notes/cases (admin cog)
-│   ├── watchlist_data.json # Watch list
+│   ├── eatyeet_*.json      # Legacy JSON, kept as rollback (live data is SQLite now)
+│   ├── mod_data.json       # Legacy JSON, kept as rollback (live data is SQLite now)
+│   ├── watchlist_data.json # Legacy JSON, kept as rollback (live data is SQLite now)
 │   ├── message_log.db      # Logger event log
 │   ├── notification_read.json # Bell read state
 │   ├── profiles.json.migrated # Pre-SQLite profiles backup
@@ -37,7 +47,9 @@ Discord Bot Templet Mde With Python/   <- project root (work from here)
 │           └── storage.py  # Async get_/save_ helpers, one pair per table
 ├── bot.db                  # Live SQLite database (bot folder root, not data/)
 └── utils/
-    └── data_utils.py       # Simple JSON load/save helpers
+    ├── data_utils.py       # Simple JSON load/save helpers
+    ├── backup.py           # Snapshot/restore engine
+    └── json_sqlite_store.py # Lazy JSON→SQLite store
 ```
 
 ## Picking persistence
@@ -46,8 +58,10 @@ Two kinds of persistence exist — pick the right one:
 
 | | SQLite (`storage.py`) | JSON files (`config.load_json`) |
 |---|---|---|
-| Used by | Levels/XP, cooldown timestamps, user profiles | Eat It or Yeet It (stats, suggestions, active rounds), mod cases, watch list, notification read state |
+| Used by | Levels/XP, cooldown timestamps, user profiles, mod cases, watch list, eatyeet data (migrated Oct 2026) | Notification read state (legacy JSON backups kept as rollback) |
 | Shape | One row per guild, `data` column holds a JSON dict | One file per dataset, plain dicts |
 | When to use | Structured data you query per guild | Simple blobs, or data the game writes constantly |
 
 See [Data layer](./data-layer.md) for examples of both.
+
+New systems from the October 2026 building-mode batch are documented in [Building-mode batch](./building-mode-batch.md).

@@ -413,6 +413,131 @@ The profile page (`/profile`) is a customizable end-user page. Layout follows th
 
 The profile page also lists the user's servers (from `/api/servers`, with access-level badges) linking to each dashboard/basic page.
 
+## 🆕 Building-mode batch — October 2026
+
+Eighteen systems and fixes built in one batch (developed locally on the bot
+host, pushed together). All bot commands below are guild-scoped slash
+commands unless noted; web pages live on the dashboard.
+
+**Notifications: clear everything + improvements** — the bell now has
+All/Mod/Level-ups filter tabs, per-item dismiss (×) and mark read/unread,
+plus footer buttons Clear read and Clear all (Clear all asks for
+confirmation). Dismissals are stored per user so Mark all read no longer
+wipes them; the badge counts unread among the newest 30.
+
+**Question of the Day (QOTD)** — `/qotd today|history|submit|post|skip|
+config|pending|approve|reject|remove`. One safe-for-work question a day
+(default 09:00, configurable channel/time/timezone) with a 24-hour
+auto-archive discussion thread, 60 seed questions, no repeats until the
+pool is exhausted, and missed-day catch-up. Mod gate: Manage Messages.
+Requires the `tzdata` package (in `requirements.txt`) for timezone names.
+
+**Ticket system** — `/ticket panel|config|show|open|close|reopen|claim|
+delete|add|remove|list`. A panel button + topic modal opens one ticket
+per user with per-server numbering; closing locks, renames, and logs the
+ticket while leaving Reopen/Delete buttons. Staff is the configured role,
+or Manage Messages/Administrator as fallback.
+
+**Unified backup + restore** — `/backup now|status` plus a daily 04:00
+snapshot, and a mod-only `/backups` web page (manual snapshot, download,
+delete, restore). Each snapshot zips `bot.db` + `message_log.db` (via the
+SQLite backup API, safe while running) + JSON state + a manifest with
+SHA-256 hashes. Retention: newest 14 daily + 10 manual/pre-restore.
+Restore verifies hashes, takes a pre-restore safety snapshot first, then
+replaces data — restart afterward. Warning: restore overwrites live data,
+so don't test it casually.
+
+**Appeals + mod notes search** — `/appeal submit|list|review` (approve
+lifts a ban/timeout, deny records a reason, both DM the appellant) and
+`/modnotes search <keyword> [user]` across mod notes/warns/cases.
+Ban/timeout DMs now mention appeals. Review buttons are non-persistent:
+re-run `/appeal review` after a restart.
+
+**JSON → SQLite migration (finished)** — mod cases, watch list, and Eat It
+or Yeet It stats/suggestions/active rounds/rematch now live in SQLite
+(`utils/json_sqlite_store.py`) instead of JSON files. Migration is lazy:
+the first load after restart imports the JSON, and the originals stay
+untouched as rollback. Profiles migrated earlier the same way.
+
+**Back-to-top fix** — the back-to-top button moved from bottom-right to
+bottom-left so it no longer overlaps the debug (🐛) button.
+
+**Friend system (web)** — send/accept friend requests, unfriend, and add
+by user ID. Your own profile has a Friends section linking to friends'
+profiles; public profiles show only friends who are themselves public.
+An opt-out toggle blocks new requests and auto-declines pending incoming
+ones. Friend requests also appear in the notification bell.
+
+**Voice time XP** — `/voicexp optin|optout|status|leaderboard` plus admin
+`config|setrate|setcap|enable|disable`. Opted-in members earn 1 XP per
+qualifying minute in voice (not alone, not muted/deafened, not AFK),
+banked in 5-minute chunks, with a 100 base XP/day cap (UTC day, event
+multipliers apply on top). Stage channels are excluded; the leaderboard
+is Discord-only.
+
+**Lockdown + slowmode** — `/lockdown lock|unlock|lockall|unlockall|
+slowmode|status`, gated to Manage Channels. Locking denies @everyone
+send_messages and records the previous overwrite so unlocking restores it
+exactly; timed locks persist across restarts via a 1-minute auto-unlock
+ticker. `lockall` skips already-locked and forum channels. Slowmode
+0–21600 seconds (0 clears).
+
+**Automod basics** — `/automod status|toggle|config`, with the same
+toggles on the Logger settings page. Four rules, all default OFF: spam
+bursts (5 messages in 10s), invite links (own vanity code allowed),
+external links, and all-caps (10+ letters, 80%+ uppercase). Hits delete
+the message and log to the Logger; Manage Messages members are exempt,
+and log embeds throttle to one per member per rule per 60 seconds.
+
+**Auto-threads** — `/auto_thread`, `/set_auto_thread_channel` (archive
+60/1440/4320/10080 minutes + name prefix), `/remove`, `/status`, gated
+to Manage Channels. Every message in a designated channel gets a
+discussion thread named prefix + first 80 characters; bots, webhooks,
+threads, replies, and `!` commands are skipped, and archive falls back
+to 24h if the server boost level rejects the chosen duration.
+
+**Live VC viewer (web)** — `/servers/<id>/voice` (moderator-gated) shows
+who is in which voice channel right now from the bot's live cache,
+refreshing every 15 seconds (pauses when the tab is hidden) with a
+manual Refresh button. Join links open the channel in Discord. Linked
+from the Channels page sidebar.
+
+**`/time`** — `/time [user]` (blank = yourself) shows that user's local
+time from their profile timezone, formatted with zoneinfo. No timezone
+set: you get a nudge to set one, others show "not set", bots show "no
+profile". Another user's time only shows if they opted in to show local
+info (same rule as the web bio line).
+
+**Mod-awardable custom badges** — `/badge create|award|remove|delete|
+list`, gated to Manage Messages. Mods create badges (per-server-unique
+slug, icon defaults to 🏅) and award them; awarded badges render on the
+badge shelf (own + public, counted in "Badges N") and log to the
+recipient's activity feed. The public API returns icon/name/description
+only, so no server membership leaks. Custom badges can't be featured
+yet, have no expiry, and custom-emoji icons show as raw text on the web
+shelf.
+
+**Logger export (repaired)** — the Logger History page's Export CSV
+button now writes real columns (`id, guild_id, timestamp, category,
+event_type, summary`) with a UTF-8 BOM for Excel and a `-user-<id>`
+filename suffix when filtered, and it respects the user/channel/date
+filters. Logger now records rich summaries (description + author + field
+lines, 2000 chars) so per-user export works for events logged after
+restart; older rows have NULL summaries and can't match user/channel
+filters. Exports cap at 5000 rows.
+
+**Member directory (web)** — `/directory` (login-gated) browses members
+by interest tag: a tag cloud with counts, AND filtering on multiple
+tags, and search across name/bio/status/tags. Only public profiles
+appear, under the same privacy rules as public profile pages. Global,
+not per-server.
+
+**Community activity feed (web)** — `/feed` (login-gated) shows
+level-ups, daily claims, Eat It or Yeet It rounds, and badge awards,
+newest first, 30 per page with a Newer/Older pager and a kind filter.
+Only public-profile users appear, entries link to `/profile/<id>`, and
+guild IDs are stripped from API responses. Manual Refresh only.
+
 ## Troubleshooting
 
 - **`Improper token has been passed`** — your `.env` file is missing or
