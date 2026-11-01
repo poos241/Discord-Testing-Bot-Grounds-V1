@@ -4366,13 +4366,10 @@ function setupServerNavigation() {
             `/servers/${guildId}/activity`,
 
         "nav-events":
-            `/servers/${guildId}/events`,
+            `/servers/${guildId}/logger`,
 
         "nav-moderation":
-            `/servers/${guildId}/moderation`,
-
-        "nav-settings":
-            `/servers/${guildId}/settings`
+            `/servers/${guildId}/members`
 
     };
 

@@ -379,12 +379,16 @@ def event_status():
 @events_api.get(
     "/events/summary"
 )
-@require_login
+@require_guild_moderator
 def event_summary():
 
     guild_id = request.args.get(
         "guild_id"
     )
+
+    # A guild-less summary would span every guild, so it is not allowed.
+    if not guild_id:
+        return jsonify({"error": "guild_id is required."}), 400
 
     events = event_store.query(
         limit=500,

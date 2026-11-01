@@ -32,3 +32,33 @@ documentation purposes:
 ```python
 @extra_help("Starts a server-wide XP multiplier event (2-5x, up to 24h).")
 ```
+
+## Web dashboard
+
+The dashboard has three tiers, resolved from the Discord permission
+bitfield of the guild the user is in (`web/services/permissions.py`):
+**viewer** (any member), **moderator** (Manage Messages or above),
+**admin** (Manage Server / Administrator / owner). API routes gate on
+the tier, and member-list, backup, and debug routes additionally
+intersect the user's guild list with the bot's own guilds — being a
+moderator of an unrelated server grants nothing.
+
+Since October 2026, web mod actions no longer share one moderator tier:
+each action needs its own Discord permission bit
+(`require_guild_permission` in `web/security/decorators.py`):
+
+| Action | Permission needed |
+|---|---|
+| Ban / tempban / unban | Ban Members |
+| Kick | Kick Members |
+| Timeout / remove timeout | Timeout Members |
+| Warn, notes, watch, clear | Manage Messages |
+| Rename | Manage Nicknames |
+| Strip roles | Manage Roles |
+
+Wiping a member's data needs the **admin** tier plus the member's user ID
+re-typed in the request (`confirm`) — the client-side confirm dialog
+alone is not enough. The debug APIs (`/api/debug/*`) and the debug panel
+are staff-only (moderator tier on a bot guild, failing closed while the
+bot is down), and the clear-logs endpoint takes a `which` value
+(`web` / `bot` / `all`) instead of always wiping both logs.

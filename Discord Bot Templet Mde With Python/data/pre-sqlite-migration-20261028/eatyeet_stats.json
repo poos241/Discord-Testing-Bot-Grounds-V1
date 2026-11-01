@@ -1,0 +1,86 @@
+{
+    "557680433245061130": {
+        "rounds": 25,
+        "users": {
+            "287282266261159937": {
+                "majority": 12,
+                "played": 12,
+                "points": 22,
+                "streak": 11,
+                "best_streak": 11
+            }
+        },
+        "history": [
+            {
+                "food": "Corned Beef Hash",
+                "verdict": "eat",
+                "eats": 1,
+                "yeets": 0,
+                "ended_at": 1791756268.9588494
+            },
+            {
+                "food": "Bean & Sausage Hotpot",
+                "verdict": "eat",
+                "eats": 1,
+                "yeets": 0,
+                "ended_at": 1791813815.2651484
+            },
+            {
+                "food": "Chelsea Buns",
+                "verdict": "none",
+                "eats": 0,
+                "yeets": 0,
+                "ended_at": 1791816501.7644844
+            },
+            {
+                "food": "Seri muka kuih",
+                "verdict": "none",
+                "eats": 0,
+                "yeets": 0,
+                "ended_at": 1791822024.9176226
+            },
+            {
+                "food": "Salmon noodle soup",
+                "verdict": "none",
+                "eats": 0,
+                "yeets": 0,
+                "ended_at": 1791984640.138707
+            },
+            {
+                "food": "Thai beef stir-fry",
+                "verdict": "none",
+                "eats": 0,
+                "yeets": 0,
+                "ended_at": 1791984700.162135
+            },
+            {
+                "food": "Milanesa",
+                "verdict": "none",
+                "eats": 0,
+                "yeets": 0,
+                "ended_at": 1792671311.7549055
+            },
+            {
+                "food": "Cacik",
+                "verdict": "eat",
+                "eats": 1,
+                "yeets": 0,
+                "ended_at": 1793096725.3462799
+            },
+            {
+                "food": "Lasagna Sandwiches",
+                "verdict": "none",
+                "eats": 0,
+                "yeets": 0,
+                "ended_at": 1793100345.4897773
+            },
+            {
+                "food": "Meang Nem",
+                "verdict": "eat",
+                "eats": 1,
+                "yeets": 0,
+                "ended_at": 1793138865.4474385
+            }
+        ]
+    }
+}

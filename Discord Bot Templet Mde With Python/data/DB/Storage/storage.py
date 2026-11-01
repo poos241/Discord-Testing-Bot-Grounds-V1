@@ -1,5 +1,5 @@
 from data.DB.db import database
-from data.DB.models import welcome_data, main_vc_map, xp_timestamps, threads_settings, levels, ticket_config, active_tickets, ticket_records, profiles, profile_activity, qotd_questions, qotd_config, qotd_history, qotd_guild_exclusions, ticket_guild_config, support_tickets, appeal_guild_config, appeals, friendships, friend_settings, voice_xp_config, voice_xp_users, lockdown_channels, automod_config, auto_thread_channels, custom_badges, custom_badge_awards
+from data.DB.models import welcome_data, main_vc_map, xp_timestamps, threads_settings, levels, ticket_config, active_tickets, ticket_records, profiles, profile_activity, qotd_questions, qotd_config, qotd_history, qotd_guild_exclusions, ticket_guild_config, support_tickets, appeal_guild_config, appeals, friendships, friend_settings, voice_xp_config, voice_xp_users, lockdown_channels, automod_config, auto_thread_channels, custom_badges, custom_badge_awards, ghlog_items
 from datetime import datetime
 import time
 
@@ -658,7 +658,11 @@ async def get_voice_xp_user(guild_id: str, user_id: str):
 
 
 async def save_voice_xp_user(guild_id: str, user_id: str, payload: dict):
-    values = {k: payload.get(k) for k in _VOICE_XP_USER_COLUMNS}
+    # Drop None values first: setdefault() below only fills ABSENT keys,
+    # and an explicit None would override the column default and violate
+    # the NOT NULL constraint (this was the /voicexp optin crash).
+    values = {k: v for k, v in payload.items()
+              if k in _VOICE_XP_USER_COLUMNS and v is not None}
     values.setdefault("opted_in", False)
     values.setdefault("display_name", "")
     values.setdefault("total_minutes", 0)
@@ -709,7 +713,10 @@ async def get_lockdown(guild_id: str, channel_id: str):
 
 
 async def save_lockdown(guild_id: str, channel_id: str, payload: dict):
-    values = {k: payload.get(k) for k in _LOCKDOWN_COLUMNS}
+    # Same None-filter as the voice XP saver: setdefault() cannot fix
+    # an explicit None, and previous_send_messages / locked_at are NOT NULL.
+    values = {k: v for k, v in payload.items()
+              if k in _LOCKDOWN_COLUMNS and v is not None}
     values.setdefault("previous_send_messages", -1)
     values.setdefault("locked_by", "")
     values.setdefault("locked_at", 0)
@@ -803,7 +810,9 @@ async def get_auto_thread_channel(guild_id: str, channel_id: str):
 
 
 async def save_auto_thread_channel(guild_id: str, channel_id: str, payload: dict):
-    values = {k: payload.get(k) for k in _AUTO_THREAD_COLUMNS}
+    # Same None-filter as the voice XP saver.
+    values = {k: v for k, v in payload.items()
+              if k in _AUTO_THREAD_COLUMNS and v is not None}
     values.setdefault("archive_minutes", 1440)
     values.setdefault("name_prefix", "")
     await database.execute(
@@ -970,3 +979,34 @@ async def list_custom_badge_awards_for_user(user_id):
                 "description": badge["description"],
             })
     return out
+
+
+# GitHub ban log item tracking (built 2026-10-29; see cogs/GHLog.py).
+# One row per posted board item, so /banlog can warn about duplicates
+# and /banlog_update / /banlog_delete can find the item again. Rows also
+# record which board they live on, so an update never fires at the wrong
+# board after the target is switched from test to real.
+async def save_ghlog_item(payload: dict):
+    row_id = await database.execute(ghlog_items.insert().values(**payload))
+    return row_id
+
+
+async def list_ghlog_items(guild_id: str, user_id: str):
+    rows = await database.fetch_all(
+        ghlog_items.select().where(
+            (ghlog_items.c.guild_id == str(guild_id))
+            & (ghlog_items.c.user_id == str(user_id)))
+        .order_by(ghlog_items.c.id.desc()))
+    return [dict(r) for r in rows]
+
+
+async def update_ghlog_item(row_id: int, payload: dict):
+    await database.execute(
+        ghlog_items.update().where(ghlog_items.c.id == int(row_id)).values(**payload)
+    )
+
+
+async def delete_ghlog_item(row_id: int):
+    await database.execute(
+        ghlog_items.delete().where(ghlog_items.c.id == int(row_id))
+    )

@@ -1741,12 +1741,23 @@ async function banMember(
 
 
 
+async function getCsrfToken() {
+
+    const response = await fetch("/api/csrf", {cache: "no-store"});
+    const result = await response.json();
+    return result.csrf_token || "";
+
+}
+
+
 async function moderationAction(
     url,
     payload
 ) {
 
     try {
+
+        const csrfToken = await getCsrfToken();
 
         const response =
             await fetch(
@@ -1756,7 +1767,9 @@ async function moderationAction(
 
                     headers: {
                         "Content-Type":
-                            "application/json"
+                            "application/json",
+                        "X-CSRF-Token":
+                            csrfToken
                     },
 
                     body:

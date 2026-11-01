@@ -25,7 +25,8 @@ Discord Bot Templet Mde With Python/   <- project root (work from here)
 │   ├── Automod.py          # Automod rules
 │   ├── AutoThreads.py      # Auto-threads
 │   ├── TimeCmd.py          # /time from profile timezones
-│   └── CustomBadges.py     # Mod-awardable custom badges
+│   ├── CustomBadges.py     # Mod-awardable custom badges
+│   └── GHLog.py            # GitHub ban log (Projects board)
 ├── web/                    # Flask dashboard (port 5000)
 │   ├── app.py              # App factory + blueprint registration
 │   ├── blueprints/         # One file per page/API area (incl. profiles, backups, directory, feed, friends, voice)
@@ -49,6 +50,7 @@ Discord Bot Templet Mde With Python/   <- project root (work from here)
 └── utils/
     ├── data_utils.py       # Simple JSON load/save helpers
     ├── backup.py           # Snapshot/restore engine
+    ├── github_projects.py  # GitHub Projects v2 API client (GraphQL)
     └── json_sqlite_store.py # Lazy JSON→SQLite store
 ```
 

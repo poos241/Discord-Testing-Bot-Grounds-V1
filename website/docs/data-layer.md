@@ -82,6 +82,19 @@ JSON into SQLite; the originals are never deleted, so rollback is
 restoring the pre-migration code plus the JSON backups. New code should
 use the store helpers or a new table — not a new JSON file.
 
+### Hardened loads (October 2026)
+
+`load_store` retries locked-database errors like `save_store` already
+did, and it no longer falls back to the pre-migration JSON once the store
+was migrated: on a persistent read failure it returns the legacy file
+only when the store was never migrated, and raises otherwise. A failed
+read used to silently roll a live table back to frozen pre-migration
+data on the next save; now a truly unreadable database errors visibly
+instead. Ticket numbers are claimed under a per-guild `asyncio.Lock`
+before the channel is created, so two simultaneous opens can no longer
+share a number (a later failure leaves a harmless gap, never a
+duplicate).
+
 ## Which to use?
 
 - Anything new, per-guild or per-user, structured or a simple dict?

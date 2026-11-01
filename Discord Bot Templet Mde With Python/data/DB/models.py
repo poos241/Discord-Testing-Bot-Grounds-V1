@@ -502,3 +502,22 @@ custom_badge_awards = sqlalchemy.Table(
     sqlalchemy.Column("awarded_at", sqlalchemy.DateTime, server_default=func.now()),
     sqlalchemy.UniqueConstraint("badge_id", "user_id")
 )
+
+ghlog_items = sqlalchemy.Table(
+    "ghlog_items", metadata,
+    sqlalchemy.Column("id", sqlalchemy.Integer, primary_key=True, autoincrement=True),
+    sqlalchemy.Column("guild_id", sqlalchemy.String, nullable=False),
+    sqlalchemy.Column("user_id", sqlalchemy.String, nullable=False),
+    sqlalchemy.Column("display_name", sqlalchemy.String, default=""),
+    sqlalchemy.Column("action", sqlalchemy.String, default=""),
+    sqlalchemy.Column("item_id", sqlalchemy.String, nullable=False),
+    sqlalchemy.Column("draft_id", sqlalchemy.String, default=""),
+    sqlalchemy.Column("title", sqlalchemy.String, default=""),
+    sqlalchemy.Column("body", sqlalchemy.String, default=""),
+    sqlalchemy.Column("status", sqlalchemy.String, default=""),
+    sqlalchemy.Column("tags", sqlalchemy.String, default=""),
+    sqlalchemy.Column("project_owner", sqlalchemy.String, default=""),
+    sqlalchemy.Column("project_number", sqlalchemy.Integer, default=0),
+    sqlalchemy.Column("logged_by", sqlalchemy.String, default=""),
+    sqlalchemy.Column("created_at", sqlalchemy.DateTime, server_default=func.now()),
+)

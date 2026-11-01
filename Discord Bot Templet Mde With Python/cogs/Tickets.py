@@ -33,6 +33,8 @@ Per-server config (ticket_guild_config): staff role, ticket
 category, log channel, panel channel/message, next ticket number.
 """
 
+import asyncio
+
 import discord
 from discord.commands import SlashCommandGroup
 from discord.ext import commands
@@ -124,39 +126,71 @@ async def log_to_staff_channel(guild, cfg, embed):
         print(f"[TICKETS] Could not send to log channel {log_id}: {e!r}")
 
 
+# One creation lock per guild: two near-simultaneous opens used to read
+# the same next_number, create two ticket-000N channels, and both save
+# N+1, so the collision was permanent. The lock serialises the whole
+# claim -> channel -> row sequence per guild. (asyncio.Lock binds to its
+# loop on first use, so building these at module level is safe.)
+_ticket_creation_locks = {}
+
+
+def _ticket_creation_lock(guild_id):
+    lock = _ticket_creation_locks.get(str(guild_id))
+    if lock is None:
+        lock = asyncio.Lock()
+        _ticket_creation_locks[str(guild_id)] = lock
+    return lock
+
+
 async def create_ticket_channel(guild, opener, cfg, topic):
     """Create the private ticket channel + DB row. Returns
     (channel, ticket_dict). Caller handles the user-facing reply."""
-    number = int((cfg or {}).get("next_number") or 1)
-    category = None
-    category_id = (cfg or {}).get("category_id")
-    if category_id:
-        category = guild.get_channel(int(category_id))
-        if category is not None and not isinstance(category, discord.CategoryChannel):
-            category = None
-    overwrites = {
-        guild.default_role: discord.PermissionOverwrite(read_messages=False),
-        opener: discord.PermissionOverwrite(
-            read_messages=True, send_messages=True,
-            attach_files=True, embed_links=True, read_message_history=True,
-        ),
-    }
-    overwrites.update(staff_overwrites(guild, cfg))
-    if guild.me is not None:
-        overwrites[guild.me] = discord.PermissionOverwrite(
-            read_messages=True, send_messages=True, manage_channels=True,
+    async with _ticket_creation_lock(str(guild.id)):
+        # Re-read inside the lock: cfg was loaded before the lock, so a
+        # concurrent open may already have claimed its number.
+        fresh = await get_ticket_guild_config(str(guild.id))
+        number = int((fresh or {}).get("next_number") or 1)
+        # Claim the number FIRST. If anything below fails, the number is
+        # skipped (a harmless gap) instead of ever being handed out twice.
+        await save_ticket_guild_config(str(guild.id), {"next_number": number + 1})
+        category = None
+        category_id = (cfg or {}).get("category_id")
+        if category_id:
+            category = guild.get_channel(int(category_id))
+            if category is not None and not isinstance(category, discord.CategoryChannel):
+                category = None
+        overwrites = {
+            guild.default_role: discord.PermissionOverwrite(read_messages=False),
+            opener: discord.PermissionOverwrite(
+                read_messages=True, send_messages=True,
+                attach_files=True, embed_links=True, read_message_history=True,
+            ),
+        }
+        overwrites.update(staff_overwrites(guild, cfg))
+        if guild.me is not None:
+            overwrites[guild.me] = discord.PermissionOverwrite(
+                read_messages=True, send_messages=True, manage_channels=True,
+            )
+        channel = await guild.create_text_channel(
+            ticket_channel_name(number),
+            category=category,
+            overwrites=overwrites,
+            topic=f"Ticket #{number:04d} opened by {opener} - {topic}"[:1024],
         )
-    channel = await guild.create_text_channel(
-        ticket_channel_name(number),
-        category=category,
-        overwrites=overwrites,
-        topic=f"Ticket #{number:04d} opened by {opener} - {topic}"[:1024],
-    )
-    ticket = await create_support_ticket(
-        str(guild.id), number, str(opener.id), str(channel.id), topic
-    )
-    await save_ticket_guild_config(str(guild.id), {"next_number": number + 1})
-    return channel, ticket
+        try:
+            ticket = await create_support_ticket(
+                str(guild.id), number, str(opener.id), str(channel.id), topic
+            )
+        except Exception:
+            # Row write failed after the channel exists: remove the orphan
+            # channel so a retry starts clean, then report the failure.
+            try:
+                await channel.delete(reason="Ticket row could not be saved")
+            except Exception:
+                pass
+            raise
+        return channel, ticket
+
 
 
 async def post_ticket_intro(channel, opener, number, topic):

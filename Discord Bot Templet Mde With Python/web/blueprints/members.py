@@ -128,7 +128,7 @@ def check_bot():
 # =========================================================
 
 @members_api.get("/members")
-@require_login
+@require_guild_moderator
 def get_members():
 
     guild_id = request.args.get(
@@ -193,7 +193,7 @@ def get_members():
 # =========================================================
 
 @members_api.get("/members/<int:user_id>")
-@require_login
+@require_guild_moderator
 def get_member(user_id):
 
     bot, error, status = check_bot()

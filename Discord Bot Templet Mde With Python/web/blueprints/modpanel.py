@@ -14,7 +14,15 @@ from flask import session
 
 from web.services.discord_state import discord_state, run_coro_threadsafe
 from web.security.decorators import (
+    require_guild_access,
     require_guild_moderator,
+    require_guild_permission,
+)
+from web.services.permissions import (
+    BAN_MEMBERS,
+    MANAGE_MESSAGES,
+    MANAGE_NICKNAMES,
+    MANAGE_ROLES,
 )
 from web.blueprints.auth import get_csrf_token
 
@@ -244,7 +252,7 @@ def get_modpanel(guild_id, user_id):
 @modpanel_api.post(
     "/servers/<int:guild_id>/members/<int:user_id>/warn"
 )
-@require_guild_moderator
+@require_guild_permission(MANAGE_MESSAGES, label="Manage Messages permission required.")
 def modpanel_warn(guild_id, user_id):
     denied = _check_csrf()
     if denied:
@@ -305,7 +313,7 @@ def modpanel_warn(guild_id, user_id):
 @modpanel_api.post(
     "/servers/<int:guild_id>/members/<int:user_id>/notes"
 )
-@require_guild_moderator
+@require_guild_permission(MANAGE_MESSAGES, label="Manage Messages permission required.")
 def modpanel_add_note(guild_id, user_id):
     denied = _check_csrf()
     if denied:
@@ -337,7 +345,7 @@ def modpanel_add_note(guild_id, user_id):
 @modpanel_api.delete(
     "/servers/<int:guild_id>/members/<int:user_id>/notes/<int:index>"
 )
-@require_guild_moderator
+@require_guild_permission(MANAGE_MESSAGES, label="Manage Messages permission required.")
 def modpanel_delete_note(guild_id, user_id, index):
     denied = _check_csrf()
     if denied:
@@ -367,7 +375,7 @@ def modpanel_delete_note(guild_id, user_id, index):
 @modpanel_api.post(
     "/servers/<int:guild_id>/members/<int:user_id>/watch"
 )
-@require_guild_moderator
+@require_guild_permission(MANAGE_MESSAGES, label="Manage Messages permission required.")
 def modpanel_watch(guild_id, user_id):
     denied = _check_csrf()
     if denied:
@@ -408,7 +416,7 @@ def modpanel_watch(guild_id, user_id):
 @modpanel_api.delete(
     "/servers/<int:guild_id>/members/<int:user_id>/watch"
 )
-@require_guild_moderator
+@require_guild_permission(MANAGE_MESSAGES, label="Manage Messages permission required.")
 def modpanel_unwatch(guild_id, user_id):
     denied = _check_csrf()
     if denied:
@@ -484,7 +492,7 @@ def modpanel_xp(guild_id, user_id):
 @modpanel_api.post(
     "/servers/<int:guild_id>/members/<int:user_id>/rename"
 )
-@require_guild_moderator
+@require_guild_permission(MANAGE_NICKNAMES, label="Manage Nicknames permission required.")
 def modpanel_rename(guild_id, user_id):
     denied = _check_csrf()
     if denied:
@@ -520,7 +528,7 @@ def modpanel_rename(guild_id, user_id):
 @modpanel_api.post(
     "/servers/<int:guild_id>/members/<int:user_id>/strip-roles"
 )
-@require_guild_moderator
+@require_guild_permission(MANAGE_ROLES, label="Manage Roles permission required.")
 def modpanel_strip_roles(guild_id, user_id):
     denied = _check_csrf()
     if denied:
@@ -559,7 +567,7 @@ def modpanel_strip_roles(guild_id, user_id):
 @modpanel_api.post(
     "/servers/<int:guild_id>/members/<int:user_id>/clear"
 )
-@require_guild_moderator
+@require_guild_permission(MANAGE_MESSAGES, label="Manage Messages permission required.")
 def modpanel_clear(guild_id, user_id):
     denied = _check_csrf()
     if denied:
@@ -617,7 +625,7 @@ def modpanel_clear(guild_id, user_id):
 @modpanel_api.post(
     "/servers/<int:guild_id>/members/<int:user_id>/tempban"
 )
-@require_guild_moderator
+@require_guild_permission(BAN_MEMBERS, label="Ban Members permission required.")
 def modpanel_tempban(guild_id, user_id):
     denied = _check_csrf()
     if denied:
@@ -698,11 +706,20 @@ def modpanel_tempban(guild_id, user_id):
 @modpanel_api.post(
     "/servers/<int:guild_id>/members/<int:user_id>/wipe"
 )
-@require_guild_moderator
+@require_guild_access
 def modpanel_wipe(guild_id, user_id):
     denied = _check_csrf()
     if denied:
         return denied
+
+    # Server-side confirmation: the caller must re-type the target's
+    # user ID. A client-side confirm() alone is not enough for a wipe.
+    data = request.get_json(silent=True) or {}
+    if str(data.get("confirm") or "") != str(user_id):
+        return jsonify({
+            "success": False,
+            "error": "Wipe not confirmed: re-type the member's user ID to confirm.",
+        }), 400
 
     _mod_record, _record_case, _save_mod_data = _mod_helpers()
     if not _mod_record:

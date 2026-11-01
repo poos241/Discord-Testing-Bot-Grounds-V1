@@ -24,6 +24,8 @@ KICK_MEMBERS = 0x2
 BAN_MEMBERS = 0x4
 MANAGE_MESSAGES = 0x2000
 MODERATE_MEMBERS = 1 << 40  # Timeout Members
+MANAGE_NICKNAMES = 0x8000000
+MANAGE_ROLES = 0x10000000
 
 # Any one of these grants the moderator tier.
 MODERATOR_FLAGS = (
@@ -86,6 +88,20 @@ def get_access_level(guild_id) -> str | None:
     if bits & MODERATOR_FLAGS:
         return "moderator"
     return "viewer"
+
+
+def has_guild_permission(guild_id, *flags) -> bool:
+    """True when the logged-in user holds any of the given Discord
+    permission flags on the guild. Administrators and the guild owner
+    hold every permission, so they always pass."""
+    bits = get_guild_permission_bits(guild_id)
+    if bits is None:
+        return False
+    if bits & ADMINISTRATOR:
+        return True
+    if is_guild_owner(guild_id):
+        return True
+    return any(bool(bits & flag) for flag in flags)
 
 
 def is_guild_member(guild_id) -> bool:

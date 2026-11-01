@@ -33,9 +33,11 @@
 # migration row is recorded -- all in one transaction, so a crash
 # mid-import leaves no half-imported state. The original JSON file is
 # NEVER deleted or overwritten by this module; it stays on disk as the
-# rollback copy. After migration, the JSON file is never read again
-# (except as a last-resort fallback if the database itself is
-# unreadable, in which case a warning is printed).
+# rollback copy. After migration, the JSON file is only ever read again
+# when the store was NEVER migrated (fresh database, migration row
+# absent). Once migrated, a persistent SQLite read failure raises
+# instead of returning the frozen pre-migration file: returning it
+# would let the next save overwrite the live table with stale data.
 #
 # Rollback: restore the pre-migration copies of config.py (and the
 # other edited .py files) and the bot will read the JSON files again.
@@ -220,30 +222,91 @@ def _read_legacy_file(filename):
         return {}
 
 
+def _was_migrated(filename):
+    """True when a json_migrations row exists for this store, False
+    when the database is readable and has no such row, None when the
+    check itself cannot run (database unreadable). A None answer must
+    be treated as "unknown, do not trust the legacy file"."""
+    try:
+        conn = sqlite3.connect(
+            "file:%s?mode=ro" % _db_path(), uri=True, timeout=10
+        )
+        try:
+            tables = {
+                r[0]
+                for r in conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table'"
+                ).fetchall()
+            }
+            if _MIGRATIONS_TABLE not in tables:
+                return False
+            return (
+                conn.execute(
+                    "SELECT store FROM json_migrations WHERE store = ?",
+                    (filename,),
+                ).fetchone()
+                is not None
+            )
+        finally:
+            conn.close()
+    except Exception:
+        return None
+
+
 def load_store(filename):
     """Return the store's contents as a dict, exactly like the old
-    config.load_json() did ({} when empty/missing)."""
+    config.load_json() did ({} when empty/missing).
+
+    Transient locked-database errors are retried like save_store does.
+    On a persistent failure the legacy file is returned ONLY when the
+    store was never migrated; once migrated (or when migration status
+    cannot be established) this raises instead of returning the frozen
+    pre-migration file, because the next save would overwrite the live
+    table with that stale data.
+    """
     if filename not in STORES:
         raise ValueError("No SQLite store for %r" % filename)
     table, key_col = STORES[filename]
-    try:
-        conn = sqlite3.connect(_db_path(), timeout=30)
+    rows = None
+    last_exc = None
+    for attempt in range(_SAVE_RETRIES):
         try:
-            conn.execute("BEGIN IMMEDIATE")
-            _ensure_tables(conn)
-            _migrate(conn, filename)
-            conn.commit()
-            rows = conn.execute(
-                "SELECT %s, data FROM %s ORDER BY %s" % (key_col, table, key_col)
-            ).fetchall()
-        finally:
-            conn.close()
-    except Exception as exc:
+            conn = sqlite3.connect(_db_path(), timeout=30)
+            try:
+                conn.execute("BEGIN IMMEDIATE")
+                _ensure_tables(conn)
+                _migrate(conn, filename)
+                conn.commit()
+                rows = conn.execute(
+                    "SELECT %s, data FROM %s ORDER BY %s" % (key_col, table, key_col)
+                ).fetchall()
+            finally:
+                conn.close()
+            last_exc = None
+            break
+        except sqlite3.OperationalError as exc:
+            last_exc = exc
+            if ("locked" in str(exc).lower() or "busy" in str(exc).lower()) and attempt < _SAVE_RETRIES - 1:
+                time.sleep(0.2 * (attempt + 1))
+                continue
+            break
+        except Exception as exc:
+            last_exc = exc
+            break
+    if last_exc is not None:
+        if _was_migrated(filename) is False:
+            print(
+                "[JSON-SQLite] WARNING: could not read %s from SQLite (%r); "
+                "store was never migrated, falling back to the legacy JSON file."
+                % (filename, last_exc)
+            )
+            return _read_legacy_file(filename)
         print(
-            "[JSON-SQLite] WARNING: could not read %s from SQLite (%r); "
-            "falling back to the legacy JSON file." % (filename, exc)
+            "[JSON-SQLite] ERROR: could not read %s from SQLite (%r); "
+            "refusing the stale legacy fallback because the store is "
+            "migrated (or its status is unknown)." % (filename, last_exc)
         )
-        return _read_legacy_file(filename)
+        raise last_exc
     out = {}
     for key, raw in rows:
         try:

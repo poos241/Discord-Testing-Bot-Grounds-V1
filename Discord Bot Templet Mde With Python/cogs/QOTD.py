@@ -305,29 +305,38 @@ class QOTD(commands.Cog):
 
     @tasks.loop(minutes=1)
     async def qotd_loop(self):
-        for cfg in await list_qotd_configs():
-            gid = cfg["guild_id"]
-            if not cfg.get("enabled", True) or not cfg.get("channel_id"):
-                continue
-            if gid in self._posting:
-                continue
-            if await self.live_post_for_today(gid, cfg):
-                continue
-            sched = parse_post_time(cfg.get("post_time") or DEFAULT_POST_TIME)
-            if sched is None:
-                continue
-            tz = safe_zoneinfo(cfg.get("timezone") or DEFAULT_TIMEZONE)
-            if datetime.now(tz).time() < sched:
-                continue
-            self._posting.add(gid)
+        try:
+            configs = await list_qotd_configs()
+        except Exception as e:
+            print(f"[QOTD] ERROR: could not load QOTD configs: {e!r}")
+            return
+        for cfg in configs:
             try:
-                ok, detail = await self.post_for_guild(gid)
-                if not ok:
-                    print(f"[QOTD] Scheduled post skipped for guild {gid}: {detail}")
+                gid = cfg["guild_id"]
+                if not cfg.get("enabled", True) or not cfg.get("channel_id"):
+                    continue
+                if gid in self._posting:
+                    continue
+                if await self.live_post_for_today(gid, cfg):
+                    continue
+                sched = parse_post_time(cfg.get("post_time") or DEFAULT_POST_TIME)
+                if sched is None:
+                    continue
+                tz = safe_zoneinfo(cfg.get("timezone") or DEFAULT_TIMEZONE)
+                if datetime.now(tz).time() < sched:
+                    continue
+                self._posting.add(gid)
+                try:
+                    ok, detail = await self.post_for_guild(gid)
+                    if not ok:
+                        print(f"[QOTD] Scheduled post skipped for guild {gid}: {detail}")
+                except Exception as e:
+                    print(f"[QOTD] Scheduled post failed for guild {gid}: {e!r}")
+                finally:
+                    self._posting.discard(gid)
             except Exception as e:
-                print(f"[QOTD] Scheduled post failed for guild {gid}: {e!r}")
-            finally:
-                self._posting.discard(gid)
+                print(f"[QOTD] ERROR: scheduled check failed for guild "
+                      f"{cfg.get('guild_id') if isinstance(cfg, dict) else '?'}: {e!r}")
 
     @qotd_loop.before_loop
     async def before_qotd_loop(self):

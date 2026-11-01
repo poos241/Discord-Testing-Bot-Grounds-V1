@@ -12,7 +12,9 @@ from pathlib import Path
 from flask import Blueprint, jsonify, request, session, render_template
 
 from web import debug as dbg
-from web.blueprints.auth import get_csrf_token
+from web.blueprints.auth import get_csrf_token, get_user_guilds
+from web.services.discord_state import discord_state
+from web.services.permissions import has_access
 import secrets
 
 debug_api = Blueprint("debug_api", __name__)
@@ -116,10 +118,12 @@ def init_panel_injection(app):
     @app.after_request
     def _inject_dbg_panel(response):
         try:
-            if not session.get("user"):
-                return response
             ctype = response.content_type or ""
             if "text/html" not in ctype:
+                return response
+            if not session.get("user"):
+                return response
+            if not _is_staff():
                 return response
             html = response.get_data(as_text=True)
             if "</body>" not in html or 'id="dbg-fab"' in html:
@@ -141,6 +145,41 @@ def init_panel_injection(app):
         return response
 
 
+def _is_staff():
+    """True when the logged-in user holds the moderator tier on a guild
+    the bot is in. The user's guild list comes from Discord OAuth and
+    includes servers the bot has never joined, so intersect it with the
+    bot's own guilds first -- a moderator of an unrelated server must
+    not pass. Fails closed when the bot is unreachable."""
+    if not session.get("user"):
+        return False
+    try:
+        bot = discord_state.get_bot()
+        if bot is None:
+            return False
+        bot_guild_ids = {str(g.id) for g in bot.guilds}
+    except Exception:
+        return False
+    try:
+        guilds = get_user_guilds() or []
+    except Exception:
+        return False
+    for guild in guilds:
+        gid = guild.get("id") if isinstance(guild, dict) else None
+        if gid and str(gid) in bot_guild_ids and has_access(gid, "moderator"):
+            return True
+    return False
+
+
+def _require_staff():
+    """(response, code) when the caller may not use the debug APIs, else None."""
+    if not session.get("user"):
+        return jsonify({"success": False, "error": "Not logged in."}), 401
+    if not _is_staff():
+        return jsonify({"success": False, "error": "Moderator access required."}), 403
+    return None
+
+
 def _check_csrf():
     token = request.headers.get("X-CSRF-Token", "")
     expected = get_csrf_token()
@@ -151,8 +190,9 @@ def _check_csrf():
 
 @debug_api.get("/api/debug/status")
 def debug_status():
-    if not session.get("user"):
-        return jsonify({"success": False, "error": "Not logged in."}), 401
+    denied = _require_staff()
+    if denied:
+        return denied
     return jsonify({
         "success": True,
         "enabled": dbg.is_enabled(),
@@ -161,8 +201,9 @@ def debug_status():
 
 @debug_api.post("/api/debug/toggle")
 def debug_toggle():
-    if not session.get("user"):
-        return jsonify({"success": False, "error": "Not logged in."}), 401
+    denied = _require_staff()
+    if denied:
+        return denied
     denied = _check_csrf()
     if denied:
         return denied
@@ -180,8 +221,9 @@ def debug_toggle():
 
 @debug_api.get("/api/debug/requests")
 def debug_requests():
-    if not session.get("user"):
-        return jsonify({"success": False, "error": "Not logged in."}), 401
+    denied = _require_staff()
+    if denied:
+        return denied
     return jsonify({
         "success": True,
         "enabled": dbg.is_enabled(),
@@ -191,14 +233,26 @@ def debug_requests():
 
 @debug_api.post("/api/debug/clear-logs")
 def debug_clear_logs():
-    """Truncate both debug log files."""
-    if not session.get("user"):
-        return jsonify({"success": False, "error": "Not logged in."}), 401
+    """Truncate debug log files. The panel sends `which`: "web" clears
+    only data/web_debug.log, "bot" only data/debug.log, "all" (or a
+    missing value) clears both."""
+    denied = _require_staff()
+    if denied:
+        return denied
     denied = _check_csrf()
     if denied:
         return denied
+    data = request.get_json(silent=True) or {}
+    which = data.get("which") or "all"
+    targets = {
+        "web": (_LOG_FILE,),
+        "bot": (_BOT_LOG_FILE,),
+        "all": (_LOG_FILE, _BOT_LOG_FILE),
+    }
+    if which not in targets:
+        return jsonify({"success": False, "error": "Unknown log selection."}), 400
     cleared = []
-    for lf in (_LOG_FILE, _BOT_LOG_FILE):
+    for lf in targets[which]:
         try:
             lf.parent.mkdir(parents=True, exist_ok=True)
             lf.write_text("", encoding="utf-8")
@@ -213,8 +267,9 @@ def debug_clear_logs():
 @debug_api.get("/api/debug/bot-status")
 def debug_bot_status():
     """Check if the Discord bot is alive and responsive."""
-    if not session.get("user"):
-        return jsonify({"success": False, "error": "Not logged in."}), 401
+    denied = _require_staff()
+    if denied:
+        return denied
     status = {
         "connected": False,
         "latency_ms": None,
@@ -258,8 +313,9 @@ def debug_bot_status():
 @debug_api.get("/api/debug/bundle")
 def debug_bundle():
     """Build a copy-paste debug bundle: requests, errors, bot status, config."""
-    if not session.get("user"):
-        return jsonify({"success": False, "error": "Not logged in."}), 401
+    denied = _require_staff()
+    if denied:
+        return denied
     import os
     lines = []
     lines.append("=== DEBUG BUNDLE ===")
@@ -313,8 +369,9 @@ def debug_bundle():
 @debug_api.get("/api/debug/weblog")
 def debug_weblog():
     """Return the tail of data/web_debug.log for viewing in the panel."""
-    if not session.get("user"):
-        return jsonify({"success": False, "error": "Not logged in."}), 401
+    denied = _require_staff()
+    if denied:
+        return denied
     try:
         lines = _LOG_FILE.read_text(encoding="utf-8").splitlines()
         tail = lines[-100:]  # last 100 lines

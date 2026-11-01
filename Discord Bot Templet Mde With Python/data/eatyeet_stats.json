@@ -1,23 +1,16 @@
 {
     "557680433245061130": {
-        "rounds": 24,
+        "rounds": 25,
         "users": {
             "287282266261159937": {
-                "majority": 11,
-                "played": 11,
-                "points": 20,
-                "streak": 10,
-                "best_streak": 10
+                "majority": 12,
+                "played": 12,
+                "points": 22,
+                "streak": 11,
+                "best_streak": 11
             }
         },
         "history": [
-            {
-                "food": "Ratatouille",
-                "verdict": "yeet",
-                "eats": 0,
-                "yeets": 1,
-                "ended_at": 1791675132.5535574
-            },
             {
                 "food": "Corned Beef Hash",
                 "verdict": "eat",
@@ -80,6 +73,13 @@
                 "eats": 0,
                 "yeets": 0,
                 "ended_at": 1793100345.4897773
+            },
+            {
+                "food": "Meang Nem",
+                "verdict": "eat",
+                "eats": 1,
+                "yeets": 0,
+                "ended_at": 1793138865.4474385
             }
         ]
     }

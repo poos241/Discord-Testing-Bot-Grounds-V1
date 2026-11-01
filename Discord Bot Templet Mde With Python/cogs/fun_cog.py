@@ -256,8 +256,33 @@ class FunCog(commands.Cog):
 
     def _load_active(self):
         data = load_json(ACTIVE_FILE)
-        # JSON keys are strings; normalize back to ints.
-        return {int(k): v for k, v in data.items()}
+        # JSON keys are strings; normalize back to ints, and fill defaults
+        # for any key an older or half-written round is missing, so a
+        # restored round can never crash the tally / embed builders.
+        out = {}
+        for k, v in data.items():
+            if not isinstance(v, dict):
+                continue
+            v.setdefault("guild_id", 0)
+            v.setdefault("channel_id", int(k))
+            v.setdefault("message_id", 0)
+            v.setdefault("food", "Mystery food")
+            if v.get("rarity") not in RARITY_POINTS:
+                v["rarity"] = "common"
+            v.setdefault("suggested_by", None)
+            v.setdefault("image_url", None)
+            v.setdefault("source", "auto")
+            v.setdefault("starter_id", 0)
+            v.setdefault("started_at", time.time())
+            # No end time: treat as expired so the next tick finishes it
+            # instead of leaving it hanging forever.
+            v.setdefault("ends_at", time.time())
+            if not isinstance(v.get("votes"), dict):
+                v["votes"] = {}
+            if not isinstance(v.get("voter_names"), dict):
+                v["voter_names"] = {}
+            out[int(k)] = v
+        return out
 
     def _save_active(self):
         save_json(ACTIVE_FILE, {str(k): v for k, v in self.active.items()})
@@ -709,9 +734,13 @@ class FunCog(commands.Cog):
 
     async def _finish_expired_rounds(self):
         now = time.time()
-        expired = [cid for cid, rnd in self.active.items() if rnd["ends_at"] <= now]
+        expired = [cid for cid, rnd in self.active.items()
+                   if rnd.get("ends_at", 0) <= now]
         for cid in expired:
-            await self._finish_round(cid)
+            try:
+                await self._finish_round(cid)
+            except Exception as e:
+                print(f"[EatYeet] ERROR: failed to finish round in channel {cid}: {e!r}")
 
     @tasks.loop(seconds=30)
     async def _expiry_loop(self):
@@ -731,7 +760,7 @@ class FunCog(commands.Cog):
         """
         now = time.time()
         for cid, rnd in list(self.active.items()):
-            remaining = rnd["ends_at"] - now
+            remaining = rnd.get("ends_at", 0) - now
             if remaining <= 0:
                 continue  # the expiry loop will finish it
             interval = 5 if remaining < 30 else 30
@@ -745,6 +774,8 @@ class FunCog(commands.Cog):
                 await message.edit(embed=self.build_round_embed(rnd), view=self.vote_view)
             except discord.HTTPException:
                 pass
+            except Exception as e:
+                print(f"[EatYeet] ERROR: countdown edit failed for channel {cid}: {e!r}")
 
     @_countdown_loop.before_loop
     async def _before_countdown_loop(self):

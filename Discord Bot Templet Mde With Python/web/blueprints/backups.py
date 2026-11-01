@@ -25,6 +25,7 @@ from urllib.parse import quote
 from flask import (
     Blueprint,
     abort,
+    current_app,
     redirect,
     render_template,
     request,
@@ -49,16 +50,34 @@ backups_api = Blueprint("backups", __name__)
 
 
 def _is_moderator():
-    """Logged-in user holds the moderator tier on any shared guild."""
+    """Logged-in user holds the moderator tier on a guild the bot is in.
+
+    The user's guild list comes from Discord OAuth and includes servers
+    the bot has never joined, so intersect it with the bot's own guilds
+    first -- a moderator of an unrelated server must not pass. Fails
+    closed when the bot is unreachable or not ready.
+    """
     if not session.get("user"):
         return False
     try:
         guilds = get_user_guilds() or []
     except Exception:
         return False
+    try:
+        bot = current_app.config.get("DISCORD_BOT") or current_app.config.get("BOT")
+    except Exception:
+        return False
+    if bot is None:
+        return False
+    try:
+        if not bot.is_ready():
+            return False
+        bot_guild_ids = {str(g.id) for g in bot.guilds}
+    except Exception:
+        return False
     for guild in guilds:
         gid = guild.get("id") if isinstance(guild, dict) else None
-        if gid and has_access(gid, "moderator"):
+        if gid and str(gid) in bot_guild_ids and has_access(gid, "moderator"):
             return True
     return False
 

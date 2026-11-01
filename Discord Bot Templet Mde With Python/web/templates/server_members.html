@@ -2236,9 +2236,9 @@ document.querySelectorAll("#modpanel-section [data-action]").forEach(btn => {
             }
 
             else if (action === "wipe") {
-                if (!confirm("Wipe ALL mod data for this member (warns, notes, XP, watch)?")) return;
-                if (!confirm("Are you REALLY sure?")) return;
-                await modpanelFetch(`${base}/wipe`, "POST", {});
+                const typed = prompt(`Wipe ALL mod data for this member (warns, notes, XP, watch)?\n\nType the member's user ID (${memberId}) to confirm:`);
+                if (typed === null || typed.trim() !== String(memberId)) return;
+                await modpanelFetch(`${base}/wipe`, "POST", {confirm: typed.trim()});
             }
 
             // Refresh everything: member details (includes mod panel) + member list

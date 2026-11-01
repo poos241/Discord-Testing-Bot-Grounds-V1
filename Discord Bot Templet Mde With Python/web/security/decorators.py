@@ -208,6 +208,48 @@ def require_guild_moderator(func):
     return _api_guild_gate("moderator")(func)
 
 
+def require_guild_permission(*flags, label=None):
+    """API gate: login + one of the given Discord permission bits on the
+    guild (administrators and the guild owner always pass). Use instead
+    of the coarse moderator tier when an action maps to a specific
+    Discord permission: ban needs Ban Members, timeout needs Timeout
+    Members, rename needs Manage Nicknames, and so on."""
+
+    def decorator(func):
+
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            from flask import jsonify
+
+            from web.services.permissions import (
+                has_guild_permission,
+            )
+
+            if not session.get("user"):
+                return jsonify({
+                    "success": False,
+                    "error": "Authentication required.",
+                }), 401
+
+            guild_id = _request_guild_id()
+
+            # No guild in the request: login alone is enough.
+            if guild_id is None:
+                return func(*args, **kwargs)
+
+            if not has_guild_permission(guild_id, *flags):
+                return jsonify({
+                    "success": False,
+                    "error": label or "You don't have permission to do that in this server.",
+                }), 403
+
+            return func(*args, **kwargs)
+
+        return wrapper
+
+    return decorator
+
+
 def require_guild_access(func):
     """Require Discord login, plus Manage Server on the target guild.
 

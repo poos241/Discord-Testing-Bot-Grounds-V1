@@ -135,6 +135,7 @@ Discord Bot Templet Mde With Python/
 │   ├── AutoThreads.py      # Auto-threads
 │   ├── TimeCmd.py          # /time from profile timezones
 │   ├── CustomBadges.py     # Mod-awardable custom badges
+│   ├── GHLog.py            # GitHub ban log (see section below)
 │   └── Logger/             # Server event logging (see section below)
 │       ├── __init__.py     # Registers all Logger cogs
 │       ├── config.py       # Log categories, colors, channel names
@@ -167,6 +168,7 @@ Discord Bot Templet Mde With Python/
 └── utils/
     ├── data_utils.py       # Simple JSON load/save helpers
     ├── backup.py           # Snapshot/restore engine
+    ├── github_projects.py  # GitHub Projects v2 API client (GraphQL, for GHLog)
     └── json_sqlite_store.py # Lazy JSON→SQLite store
 ```
 
@@ -233,6 +235,49 @@ same database (`guild_logs` table), set per guild per category.
 > message text. It's enabled in `bot.py` (`intents.message_content = True`) —
 > you must also toggle it on in the Discord Developer Portal under
 > Bot → Privileged Gateway Intents.
+
+## 📋 GitHub ban log
+
+Bans and kicks can be logged to a GitHub Projects board as an off-Discord
+backup — staff already work in that board, and it survives even if the
+server or the bot's database is gone. Project items can't host image
+uploads, so evidence is links (a screenshot attachment's Discord CDN link
+embeds fine).
+
+**Setup** — add to your `.env` (never commit it):
+```
+GITHUB_PROJECT_TOKEN=paste-a-classic-token-with-the-project-scope-here
+GITHUB_PROJECT_OWNER=poos241
+GITHUB_PROJECT_NUMBER=2
+```
+The token must be a **classic** personal access token with the `project`
+scope — a fine-grained token without Projects access fails with
+"Resource not accessible by personal access token". Classic tokens can't
+be limited to one project, so treat the token like a password and use the
+narrowest token you can. Point the bot at a test board first
+(`GITHUB_PROJECT_OWNER` = your own username); go-live is just changing
+the owner to the real board's owner plus a restart — never log test
+entries to the real board.
+
+| Command | What it does | Who can use it |
+|---|---|---|
+| `/testbanlog` | Posts a clearly-marked TEST item to prove the pipe works | Admins |
+| `/banlog` | Logs a ban/kick: action, reason, member picker or user ID, optional Status/tags, evidence links, optional screenshot attachment | Manage Server / Admin |
+| `/banlog_update` | Changes the Status/tags of the most recent logged case for a user, or appends a dated note | Manage Server / Admin |
+| `/banlog_delete` | Removes the most recent logged case for a user (type `DELETE` to confirm) | Manage Server / Admin |
+
+`/banlog` and the `/userinfo` panel's **Log to GitHub** button both show a
+preview first (title, body, Status/Tags, and any cases already logged for
+that user) with Post/Cancel buttons — nothing posts without the preview
+step. Every item body carries the action, server, logger, date, reason,
+evidence links, and the last 5 cases from the bot's own mod history.
+Logged items are tracked locally (`ghlog_items` table) so updates and
+deletes find the right board item, and update/delete refuse when the
+board in `.env` doesn't match the board the item was logged to. Status
+and tags are typed text with forgiving aliases ("trolls" →
+"Trolls/Bullies"); a mismatch warns instead of failing. Full
+auto-logging of every ban/kick is deliberately not built yet — logging
+stays manual and previewed.
 
 ## Built-in commands (fun cog) — 🍽️ Eat It or Yeet It
 
@@ -335,7 +380,11 @@ checks both login and guild permission.
 OAuth2 → Redirects). Set `WEB_ENABLED=false` to run the bot without the dashboard.
 
 **What it covers:** server overview, member/role/channel browsers, moderation
-actions (timeout/kick/ban/unban — same safety checks as the `/userinfo` panel),
+actions (timeout/kick/ban/unban — same safety checks as the `/userinfo` panel, and
+each web mod action needs its own matching Discord permission: Ban Members to
+ban, Kick Members to kick, Timeout Members to time out, Manage Messages to
+warn/clear, and so on; wiping a member's data needs the admin tier plus the
+member's user ID re-typed as confirmation),
 a searchable log-event history (the Logger records every event to a
 queryable table for this, with a CSV export), user profiles, the member
 directory, the community activity feed, friends, a live voice-channel
@@ -562,6 +611,41 @@ level-ups, daily claims, Eat It or Yeet It rounds, and badge awards,
 newest first, 30 per page with a Newer/Older pager and a kind filter.
 Only public-profile users appear, entries link to `/profile/<id>`, and
 guild IDs are stripped from API responses. Manual Refresh only.
+
+## 🔍 Security audit — October 2026
+
+A full read-only scan of the bot and dashboard (52 findings) landed as
+fixes in October 2026 — all local-first, each batch verified with a
+harness on the bot host before any restart:
+
+- **Access control** — the member list/detail API routes and the backup
+  download/restore routes were open to any logged-in user (or a moderator
+  of an unrelated server). Both now require the moderator tier on a guild
+  the bot is actually in. The debug APIs and the debug panel are staff-only
+  the same way (and fail closed while the bot is down); the events summary
+  needs a guild ID plus the moderator tier; the server list only ever
+  returns servers the caller is a member of.
+- **Per-action permissions** — web mod actions used to share one coarse
+  moderator tier, so a mod who could warn could also ban. Each action now
+  needs its own Discord permission bit (see above), and wiping a member's
+  data needs the admin tier plus the user ID re-typed.
+- **Data safety** — a failed database read could silently roll a live
+  table back to its pre-migration JSON; loads now retry locked-database
+  errors and refuse the stale fallback once migrated. Concurrent ticket
+  opens could share a number; numbers are now claimed under a per-guild
+  lock before the channel is created.
+- **Reliability** — one broken cog no longer kills startup, a slash-command
+  sync failure no longer kills the web dashboard or status rotation, the
+  Eat It or Yeet It expiry loop and the QOTD scheduler survive one bad
+  round/guild, a failed tempban unban stays queued instead of being
+  recorded as a success, and `/clear_user` errors reply properly.
+  The status rotation itself survived a live crash (gateway reset while
+  the PC slept) — it now skips the write while disconnected, catches
+  connection errors per tick, and `on_ready` starts it exactly once.
+- **Privacy** — public profiles no longer leak a guild name, and the
+  members-page mod buttons send the CSRF token they were missing
+  (they used to fail every time).
+
 
 ## Troubleshooting
 

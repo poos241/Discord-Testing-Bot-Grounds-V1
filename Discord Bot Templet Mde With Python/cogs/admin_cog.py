@@ -843,6 +843,9 @@ class ModConfirmView(discord.ui.View):
             await self.panel._refresh_panel(force=force)
         except Exception as e:
             result = f"\u274c Failed: `{e}`"
+        if self.action in ("ban", "kick") and not result.startswith("\u274c"):
+            self.panel.last_gh_action = self.action.title()
+            self.panel.last_gh_reason = self.params.get("reason", "")
         await interaction.edit_original_response(content=result, view=None)
 
     @discord.ui.button(label="Cancel", style=discord.ButtonStyle.secondary, row=1)
@@ -1073,6 +1076,8 @@ class UserinfoModView(discord.ui.View):
         self.watch_cog = watch_cog
         self.is_watched = is_watched
         self.requester_name = requester_name
+        self.last_gh_action = None
+        self.last_gh_reason = None
         self.message = None
         self._sync_buttons({
             "is_member": is_member,
@@ -1431,6 +1436,13 @@ class UserinfoModView(discord.ui.View):
             return
         await interaction.response.send_modal(XPModal(self, False))
 
+    @discord.ui.button(label="Log to GitHub", emoji="\U0001f4cb", style=discord.ButtonStyle.secondary, row=2)
+    async def ghlog_button(self, button: discord.ui.Button, interaction: discord.Interaction):
+        if not await self._check_admin(interaction):
+            return
+        from cogs.GHLog import GHLogModal
+        await interaction.response.send_modal(GHLogModal(self))
+
     @discord.ui.button(label="Wipe Data", emoji="\U0001f9f9", style=discord.ButtonStyle.danger, row=2)
     async def wipe_button(self, button: discord.ui.Button, interaction: discord.Interaction):
         if not await self._check_admin(interaction):
@@ -1534,7 +1546,8 @@ class AdminCog(commands.Cog):
         """Unban users whose tempban has expired."""
         try:
             data = load_json(MOD_DATA_FILE) or {}
-        except Exception:
+        except Exception as e:
+            print(f"[TEMPBAN] ERROR: could not load mod data for sweep: {e!r}")
             return
         now = time.time()
         changed = False
@@ -1543,16 +1556,36 @@ class AdminCog(commands.Cog):
             for uid, entry in list(tb.items()):
                 if entry.get("unban_at", 0) <= now:
                     guild = self.bot.get_guild(int(gid))
-                    if guild is not None:
+                    if guild is None:
+                        # Bot is no longer in the server: nothing to unban.
+                        # Drop the stale entry, but say so in the record
+                        # instead of logging a phantom unban.
+                        print(f"[TEMPBAN] Bot no longer in guild {gid}; dropping expired tempban for {uid}")
                         try:
-                            await guild.unban(
-                                discord.Object(id=int(uid)),
-                                reason="Tempban expired (automatic)",
-                            )
-                        except Exception:
-                            pass
-                    _record_case(int(gid), int(uid), "unban",
-                                 "Tempban expired (automatic)", "AutoMod")
+                            _record_case(int(gid), int(uid), "unban",
+                                         "Tempban expired (automatic; bot no longer in this server)", "AutoMod")
+                        except Exception as e:
+                            print(f"[TEMPBAN] ERROR: could not record unban case for {uid} in guild {gid}: {e!r}")
+                        tb.pop(uid, None)
+                        changed = True
+                        continue
+                    try:
+                        await guild.unban(
+                            discord.Object(id=int(uid)),
+                            reason="Tempban expired (automatic)",
+                        )
+                    except discord.NotFound:
+                        # Already unbanned (e.g. manual unban): the outcome
+                        # is the same, so record it and drop the entry.
+                        pass
+                    except Exception as e:
+                        print(f"[TEMPBAN] ERROR: failed to unban {uid} in guild {gid}: {e!r}; will retry next sweep")
+                        continue
+                    try:
+                        _record_case(int(gid), int(uid), "unban",
+                                     "Tempban expired (automatic)", "AutoMod")
+                    except Exception as e:
+                        print(f"[TEMPBAN] ERROR: could not record unban case for {uid} in guild {gid}: {e!r}")
                     # Log to moderation channel if the Logger is loaded.
                     try:
                         logger_cog = self.bot.get_cog("ModerationLogger")
@@ -1611,10 +1644,10 @@ class AdminCog(commands.Cog):
                     user_obj = await self.bot.fetch_user(resolved_user_id)
                     user_display = f"ID `{resolved_user_id}`"
                 except discord.NotFound:
-                    await interaction.followup.send("❌ User with the provided ID not found.", ephemeral=True)
+                    await interaction.response.send_message("❌ User with the provided ID not found.", ephemeral=True)
                     return
             else:
-                await interaction.followup.send("❌ You must specify a user (via selection or ID).", ephemeral=True)
+                await interaction.response.send_message("❌ You must specify a user (via selection or ID).", ephemeral=True)
                 return
 
             def is_target_user(msg):
@@ -1635,7 +1668,11 @@ class AdminCog(commands.Cog):
             await interaction.response.defer(ephemeral=True)
 
             for ch in channels_to_scan:
-                deleted = await ch.purge(limit=amount, check=is_target_user)
+                try:
+                    deleted = await ch.purge(limit=amount, check=is_target_user)
+                except Exception as e:
+                    per_channel_summary.append(f"Could not clear {ch.mention}: {e!r}")
+                    continue
                 total_deleted += len(deleted)
                 per_channel_summary.append(f"Deleted {len(deleted)} messages in {ch.mention}")
 

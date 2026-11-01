@@ -14,6 +14,12 @@ from web.services.moderation_service import ModerationService, ModerationError
 from web.security.decorators import (
     require_guild_manage,
     require_guild_moderator,
+    require_guild_permission,
+)
+from web.services.permissions import (
+    BAN_MEMBERS,
+    KICK_MEMBERS,
+    MODERATE_MEMBERS,
 )
 
 
@@ -128,7 +134,7 @@ def _check_csrf():
 @moderation_api.post(
     "/<int:guild_id>/members/<int:user_id>/timeout"
 )
-@require_guild_moderator
+@require_guild_permission(MODERATE_MEMBERS, label="Timeout Members permission required.")
 def timeout_member(guild_id, user_id):
     denied = _check_csrf()
     if denied:
@@ -171,7 +177,7 @@ def timeout_member(guild_id, user_id):
 @moderation_api.post(
     "/<int:guild_id>/members/<int:user_id>/remove-timeout"
 )
-@require_guild_moderator
+@require_guild_permission(MODERATE_MEMBERS, label="Timeout Members permission required.")
 def remove_timeout_member(guild_id, user_id):
     denied = _check_csrf()
     if denied:
@@ -191,7 +197,7 @@ def remove_timeout_member(guild_id, user_id):
 @moderation_api.post(
     "/<int:guild_id>/members/<int:user_id>/kick"
 )
-@require_guild_moderator
+@require_guild_permission(KICK_MEMBERS, label="Kick Members permission required.")
 def kick_member(guild_id, user_id):
     denied = _check_csrf()
     if denied:
@@ -229,7 +235,7 @@ def kick_member(guild_id, user_id):
 @moderation_api.post(
     "/<int:guild_id>/members/<int:user_id>/ban"
 )
-@require_guild_moderator
+@require_guild_permission(BAN_MEMBERS, label="Ban Members permission required.")
 def ban_member(guild_id, user_id):
     denied = _check_csrf()
     if denied:
@@ -272,7 +278,7 @@ def ban_member(guild_id, user_id):
 @moderation_api.post(
     "/<int:guild_id>/members/<int:user_id>/unban"
 )
-@require_guild_moderator
+@require_guild_permission(BAN_MEMBERS, label="Ban Members permission required.")
 def unban_member(guild_id, user_id):
     denied = _check_csrf()
     if denied:

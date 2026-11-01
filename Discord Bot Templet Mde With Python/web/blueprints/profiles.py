@@ -1242,9 +1242,14 @@ def get_public_profile(user_id):
 
     # Public profiles never expose per-server details: guild names
     # would reveal which servers the user is in.
+    best_progress = stats.get("best_guild_progress")
+    if isinstance(best_progress, dict):
+        best_progress = {
+            k: v for k, v in best_progress.items() if k != "guild_name"
+        }
     public_stats = {
         "totals": stats["totals"],
-        "best_guild_progress": stats["best_guild_progress"],
+        "best_guild_progress": best_progress,
         "member_since": stats["member_since"],
         "bot_ready": stats["bot_ready"],
     }
