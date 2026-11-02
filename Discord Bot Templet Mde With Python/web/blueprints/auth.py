@@ -101,6 +101,24 @@ def get_redirect_uri():
             + "/callback"
         )
 
+    # Build the callback from the address the dashboard was opened at
+    # (localhost, LAN IP or Tailscale IP). The bot moved machines, and a
+    # single fixed .env address breaks login from every other address.
+    # Falls back to the .env value outside a request.
+    try:
+        from flask import request
+
+        if request and request.host:
+            host = request.host
+            # 127.0.0.1 and localhost are the same machine, but Discord
+            # compares redirect URIs as exact strings, so normalize
+            # the loopback address to the registered localhost URI.
+            if host.startswith("127.0.0.1"):
+                host = "localhost" + host[len("127.0.0.1"):]
+            return "http://" + host + "/callback"
+    except Exception:
+        pass
+
     return DISCORD_REDIRECT_URI
 
 

@@ -1,0 +1,224 @@
+{% extends "base.html" %}
+
+{% block title %}
+    Server Home - Kush Bush
+{% endblock %}
+
+{% block body %}
+
+<div style="max-width: 1000px; margin: 0 auto; padding: 24px 16px;">
+
+    <h1>Server Home</h1>
+
+    <p>
+        Everything running on the Nitro, on one page. Status is checked
+        from the server itself every 30 seconds — green means the service
+        answered, red means it did not. The <strong>Open</strong> button
+        takes you to that service's own page (each one still has its own
+        login). Cockpit and Portainer use a self-signed certificate, so
+        your browser will warn you the first time — that is expected.
+    </p>
+
+    <p style="color: #888;">
+        Bot service: <strong id="host-bot-service">{{ host_info.bot_service }}</strong>
+        {% if host_info.uptime is not none %}
+        &nbsp;|&nbsp; Server up {{ (host_info.uptime // 3600) }}h {{ ((host_info.uptime % 3600) // 60) }}m
+        {% endif %}
+        {% if host_info.load %}
+        &nbsp;|&nbsp; Load {{ host_info.load[0] }} {{ host_info.load[1] }} {{ host_info.load[2] }}
+        {% endif %}
+        &nbsp;|&nbsp; <span id="status-updated">checking…</span>
+    </p>
+
+    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; margin: 20px 0;">
+        <div style="background: #1e1f24; border: 1px solid #333; border-radius: 12px; padding: 18px;">
+            <h2 style="margin: 0 0 10px; font-size: 1.25rem;">This server</h2>
+            <p style="color: #aaa; margin: 4px 0;">CPU temp: <strong id="stat-temp">…</strong></p>
+            <p style="color: #aaa; margin: 4px 0;">RAM: <strong id="stat-mem">…</strong></p>
+            <p style="color: #aaa; margin: 4px 0;">Disk: <strong id="stat-disk">…</strong></p>
+            <p style="color: #aaa; margin: 4px 0;">Bot uptime: <strong id="stat-bot-uptime">…</strong></p>
+        </div>
+        <div style="background: #1e1f24; border: 1px solid #333; border-radius: 12px; padding: 18px;">
+            <h2 style="margin: 0 0 10px; font-size: 1.25rem;">Bot</h2>
+            <p style="color: #aaa; margin: 4px 0;">Servers: <strong id="stat-guilds">…</strong></p>
+            <p style="color: #aaa; margin: 4px 0;">Members: <strong id="stat-members">…</strong></p>
+            <p style="color: #aaa; margin: 4px 0;">Ping: <strong id="stat-latency">…</strong></p>
+        </div>
+    </div>
+
+    {% if can_any("admin") %}
+    <div style="background: #1e1f24; border: 1px solid #333; border-radius: 12px; padding: 18px; margin: 20px 0;">
+        <h2 style="margin: 0 0 8px; font-size: 1.25rem;">Bot controls</h2>
+        <p style="color: #aaa; margin: 0 0 14px;">
+            Restart only, for now. The dashboard runs inside the bot, so
+            stopping it would turn off this page too — restart brings
+            everything back in about 30 seconds and this page reloads
+            itself. A real Stop button needs a separate control service
+            first.
+        </p>
+        <button id="bot-restart-btn" type="button"
+                style="padding: 10px 20px; font-size: 1rem; background: #2e7d52; color: #fff; border: none; border-radius: 8px; cursor: pointer;">
+            Restart bot
+        </button>
+        <p id="bot-restart-status" style="margin: 12px 0 0; color: #888;"></p>
+    </div>
+    {% endif %}
+
+    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; margin-top: 20px;">
+        {% for svc in services %}
+        <div style="background: #1e1f24; border: 1px solid #333; border-radius: 12px; padding: 18px;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <span id="dot-{{ svc.key }}" style="width: 12px; height: 12px; border-radius: 50%; background: #888; display: inline-block;" title="checking…"></span>
+                <h2 style="margin: 0; font-size: 1.25rem;">{{ svc.name }}</h2>
+            </div>
+            <p style="color: #aaa; margin: 10px 0 6px;">{{ svc.desc }}</p>
+            <p style="margin: 0 0 4px; color: #888; font-size: 0.9rem;" id="detail-{{ svc.key }}">checking…</p>
+            <p style="margin: 0 0 14px; color: #888; font-size: 0.9rem;" id="extra-{{ svc.key }}"></p>
+            <a href="{{ svc.link }}" target="_blank" rel="noopener"
+               style="display: inline-block; padding: 8px 18px; background: #2e7d52; color: #fff; border-radius: 8px; text-decoration: none;">
+                Open {{ svc.name }}
+            </a>
+        </div>
+        {% endfor %}
+    </div>
+
+    <p style="color: #888; margin-top: 24px;">
+        Uptime % is measured by this page's own checks over the last 24
+        hours. AdGuard and Portainer show live numbers once their
+        logins are added to the bot's .env — the tile says how.
+    </p>
+
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+    function fmtDur(secs) {
+        if (secs === null || secs === undefined) return "…";
+        var h = Math.floor(secs / 3600);
+        var m = Math.floor((secs % 3600) / 60);
+        if (h >= 24) return Math.floor(h / 24) + "d " + (h % 24) + "h";
+        return h + "h " + m + "m";
+    }
+    function setText(id, text) {
+        var el = document.getElementById(id);
+        if (el) el.textContent = text;
+    }
+    function extraText(svc) {
+        var parts = [];
+        if (svc.uptime24h !== null && svc.uptime24h !== undefined) {
+            parts.push("Up " + svc.uptime24h + "% last 24h");
+        }
+        if (svc.avg_ms !== null && svc.avg_ms !== undefined) {
+            parts.push("avg " + svc.avg_ms + " ms");
+        }
+        var extra = svc.extra || {};
+        if (extra.configured === false && extra.hint) {
+            parts.push(extra.hint);
+        } else if (extra.configured === true && extra.error) {
+            parts.push("live numbers failed: " + extra.error);
+        } else if (svc.key === "adguard" && extra.configured === true) {
+            parts.push(extra.blocked + " blocked of " + extra.queries + " queries today (" + extra.blocked_pct + "%)");
+        } else if (svc.key === "portainer" && extra.configured === true) {
+            parts.push(extra.running + " of " + extra.total + " containers running");
+        }
+        return parts.join(" — ") || "collecting history…";
+    }
+    function refresh() {
+        fetch("/api/server-home/status", {credentials: "same-origin"})
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (!data || !data.services) return;
+                data.services.forEach(function (svc) {
+                    var dot = document.getElementById("dot-" + svc.key);
+                    var detail = document.getElementById("detail-" + svc.key);
+                    var extraEl = document.getElementById("extra-" + svc.key);
+                    if (dot && detail) {
+                        if (svc.status === "up") {
+                            dot.style.background = "#2ecc71";
+                            dot.title = "Up";
+                            detail.textContent = "Up — answered in " + svc.ms + " ms";
+                        } else {
+                            dot.style.background = "#e74c3c";
+                            dot.title = "Down";
+                            detail.textContent = "Down — " + (svc.error || "no answer");
+                        }
+                    }
+                    if (extraEl) extraEl.textContent = extraText(svc);
+                });
+                var host = data.host || {};
+                var botEl = document.getElementById("host-bot-service");
+                if (botEl && host.bot_service) botEl.textContent = host.bot_service;
+                var upd = document.getElementById("status-updated");
+                if (upd) upd.textContent = "last checked " + new Date().toLocaleTimeString();
+                var hs = data.host_stats || {};
+                if (hs.temp_c !== null && hs.temp_c !== undefined) setText("stat-temp", hs.temp_c + " °C");
+                if (hs.mem_used_gb !== null && hs.mem_total_gb !== null) setText("stat-mem", hs.mem_used_gb + " / " + hs.mem_total_gb + " GB");
+                if (hs.disk_used_gb !== null && hs.disk_total_gb !== null) setText("stat-disk", hs.disk_used_gb + " / " + hs.disk_total_gb + " GB");
+                setText("stat-bot-uptime", fmtDur(hs.bot_uptime_s));
+                var bot = data.bot;
+                if (bot) {
+                    setText("stat-guilds", String(bot.guilds));
+                    setText("stat-members", String(bot.members));
+                    setText("stat-latency", bot.latency_ms !== null ? bot.latency_ms + " ms" : "…");
+                } else {
+                    setText("stat-guilds", "bot offline");
+                    setText("stat-members", "—");
+                    setText("stat-latency", "—");
+                }
+            })
+            .catch(function () { /* keep last state, retry next tick */ });
+    }
+    refresh();
+    setInterval(refresh, 30000);
+
+    var restartBtn = document.getElementById("bot-restart-btn");
+    if (restartBtn) {
+        restartBtn.addEventListener("click", function () {
+            var statusEl = document.getElementById("bot-restart-status");
+            if (!window.confirm("Restart the bot? The dashboard will go down for about 30 seconds and this page will reload itself.")) return;
+            restartBtn.disabled = true;
+            statusEl.textContent = "Restarting…";
+            fetch("/api/server-home/bot/restart", {
+                method: "POST",
+                credentials: "same-origin",
+                headers: {
+                    "Content-Type": "application/json",
+                    "X-CSRF-Token": "{{ csrf_token() }}"
+                },
+                body: "{}"
+            })
+            .then(function (r) { return r.json().then(function (d) { return {ok: r.ok, d: d}; }); })
+            .then(function (res) {
+                if (!res.ok || !res.d.success) {
+                    statusEl.textContent = "Restart failed: " + (res.d.error || ("HTTP " + res.ok));
+                    restartBtn.disabled = false;
+                    return;
+                }
+                statusEl.textContent = res.d.message;
+                // The dashboard dies with the bot and comes back in
+                // ~30s. Poll until it answers again, then reload.
+                var tries = 0;
+                var poll = setInterval(function () {
+                    tries += 1;
+                    fetch("/api/server-home/status", {credentials: "same-origin"})
+                        .then(function (r) { if (r.ok) { clearInterval(poll); window.location.reload(); } })
+                        .catch(function () { /* still down, keep waiting */ });
+                    if (tries > 40) {
+                        clearInterval(poll);
+                        statusEl.textContent = "Still not back after a while — check the bot with systemctl status kushbot, or try reloading this page.";
+                        restartBtn.disabled = false;
+                    }
+                }, 5000);
+            })
+            .catch(function (e) {
+                statusEl.textContent = "Restart request failed: " + e;
+                restartBtn.disabled = false;
+            });
+        });
+    }
+})();
+</script>
+{% endblock %}

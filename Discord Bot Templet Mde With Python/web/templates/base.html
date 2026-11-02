@@ -207,6 +207,12 @@
 
         {% if can_any("admin") %}
         <a
+            href="{{ url_for('server_home.server_home_page') }}"
+            class="nav-link-item"
+        >
+            Server Home
+        </a>
+        <a
             href="{{ url_for('logger') }}"
             class="nav-link-item"
         >

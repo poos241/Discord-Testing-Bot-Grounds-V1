@@ -73,6 +73,7 @@ from web.blueprints.friends import friends_api
 from web.blueprints.directory import directory_api
 from web.blueprints.feed import feed_api
 from web.blueprints.backups import backups_api
+from web.blueprints.server_home import server_home_api
 
 from web.blueprints.logger import logger_api
 from web.blueprints.dashboard import dashboard_api
@@ -223,6 +224,7 @@ def create_app(bot):
     app.register_blueprint(directory_api)
     app.register_blueprint(feed_api)
     app.register_blueprint(backups_api)
+    app.register_blueprint(server_home_api)
     
     app.register_blueprint(auth_api)
     
@@ -912,4 +914,4 @@ if __name__ == "__main__":
     # Standalone test defaults to localhost only
     if os.environ.get("WEB_HOST") is None:
         host = "127.0.0.1"
-    run_server(app, host=host, port=port)
+    run_server(app, host=host, port=port)
