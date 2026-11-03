@@ -77,3 +77,71 @@ If you add buttons/views, do the same — **never build a `View` at import
 time or in cog `__init__`**. (There used to be a regression test for
 this, `test_noloop.py`, but no test files are currently in the repo —
 the rule still stands.)
+
+## Useful commands
+
+Commands for running the bot and the website. The full reference
+with per-OS variants lives in the README ("Useful commands"); this
+is the same list, handbook-side.
+
+### Generating a bridge secret
+
+Any of these produces a suitable secret (32 random bytes, base64).
+Run it on the machine that will run the bot, then put the output in
+`.env` as `BRIDGE_SECRET=<output>` (one line, no quotes, no spaces).
+Each machine needs its own secret.
+
+Windows (PowerShell):
+
+```powershell
+$b = New-Object byte[] 32; [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($b); [Convert]::ToBase64String($b)
+```
+
+Linux or macOS (terminal):
+
+```bash
+openssl rand -base64 32
+```
+
+Any system (Python is already installed for the bot):
+
+```bash
+python -c "import secrets; print(secrets.token_urlsafe(36))"
+```
+
+### Start, stop, restart
+
+Windows: `run_bot.bat` / `run_web.bat`, or `python bot.py` /
+`python run_web.py` from the bot folder. Linux (systemd, home
+server): `sudo systemctl start|stop|restart|status kushbot.service
+kushweb.service`. macOS / plain Linux: `python3 bot.py` /
+`python3 run_web.py` in a terminal.
+
+### Check they're running
+
+```bash
+curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:5000/
+curl -H "X-Bridge-Secret: <your bridge secret>" http://127.0.0.1:5001/bridge/status
+```
+
+`200` from the first means the website is up; the second answers
+JSON with `"ready": true` when the bridge is healthy (a `401`
+means the secret is wrong or missing). On the home server,
+`~/servers/kush-status.sh` prints both services, their ports, and
+recent logs on one screen.
+
+### Logs
+
+Windows: each side logs to its own console window. Linux
+(systemd): `journalctl -u kushbot.service -n 50 --no-pager`,
+`journalctl -u kushweb.service -f`.
+
+### Update the code
+
+```bash
+git pull                 # from the repo root
+git log --oneline -3     # what version is running?
+```
+
+Restart the changed side after a pull (dashboard-only changes
+need only the website restarted).

@@ -93,11 +93,44 @@ TOKEN2=paste-your-bot-token-here
 The website talks to the bot over a private local bridge (see
 "Bot + website: two separate processes" below), and the bridge needs
 its own shared secret — a long random string only the bot and the
-website know. Add one more line to the same `.env` file:
+website know. Generate one with the command for your system, then
+add the output as one more line in the same `.env` file:
 
 ```
-BRIDGE_SECRET=paste-a-long-random-secret-here
+BRIDGE_SECRET=paste-the-generated-secret-here
 ```
+
+### Generating a bridge secret
+
+Run one of these on the machine that will run the bot — any of them
+produces a suitable secret (32 random bytes, base64):
+
+**Windows (PowerShell):**
+
+```powershell
+$b = New-Object byte[] 32; [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($b); [Convert]::ToBase64String($b)
+```
+
+**Linux or macOS (terminal):**
+
+```bash
+openssl rand -base64 32
+```
+
+**Any system (Python is already installed for the bot):**
+
+```bash
+python -c "import secrets; print(secrets.token_urlsafe(36))"
+```
+
+(Windows: use `python`; Linux/macOS: use `python3` if `python`
+isn't there.)
+
+Each machine that runs the bot needs its OWN secret — the bot and
+the website on the same machine share it, but a second machine (for
+example a home server) needs a different one. Generate it fresh;
+don't reuse one from another machine, don't share it with anyone,
+and never commit it.
 
 Without `BRIDGE_SECRET` the bridge refuses to start and every live
 website page degrades to "bot unavailable" by design (the bot itself
@@ -144,6 +177,138 @@ crashing). `run_bot.bat` / `run_web.bat` run a watchdog around each
 process: a crash (exit 1) or a restart request (exit 42) relaunches
 that side only; a clean stop (exit 0) stays stopped; more than 5
 restarts in 60 seconds stops loudly instead of looping forever.
+
+## Useful commands
+
+Commands you'll actually reach for while running the bot and the
+website. Run the bot-folder ones from the `Discord Bot Templet Mde
+With Python` folder; run the repo-root ones from the repo root.
+`.env` changes and `config.py` changes both need a restart of the
+bot (and the website, for website settings) to take effect.
+
+### Start, stop, restart
+
+**Windows** — double-click `run_bot.bat` (bot) or `run_web.bat`
+(website), or in a terminal from the bot folder:
+
+```bash
+python bot.py
+python run_web.py
+```
+
+**Linux — home server (systemd services):**
+
+```bash
+sudo systemctl start kushbot.service kushweb.service    # start both
+sudo systemctl stop kushbot.service kushweb.service     # stop both
+sudo systemctl restart kushbot.service kushweb.service  # restart both
+sudo systemctl status kushbot.service kushweb.service   # are they running?
+```
+
+**macOS / Linux without systemd** — same as Windows, in a terminal
+from the bot folder (`python3 bot.py`, `python3 run_web.py`).
+
+### Check they're running
+
+```bash
+curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:5000/
+```
+
+`200` means the website is up. On the home server,
+`~/servers/kush-status.sh` prints both services, their ports, and
+the last few log lines on one screen.
+
+Is the bridge up? The bridge only listens on the machine running
+the bot (`127.0.0.1:5001`), and it needs the secret in the
+`X-Bridge-Secret` header:
+
+```bash
+curl -H "X-Bridge-Secret: <your bridge secret>" http://127.0.0.1:5001/bridge/status
+```
+
+A healthy bridge answers JSON with `"ready": true` (plus the bot's
+user, guild count, and uptime). A `401` means the secret is wrong
+or missing. The secret only ever goes on your own machine's
+command line — never paste it into a chat, a ticket, or a public
+page. To read it straight from `.env` instead of typing it:
+
+Linux / macOS:
+
+```bash
+curl -H "X-Bridge-Secret: $(grep '^BRIDGE_SECRET=' .env | cut -d= -f2-)" http://127.0.0.1:5001/bridge/status
+```
+
+Windows (PowerShell, from the bot folder):
+
+```powershell
+$s = (Select-String -Path .env -Pattern '^BRIDGE_SECRET=').Line -replace '^BRIDGE_SECRET=',''; curl.exe -H "X-Bridge-Secret: $s" http://127.0.0.1:5001/bridge/status
+```
+
+### Logs
+
+**Windows** — the bot and website each log to their own console
+window (the one `run_bot.bat` / `run_web.bat` opened).
+
+**Linux (systemd):**
+
+```bash
+journalctl -u kushbot.service -n 50 --no-pager   # bot, last 50 lines
+journalctl -u kushweb.service -n 50 --no-pager   # website, last 50 lines
+journalctl -u kushbot.service -f                 # follow the bot log live
+```
+
+### Update the code
+
+```bash
+git pull                 # from the repo root, on any machine
+git log --oneline -3     # what version is running?
+git rev-parse HEAD       # the exact commit
+git status --short       # any local changes?
+```
+
+After a pull, restart the side that changed (`sudo systemctl
+restart kushbot.service kushweb.service` on the server, or close
+and re-run the `.bat` files on Windows). Dashboard-only changes
+need only the website restarted; the bot doesn't need to restart
+for those.
+
+### Python and packages
+
+```bash
+python --version         # Windows
+python3 --version        # Linux / macOS
+python -m py_compile bot.py    # syntax-check a file without running it
+```
+
+Install a package into the bot's venv (the website needs
+`requests`, for example — make sure `requirements.txt` lists it so
+a fresh install gets it):
+
+```bash
+venv\Scripts\activate     # Windows, then pip install <name>
+pip install <name>        # (inside the venv)
+```
+
+Linux:
+
+```bash
+.venv/bin/pip install <name>   # from the repo root
+```
+
+### `.env` layout
+
+```ini
+TOKEN2=<your bot token>
+BRIDGE_SECRET=<a long random secret — see "Generating a bridge secret" above>
+BRIDGE_PORT=5001          # optional, default 5001
+WEB_HOST=127.0.0.1        # optional, default 127.0.0.1; 0.0.0.0 to reach the dashboard from another machine
+WEB_PORT=5000             # optional, default 5000
+```
+
+`WEB_HOST=0.0.0.0` is what lets you open the dashboard from another
+computer on the same network (and what Uptime Kuma needs to check
+it). Leave it at `127.0.0.1` if the dashboard only ever runs on the
+same machine as your browser.
 
 ---
 
@@ -1128,7 +1293,8 @@ the read returns at once.
 - **Website shows "bot unavailable" on live pages** — the bridge isn't
   up. Check the bot's console: if it says `[ERROR] Bridge API will NOT
   start: BRIDGE_SECRET is not set`, add `BRIDGE_SECRET=<a long random
-  secret>` to `.env` (same file as your token) and restart the bot.
+  secret>` to `.env` (same file as your token — see "Generating a
+  bridge secret" in step 5 above) and restart the bot.
   If the bridge is listening but pages still 503, make sure the
   website process is running and can reach `127.0.0.1:5001`.
 - **Bot or website keeps restarting in a loop** — the watchdog gives
