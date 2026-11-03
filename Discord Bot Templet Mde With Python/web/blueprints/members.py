@@ -1,8 +1,6 @@
 from flask import Blueprint, jsonify, request
 
-from web.services.discord_state import discord_state
 from web.services.member_service import MemberService
-from web.blueprints.channels import get_bot
 from web.security.decorators import require_guild_manage, require_login, require_guild_moderator
 
 
@@ -71,29 +69,14 @@ def paginate(items, page, per_page):
 
 
 # =========================================================
-# BOT
-# =========================================================
-
-def get_service():
-
-    bot = get_bot()
-
-    if bot is None:
-        return None
-
-    return MemberService(
-        bot
-    )
-
-# =========================================================
 # SERVICE
 # =========================================================
 
 def get_service():
 
-    return MemberService(
-        get_bot()
-    )
+    # Bridge split: MemberService is a bridge client now; it takes
+    # no bot object (the argument is accepted and ignored).
+    return MemberService()
 
 
 # =========================================================
@@ -102,23 +85,25 @@ def get_service():
 
 def check_bot():
 
-    bot = get_bot()
+    # Bridge split: readiness comes from the bridge, not a live bot
+    # object. Same 503 behaviour as before. The first return value
+    # used to be the live bot; it is None now (no live object exists
+    # in this process) -- callers use the bridge-backed services.
+    try:
+        from web.services import bridge
 
-    if bot is None:
-
+        if not bridge.bot_is_ready():
+            return None, jsonify({
+                "success": False,
+                "error": "Discord bot is not ready."
+            }), 503
+    except Exception:
         return None, jsonify({
             "success": False,
             "error": "Discord bot is not connected."
         }), 503
 
-    if not discord_state.ready:
-
-        return None, jsonify({
-            "success": False,
-            "error": "Discord bot is not ready."
-        }), 503
-
-    return bot, None, None
+    return None, None, None
 
 
 # =========================================================
@@ -144,20 +129,11 @@ def get_members():
         }), 400
 
 
-    if discord_state.bot is None:
+    bot, error, status = check_bot()
 
-        return jsonify({
-            "success": False,
-            "error": "Discord bot is not connected."
-        }), 503
+    if error:
 
-
-    if not discord_state.ready:
-
-        return jsonify({
-            "success": False,
-            "error": "Discord bot is not ready."
-        }), 503
+        return error, status
 
 
     service = get_service()
@@ -166,6 +142,14 @@ def get_members():
         guild_id
     )
 
+    page = paginate(
+        [
+            service.serialize_member(m)
+            for m in members
+        ],
+        request.args.get("page", 1),
+        request.args.get("per_page", 50),
+    )
 
     return jsonify({
 
@@ -175,13 +159,25 @@ def get_members():
             str(guild_id),
 
         "count":
-            len(members),
+            page["total"],
 
         "members":
-            [
-                service.serialize_member(m)
-                for m in members
-            ]
+            page["items"],
+
+        "page":
+            page["page"],
+
+        "per_page":
+            page["per_page"],
+
+        "total_pages":
+            page["total_pages"],
+
+        "has_next":
+            page["has_next"],
+
+        "has_previous":
+            page["has_previous"],
 
     })
 
@@ -371,6 +367,18 @@ def get_server_members(guild_id):
             guild_id
         )
 
+    # The bridge caps at 500 per page; the route pages through the
+    # full list with the existing paginate() helper instead of
+    # dumping every member at once (contract section 6).
+    page = paginate(
+        [
+            service.serialize_member(m)
+            for m in members
+        ],
+        request.args.get("page", 1),
+        request.args.get("per_page", 50),
+    )
+
     return jsonify({
 
         "success": True,
@@ -379,16 +387,28 @@ def get_server_members(guild_id):
             str(guild_id),
 
         "count":
-            len(members),
+            page["total"],
 
         "search":
             query or None,
 
         "members":
-            [
-                service.serialize_member(m)
-                for m in members
-            ]
+            page["items"],
+
+        "page":
+            page["page"],
+
+        "per_page":
+            page["per_page"],
+
+        "total_pages":
+            page["total_pages"],
+
+        "has_next":
+            page["has_next"],
+
+        "has_previous":
+            page["has_previous"],
 
     })
     
@@ -403,6 +423,12 @@ def get_server_members(guild_id):
 )
 @require_guild_moderator
 def member_summary(guild_id):
+
+    bot, error, status = check_bot()
+
+    if error:
+
+        return error, status
 
     service = get_service()
 
@@ -505,6 +531,12 @@ def member_summary(guild_id):
 )
 @require_guild_moderator
 def search_server_members(guild_id):
+
+    bot, error, status = check_bot()
+
+    if error:
+
+        return error, status
 
     query = request.args.get(
         "q",

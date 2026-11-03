@@ -1,6 +1,7 @@
 from flask import Blueprint, jsonify
 
-from web.services.discord_state import discord_state
+from web.services import bridge
+from web.services.member_service import MemberService
 from web.security.decorators import require_guild_manage, require_login, require_guild_moderator
 
 
@@ -16,9 +17,7 @@ server_overview_api = Blueprint(
 @require_guild_moderator
 def quick_overview(guild_id):
 
-    bot = discord_state.get_bot()
-
-    if bot is None:
+    if not bridge.bot_is_ready():
 
         return jsonify({
             "success": False,
@@ -26,15 +25,7 @@ def quick_overview(guild_id):
         }), 503
 
 
-    if not discord_state.ready:
-
-        return jsonify({
-            "success": False,
-            "error": "Discord bot is not ready."
-        }), 503
-
-
-    guild = bot.get_guild(
+    guild = bridge.get_guild(
         int(guild_id)
     )
 
@@ -53,16 +44,16 @@ def quick_overview(guild_id):
     bot_members = 0
 
 
-    for member in guild.members:
+    for member in MemberService().get_members(guild_id):
 
-        if member.bot:
+        if member.get("bot"):
 
             bot_members += 1
 
 
         status = str(
-            member.status
-        )
+            member.get("status") or "offline"
+        ).lower()
 
 
         if status == "online":
@@ -89,43 +80,35 @@ def quick_overview(guild_id):
         "server": {
 
             "id":
-                str(guild.id),
+                str(guild.get("id")),
 
             "name":
-                guild.name,
+                guild.get("name"),
 
             "icon":
-                (
-                    str(guild.icon.url)
-                    if guild.icon
-                    else None
-                ),
+                guild.get("icon"),
 
             "banner":
-                (
-                    str(guild.banner.url)
-                    if guild.banner
-                    else None
-                ),
+                guild.get("banner"),
 
             "owner_id":
                 (
-                    str(guild.owner_id)
-                    if guild.owner_id
+                    str(guild.get("owner_id"))
+                    if guild.get("owner_id")
                     else None
                 ),
 
             "member_count":
-                guild.member_count or 0,
+                int(guild.get("member_count") or 0),
 
             "channels":
-                len(guild.channels),
+                int(guild.get("channel_count") or 0),
 
             "roles":
-                len(guild.roles),
+                int(guild.get("role_count") or 0),
 
             "categories":
-                len(guild.categories),
+                int(guild.get("category_count") or 0),
 
             "members": {
 
@@ -149,11 +132,11 @@ def quick_overview(guild_id):
         "bot": {
 
             "ready":
-                discord_state.ready,
+                bridge.bot_is_ready(),
 
             "latency_ms":
                 round(
-                    bot.latency * 1000,
+                    float((bridge.status() or {}).get("latency_ms") or 0),
                     2
                 )
         }

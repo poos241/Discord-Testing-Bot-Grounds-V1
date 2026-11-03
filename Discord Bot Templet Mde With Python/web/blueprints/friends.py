@@ -32,10 +32,9 @@ pending until it is accepted, declined, or the recipient turns the
 opt-out on (which auto-declines pending incoming requests).
 
 Sending a request also checks that the recipient shares a server with
-the sender (via the bot's guild cache, falling back to a member fetch
-in a shared guild). When the bot is not connected the check is
-skipped rather than blocking the request — the recipient can always
-decline.
+the sender (via bridge member lookups in a shared guild). When the bot
+is not connected the check is skipped rather than blocking the request
+— the recipient can always decline.
 """
 
 import secrets
@@ -50,7 +49,7 @@ from flask import (
 
 from web.blueprints.auth import get_csrf_token
 from web.security.decorators import require_login
-from web.services.discord_state import discord_state, run_coro_threadsafe
+from web.services.discord_state import run_coro_threadsafe
 
 
 friends_api = Blueprint(
@@ -102,15 +101,15 @@ def _person(user_id):
     name = ""
     avatar_url = ""
 
-    bot = discord_state.bot
-    if bot is not None and discord_state.ready:
-        try:
-            member_user = bot.get_user(int(user_id))
-            if member_user is not None:
-                name = member_user.global_name or member_user.name
-                avatar_url = str(member_user.display_avatar.url)
-        except (ValueError, TypeError):
-            pass
+    try:
+        from web.blueprints.profiles import _resolve_display
+        live_name, live_avatar = _resolve_display(user_id)
+        if live_name:
+            name = live_name
+        if live_avatar:
+            avatar_url = live_avatar
+    except Exception:
+        pass
 
     if not name or not avatar_url:
         try:
@@ -172,16 +171,12 @@ def _pending_entry(row, me):
 def _shares_server(sender_id, target_id):
     """True when sender and target share a bot guild.
 
-    Cached members first; if the target is not cached, try a member
-    fetch in a guild the sender is in (per their Discord guild list).
-    When the bot is not connected, or a check errors unexpectedly,
-    allow the request rather than blocking it — the recipient can
-    always decline. A definitive not-found/forbidden fetch denies it.
+    Bridge split: the bot's guild cache is replaced by bridge member
+    lookups. When the bridge is down, or a check errors unexpectedly,
+    allow the request rather than blocking it -- the recipient can
+    always decline. A definitive not-found on every candidate guild
+    denies it.
     """
-
-    bot = discord_state.bot
-    if bot is None or not discord_state.ready:
-        return True
 
     try:
         sender = int(sender_id)
@@ -190,16 +185,19 @@ def _shares_server(sender_id, target_id):
         return False
 
     try:
-        for guild in bot.guilds:
-            if (
-                guild.get_member(sender) is not None
-                and guild.get_member(target) is not None
-            ):
-                return True
+        from web.services import bridge
+        from web.services.bridge import BridgeError, BridgeUnavailable
+
+        bot_guild_ids = bridge.get_bot_guild_ids()
     except Exception:
+        # Bridge down: fail open, as before.
         return True
 
-    # Not cached: try a live member fetch in a shared guild.
+    if not bot_guild_ids:
+        return True
+
+    # Prefer guilds the sender is in (their Discord guild list),
+    # then fall back to every bot guild.
     try:
         from web.blueprints.auth import get_user_guilds
 
@@ -209,24 +207,23 @@ def _shares_server(sender_id, target_id):
             if isinstance(g, dict)
         }
     except Exception:
-        return True
+        my_guilds = set()
 
-    for guild in bot.guilds:
-        if str(guild.id) not in my_guilds:
-            continue
-        if guild.get_member(sender) is None:
-            continue
+    candidates = [gid for gid in bot_guild_ids if gid in my_guilds]
+    candidates += [gid for gid in bot_guild_ids if gid not in my_guilds]
+
+    for gid in candidates:
         try:
-            member = run_coro_threadsafe(
-                guild.fetch_member(target)
-            ).result(timeout=10)
-        except Exception as exc:
-            # discord.NotFound / Forbidden mean "not a member here".
-            name = type(exc).__name__
-            if name in ("NotFound", "Forbidden"):
+            if bridge.get_member(gid, sender) is None:
+                continue
+            if bridge.get_member(gid, target) is None:
                 continue
             return True
-        if member is not None:
+        except BridgeUnavailable:
+            return True
+        except BridgeError:
+            continue
+        except Exception:
             return True
     return False
 

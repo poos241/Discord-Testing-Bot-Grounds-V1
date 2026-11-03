@@ -1,4 +1,4 @@
-from .database import database
+from .database import db as database
 
 
 def set_log_channel(guild_id, log_type, channel_id):

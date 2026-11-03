@@ -95,6 +95,58 @@ before the channel is created, so two simultaneous opens can no longer
 share a number (a later failure leaves a harmless gap, never a
 duplicate).
 
+### Read-only fast path (November 2026)
+
+Every `load_store` used to open a read-write connection and run
+`BEGIN IMMEDIATE` + commit — a write lock just to peek at the data.
+The timeout board's 1-minute refresh did that on the Discord event
+loop while the website thread held the lock, and the loop stalled
+long enough for Discord to warn the heartbeat was blocked. Reads of
+a migrated store now go through a read-only connection (no write
+lock, no commit) and only fall through to the write path when setup
+or migration is still needed. The fallback semantics above are
+unchanged: a migrated store can never get the stale legacy JSON back.
+Board refreshes additionally run their database loads in a
+background thread (`asyncio.to_thread`), so a slow read can no
+longer freeze the event loop at all.
+
+### WatchList fails closed (November 2026)
+
+The WatchList cog used to swallow any load error and start with an
+empty dict — and its save replaces the whole table, so the next watch
+add after a failed load would silently overwrite the live
+`watchlist_data` table with just the new change. It now tracks a
+`_db_ok` flag: a failed load marks the store unusable, every
+read-mutate path retries the load first, commands report
+"temporarily unavailable — nothing was changed" instead of operating
+on empty data, saves refuse while unusable, and save failures log
+loudly with a traceback. The store heals itself on the next
+successful reload. Cross-process note (split): the bot's WatchList
+cog caches its table in memory, so it does not see website-added
+watches until the bot restarts — and could overwrite them on its
+next bot-side save. A bridge watch endpoint would fix that properly.
+
+### Profile migration failures are loud (November 2026)
+
+The profile-columns migration (`_ensure_profile_columns` in
+`data/DB/db.py`) used to swallow an `ALTER TABLE` failure with one
+quiet line and boot on a stale schema. It now logs a loud `[DB]
+ERROR` with the full traceback and records
+`PROFILE_MIGRATION_ERROR`, which `/api/debug/bot-status` surfaces as
+`profile_migration_error` (null when healthy). It deliberately does
+not raise at import — a profiles-table problem must not kill the
+whole bot.
+
+### New tables (November 2026)
+
+- `introduction_status` + `introduction_config` — introduction
+  tracking (one row per guild/user; see the README section).
+- `timeout_board_config` — timeout board channel + message id per
+  guild (the board itself reads the existing `mod_data` timeouts and
+  tempbans; there is no separate timeout store).
+- `ghlog_items` — GitHub ban-log items tracked locally so updates
+  and deletes find the right board item.
+
 ## Which to use?
 
 - Anything new, per-guild or per-user, structured or a simple dict?

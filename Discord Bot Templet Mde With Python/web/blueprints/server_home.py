@@ -8,7 +8,10 @@ links is the honest shape. On top of that, this page shows live
 numbers that need no extra login: host stats (load, CPU temp, RAM,
 disk, bot service uptime), bot stats (guilds, members, latency), and
 per-service uptime % + latency averaged from this page's own probes
-over the last 24 hours (kept in data/server_home_history.json).
+over the last 24 hours (kept in data/server_home_history.json). Admin-only:
+both the page and its status API require the admin tier on a guild the
+bot is in (same gate as the restart route), so host/infrastructure
+numbers are never visible to a plain logged-in user.
 
 AdGuard + Portainer live numbers need credentials, so they light up
 only when the matching .env values exist — otherwise the tile says
@@ -18,11 +21,11 @@ how to connect them:
   - Portainer: PORTAINER_API_KEY (create one in Portainer: your user
     menu -> Access tokens) -> container list (running / total).
 
-Bot controls (restart-only, for now): the web UI runs as a thread
-inside the bot process, so stopping the bot would kill the very page
-the button lives on. Restart is safe — the service comes back in
-about 30 seconds and the page reloads itself. A hard Stop needs a
-separate control service first; that is a later step, not this one.
+Bot controls (restart-only, for now): the restart button asks the
+bot to restart itself through the bridge (exit 42, watchdog
+relaunches it). The website is a separate process now, so it stays
+up while the bot restarts. A hard Stop needs a separate control
+service first; that is a later step, not this one.
 """
 
 import base64
@@ -50,7 +53,6 @@ from flask import (
 
 from web.blueprints.auth import get_csrf_token, get_user_guilds
 from web.security.decorators import require_login
-from web.services.discord_state import discord_state
 from web.services.permissions import has_access
 
 
@@ -267,18 +269,16 @@ def _host_stats():
 
 
 def _bot_stats():
-    """Live Discord numbers. None when the bot object is not available."""
+    """Live Discord numbers from the bridge. None when the bridge is
+    unreachable or the bot is not ready."""
     try:
-        bot = discord_state.get_bot()
-        if bot is None or not bot.is_ready():
-            return None
-        guilds = list(bot.guilds or [])
-        members = sum((g.member_count or 0) for g in guilds)
-        latency_ms = round(bot.latency * 1000) if bot.latency else None
+        from web.services import bridge
+
+        info = bridge.status()
         return {
-            "guilds": len(guilds),
-            "members": members,
-            "latency_ms": latency_ms,
+            "guilds": int(info.get("guild_count") or 0),
+            "members": int(info.get("member_total") or 0),
+            "latency_ms": info.get("latency_ms"),
         }
     except Exception:  # noqa: BLE001
         return None
@@ -364,15 +364,9 @@ def _is_admin():
     except Exception:  # noqa: BLE001
         return False
     try:
-        bot = current_app.config.get("DISCORD_BOT") or current_app.config.get("BOT")
-    except Exception:  # noqa: BLE001
-        return False
-    if bot is None:
-        return False
-    try:
-        if not bot.is_ready():
-            return False
-        bot_guild_ids = {str(g.id) for g in bot.guilds}
+        from web.services import bridge
+
+        bot_guild_ids = {str(gid) for gid in bridge.get_bot_guild_ids()}
     except Exception:  # noqa: BLE001
         return False
     for guild in guilds:
@@ -406,27 +400,6 @@ def _check_csrf():
     return None
 
 
-def _do_restart():
-    """Run the restart after the HTTP response has gone out.
-
-    The restart kills this very process (the dashboard lives inside
-    the bot), so it must happen on a delay in a background thread —
-    answering first, restarting second.
-    """
-    time.sleep(1)
-    try:
-        result = subprocess.run(
-            ["sudo", "-n", "systemctl", "restart", "kushbot"],
-            capture_output=True, text=True, timeout=30,
-        )
-        print(
-            "[Server Home] Bot restart requested from dashboard: "
-            f"exit={result.returncode} {result.stderr.strip()[:200]}"
-        )
-    except Exception as exc:  # noqa: BLE001
-        print(f"[Server Home] Bot restart failed: {exc!r}")
-
-
 # ============================================================
 # ROUTES
 # ============================================================
@@ -434,6 +407,7 @@ def _do_restart():
 @server_home_api.get("/server-home")
 @require_login
 def server_home_page():
+    _require_admin()
     host = request.host.rsplit(":", 1)[0]
     services = []
     for svc in SERVICES:
@@ -450,6 +424,7 @@ def server_home_page():
 @server_home_api.get("/api/server-home/status")
 @require_login
 def server_home_status():
+    _require_admin()
     results = _probe_all()
     summary = _record_probes(results)
     services = []
@@ -479,32 +454,30 @@ def server_home_status():
 def bot_restart():
     """Restart the bot service. Admin-only, CSRF-checked.
 
-    Restart-only on purpose: stopping the bot would kill this page
-    (the dashboard runs inside the bot process). Restart brings the
-    dashboard back in about 30 seconds and the page reloads itself.
+    Restart-only on purpose: stopping the bot would kill the
+    dashboard in the old single-process layout, and the restart
+    button was never a stop button. The restart goes through the
+    bridge (the bot exits 42 and its watchdog relaunches it); the
+    website is a separate process and stays up. When the bridge is
+    unreachable the button answers 503 instead of claiming a
+    restart that never happens.
     """
     _require_admin()
     csrf_error = _check_csrf()
     if csrf_error:
         return jsonify({"success": False, "error": csrf_error}), 403
-    # Fail fast and honestly when passwordless sudo is off — otherwise
-    # the button would claim a restart that never happens.
     try:
-        check = subprocess.run(
-            ["sudo", "-n", "true"], capture_output=True, timeout=5,
-        )
+        from web.services import bridge
+
+        bridge.restart_bot()
     except Exception as exc:  # noqa: BLE001
-        return jsonify({"success": False, "error": f"sudo check failed: {exc}"}), 503
-    if check.returncode != 0:
         return jsonify({
             "success": False,
-            "error": "Passwordless sudo is off on the Nitro — turn the "
-                     "muse-sudo switch on before restarting from here.",
+            "error": "Bot is not reachable through the bridge: %s" % exc,
         }), 503
-    threading.Thread(target=_do_restart, daemon=True).start()
     return jsonify({
         "success": True,
-        "message": "Restarting — the dashboard will be back in about "
+        "message": "Restarting the bot — it will be back in about "
                    "30 seconds and this page will reload itself.",
     })
 

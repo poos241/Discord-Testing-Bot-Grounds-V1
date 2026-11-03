@@ -4,7 +4,7 @@ from flask import (
     session,
 )
 
-from web.services.discord_state import discord_state
+from web.services import bridge
 
 from web.blueprints.auth import (
     get_manageable_guilds,
@@ -26,27 +26,15 @@ servers_api = Blueprint(
 @require_login
 def servers():
 
-    bot = discord_state.bot
-
     # ---------------------------------------------------------
     # BOT CONNECTION
     # ---------------------------------------------------------
 
-    if bot is None:
+    if not bridge.bot_is_ready():
 
         return jsonify({
             "success": False,
             "error": "Discord bot is not connected.",
-            "servers": [],
-            "count": 0
-        }), 503
-
-
-    if not discord_state.ready:
-
-        return jsonify({
-            "success": False,
-            "error": "Discord bot is not ready.",
             "servers": [],
             "count": 0
         }), 503
@@ -99,10 +87,15 @@ def servers():
     # 2. USER CAN MANAGE SERVER
     # ---------------------------------------------------------
 
-    for guild in bot.guilds:
+    try:
+        bot_guilds = bridge.get_guilds() or []
+    except Exception:
+        bot_guilds = []
+
+    for guild in bot_guilds:
 
         guild_id = str(
-            guild.id
+            guild.get("id")
         )
 
         access = manageable_map.get(
@@ -117,29 +110,12 @@ def servers():
 
         try:
 
-            icon_url = None
-
-            if guild.icon:
-
-                icon_url = str(
-                    guild.icon.with_size(128).url
-                )
-
-
-            banner_url = None
-
-            if guild.banner:
-
-                banner_url = str(
-                    guild.banner.url
-                )
-
-
-            owner_id = getattr(
-                guild,
-                "owner_id",
-                None
-            )
+            # NOTE: the old code forced the icon to 128px; the bridge
+            # guild dict carries the full-size icon URL, which is what
+            # the frontend gets now.
+            icon_url = guild.get("icon")
+            banner_url = guild.get("banner")
+            owner_id = guild.get("owner_id")
 
 
             result.append({
@@ -148,7 +124,7 @@ def servers():
                     guild_id,
 
                 "name":
-                    guild.name,
+                    guild.get("name"),
 
                 "icon":
                     icon_url,
@@ -157,36 +133,22 @@ def servers():
                     banner_url,
 
                 "member_count":
-                    int(
-                        guild.member_count
-                        or len(guild.members)
-                        or 0
-                    ),
+                    int(guild.get("member_count") or 0),
 
                 "channel_count":
-                    len(
-                        guild.channels
-                    ),
+                    int(guild.get("channel_count") or 0),
 
                 "role_count":
-                    len(
-                        guild.roles
-                    ),
+                    int(guild.get("role_count") or 0),
 
                 "category_count":
-                    len(
-                        guild.categories
-                    ),
+                    int(guild.get("category_count") or 0),
 
                 "text_channel_count":
-                    len(
-                        guild.text_channels
-                    ),
+                    int(guild.get("text_channel_count") or 0),
 
                 "voice_channel_count":
-                    len(
-                        guild.voice_channels
-                    ),
+                    int(guild.get("voice_channel_count") or 0),
 
                 "owner_id":
                     (

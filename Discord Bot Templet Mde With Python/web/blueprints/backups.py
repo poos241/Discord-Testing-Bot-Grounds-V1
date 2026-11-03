@@ -64,15 +64,9 @@ def _is_moderator():
     except Exception:
         return False
     try:
-        bot = current_app.config.get("DISCORD_BOT") or current_app.config.get("BOT")
-    except Exception:
-        return False
-    if bot is None:
-        return False
-    try:
-        if not bot.is_ready():
-            return False
-        bot_guild_ids = {str(g.id) for g in bot.guilds}
+        from web.services import bridge
+
+        bot_guild_ids = {str(gid) for gid in bridge.get_bot_guild_ids()}
     except Exception:
         return False
     for guild in guilds:

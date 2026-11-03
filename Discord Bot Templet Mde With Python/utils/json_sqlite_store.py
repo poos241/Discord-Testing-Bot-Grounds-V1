@@ -253,6 +253,54 @@ def _was_migrated(filename):
         return None
 
 
+def _rows_to_dict(rows, table):
+    """Parse SELECT (key, data) rows into a dict, skipping unreadable rows."""
+    out = {}
+    for key, raw in rows:
+        try:
+            out[key] = json.loads(raw)
+        except (ValueError, TypeError):
+            print(
+                "[JSON-SQLite] WARNING: skipping unreadable row %r in %s"
+                % (key, table)
+            )
+    return out
+
+
+def _load_store_readonly(filename, table, key_col):
+    """Read a migrated store on a read-only connection.
+
+    Returns the rows when the store's table exists and its migration
+    row is present, else None (caller falls through to the write
+    path, which creates/migrates). Raises on any other failure so the
+    caller can fall through too -- the write path owns the retries
+    and the legacy-fallback decision.
+    """
+    conn = sqlite3.connect(
+        "file:%s?mode=ro" % _db_path(), uri=True, timeout=10
+    )
+    try:
+        tables = {
+            r[0]
+            for r in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            ).fetchall()
+        }
+        if table not in tables or _MIGRATIONS_TABLE not in tables:
+            return None
+        row = conn.execute(
+            "SELECT store FROM json_migrations WHERE store = ?",
+            (filename,),
+        ).fetchone()
+        if row is None:
+            return None
+        return conn.execute(
+            "SELECT %s, data FROM %s ORDER BY %s" % (key_col, table, key_col)
+        ).fetchall()
+    finally:
+        conn.close()
+
+
 def load_store(filename):
     """Return the store's contents as a dict, exactly like the old
     config.load_json() did ({} when empty/missing).
@@ -267,6 +315,18 @@ def load_store(filename):
     if filename not in STORES:
         raise ValueError("No SQLite store for %r" % filename)
     table, key_col = STORES[filename]
+    # Fast path: when the schema is ready and this store is migrated,
+    # read without taking a write lock, so a load can never stall
+    # behind (or block) a writer. Before this, every load did
+    # BEGIN IMMEDIATE + commit on the event loop, and the board loop's
+    # 1-minute tick stalled the Discord heartbeat for 10-20s while
+    # the web thread held the lock.
+    try:
+        rows = _load_store_readonly(filename, table, key_col)
+        if rows is not None:
+            return _rows_to_dict(rows, table)
+    except Exception:
+        pass  # fall through to the write path below
     rows = None
     last_exc = None
     for attempt in range(_SAVE_RETRIES):
@@ -307,16 +367,7 @@ def load_store(filename):
             "migrated (or its status is unknown)." % (filename, last_exc)
         )
         raise last_exc
-    out = {}
-    for key, raw in rows:
-        try:
-            out[key] = json.loads(raw)
-        except (ValueError, TypeError):
-            print(
-                "[JSON-SQLite] WARNING: skipping unreadable row %r in %s"
-                % (key, table)
-            )
-    return out
+    return _rows_to_dict(rows, table)
 
 
 def save_store(filename, data):

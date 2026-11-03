@@ -1,5 +1,5 @@
 from data.DB.db import database
-from data.DB.models import welcome_data, main_vc_map, xp_timestamps, threads_settings, levels, ticket_config, active_tickets, ticket_records, profiles, profile_activity, qotd_questions, qotd_config, qotd_history, qotd_guild_exclusions, ticket_guild_config, support_tickets, appeal_guild_config, appeals, friendships, friend_settings, voice_xp_config, voice_xp_users, lockdown_channels, automod_config, auto_thread_channels, custom_badges, custom_badge_awards, ghlog_items
+from data.DB.models import welcome_data, main_vc_map, xp_timestamps, threads_settings, levels, ticket_config, active_tickets, ticket_records, profiles, profile_activity, qotd_questions, qotd_config, qotd_history, qotd_guild_exclusions, ticket_guild_config, support_tickets, appeal_guild_config, appeals, friendships, friend_settings, voice_xp_config, voice_xp_users, lockdown_channels, automod_config, auto_thread_channels, custom_badges, custom_badge_awards, ghlog_items, introduction_status, introduction_config, timeout_board_config
 from datetime import datetime
 import time
 
@@ -1010,3 +1010,83 @@ async def delete_ghlog_item(row_id: int):
     await database.execute(
         ghlog_items.delete().where(ghlog_items.c.id == int(row_id))
     )
+
+
+# Introduction tracking (built 2026-11-02; see cogs/Introduction.py).
+# Per-guild config is one row; per-member status is one row per
+# (guild, user). Upserts use OR REPLACE like the other config
+# helpers in this file.
+async def get_introduction_config(guild_id: str):
+    row = await database.fetch_one(
+        introduction_config.select().where(
+            introduction_config.c.guild_id == str(guild_id)))
+    return dict(row) if row else {}
+
+
+async def save_introduction_config(guild_id: str, payload: dict):
+    await database.execute(
+        introduction_config.insert()
+        .values(guild_id=str(guild_id), **payload)
+        .prefix_with("OR REPLACE")
+    )
+
+
+async def get_introduction_status(guild_id: str, user_id: str):
+    row = await database.fetch_one(
+        introduction_status.select().where(
+            (introduction_status.c.guild_id == str(guild_id))
+            & (introduction_status.c.user_id == str(user_id))))
+    return dict(row) if row else {}
+
+
+async def save_introduction_status(guild_id: str, user_id: str, payload: dict):
+    await database.execute(
+        introduction_status.insert()
+        .values(guild_id=str(guild_id), user_id=str(user_id), **payload)
+        .prefix_with("OR REPLACE")
+    )
+
+
+async def get_introduction_by_message_url(guild_id: str, message_url: str):
+    row = await database.fetch_one(
+        introduction_status.select().where(
+            (introduction_status.c.guild_id == str(guild_id))
+            & (introduction_status.c.message_url == message_url)))
+    return dict(row) if row else {}
+
+
+async def count_introduced(guild_id: str):
+    rows = await database.fetch_all(
+        introduction_status.select().where(
+            (introduction_status.c.guild_id == str(guild_id))
+            & (introduction_status.c.has_introduced.is_(True))))
+    return len(rows)
+
+
+# Timeout tracker board (built 2026-11-02; see cogs/admin_cog.py).
+# One row per guild: the board channel + message id.
+async def get_timeout_board_config(guild_id: str):
+    row = await database.fetch_one(
+        timeout_board_config.select().where(
+            timeout_board_config.c.guild_id == str(guild_id)))
+    return dict(row) if row else {}
+
+
+async def save_timeout_board_config(guild_id: str, payload: dict):
+    await database.execute(
+        timeout_board_config.insert()
+        .values(guild_id=str(guild_id), **payload)
+        .prefix_with("OR REPLACE")
+    )
+
+
+async def delete_timeout_board_config(guild_id: str):
+    await database.execute(
+        timeout_board_config.delete().where(
+            timeout_board_config.c.guild_id == str(guild_id))
+    )
+
+
+async def list_timeout_board_configs():
+    rows = await database.fetch_all(timeout_board_config.select())
+    return [dict(r) for r in rows]

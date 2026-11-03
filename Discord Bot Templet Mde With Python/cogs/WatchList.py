@@ -7,6 +7,8 @@ user sends is mirrored to a configured log channel. All state lives in
 This system is intentionally separate from the main Logger.
 """
 import re
+import time
+import traceback
 from datetime import datetime, timezone
 
 import discord
@@ -47,6 +49,17 @@ MAX_ATTACHMENTS = 10
 _CHUNK_LIMIT = 1000  # stay under Discord's 1024-char field limit
 _MENTION_RE = re.compile(r"<@!?(\d+)>")
 
+# Shortest gap between reload retries while the store is unusable.
+# Keeps a persistently locked database from stalling the event loop
+# on every command (or every message) while it is down.
+_RELOAD_MIN_INTERVAL_S = 30.0
+
+
+class WatchListUnavailable(Exception):
+    """The watch-list store could not be read. Commands must fail
+    loudly instead of operating on (or saving) an empty fallback —
+    a save over an unloaded store would wipe the live table."""
+
 ORANGE = discord.Color.orange()
 
 
@@ -69,26 +82,79 @@ class WatchList(commands.Cog):
 
     def __init__(self, bot):
         self.bot = bot
+        self._db_ok = False
+        self._last_reload_attempt = 0.0
         self.db = self._load_db()
 
     # ----- storage -----
 
     def _load_db(self):
+        """Load the store. On failure, log loudly and mark the store
+        unusable — never hand back an empty dict as if it were real
+        data (the next save would overwrite the live table with it)."""
         try:
             data = load_json(WATCHLIST_FILE)
-            return data if isinstance(data, dict) else {}
-        except Exception as e:
-            print(f"[WatchList] Could not load {WATCHLIST_FILE}: {e}")
+            if not isinstance(data, dict):
+                data = {}
+            self._db_ok = True
+            return data
+        except Exception:
+            self._db_ok = False
+            print(f"[WatchList] ERROR: Could not load {WATCHLIST_FILE}; "
+                  "the watch list is unavailable until a reload succeeds.")
+            traceback.print_exc()
             return {}
 
+    def _ensure_loaded(self):
+        """True when the in-memory store is trustworthy.
+
+        Retries the load (at most once per _RELOAD_MIN_INTERVAL_S)
+        when the boot load failed or a save failed. Returns False
+        without retrying when the last attempt was too recent.
+        """
+        if self._db_ok:
+            return True
+        now = time.monotonic()
+        if now - self._last_reload_attempt < _RELOAD_MIN_INTERVAL_S:
+            return False
+        self._last_reload_attempt = now
+        data = self._load_db()
+        if self._db_ok:
+            self.db = data
+            return True
+        return False
+
     def _save_db(self):
+        """Persist the in-memory store. Returns True on success.
+
+        Refuses to write while the store is unusable — a write then
+        would overwrite live data with the empty fallback. A failed
+        save marks the store unusable so the next command reloads
+        from disk instead of trusting the in-memory copy, and logs
+        loudly instead of the old quiet one-line print.
+        """
+        if not self._db_ok:
+            print("[WatchList] ERROR: Refusing to save watchlist_data: "
+                  "the store was never loaded successfully.")
+            return False
         try:
             save_json(WATCHLIST_FILE, self.db)
-        except Exception as e:
-            print(f"[WatchList] Could not save {WATCHLIST_FILE}: {e}")
+            return True
+        except Exception:
+            self._db_ok = False
+            print("[WatchList] ERROR: Could not save watchlist_data.")
+            traceback.print_exc()
+            return False
 
     def _guild_data(self, guild_id):
-        """Get (creating if needed) this guild's watch-list data."""
+        """Get (creating if needed) this guild's watch-list data.
+
+        Raises WatchListUnavailable when the store cannot be read —
+        callers must not operate on (or save) an empty fallback.
+        """
+        if not self._ensure_loaded():
+            raise WatchListUnavailable(
+                "watchlist_data could not be loaded")
         gid = str(guild_id)
         data = self.db.get(gid)
         if not isinstance(data, dict):
@@ -278,6 +344,11 @@ class WatchList(commands.Cog):
     async def on_message(self, message):
         if message.guild is None or message.author.bot:
             return
+        # Never retry the load from the message path: a persistently
+        # locked database would stall the event loop on every message.
+        # Commands heal the store (via _ensure_loaded) when it recovers.
+        if not self._db_ok:
+            return
         guild = message.guild
         if not self._is_watched(guild.id, message.author.id):
             return
@@ -312,7 +383,11 @@ class WatchList(commands.Cog):
                               ephemeral=True)
             return
         guild_data["users"][str(user.id)] = self._user_record(user, ctx.author)
-        self._save_db()
+        if not self._save_db():
+            await ctx.respond("⚠️ The watch list could not be saved "
+                              "(database error) — the change did not stick. "
+                              "Try again in a moment.", ephemeral=True)
+            return
         await ctx.respond(embed=self._added_embed(user, ctx.author), ephemeral=True)
 
     @discord.slash_command(name="watch_remove", description="Remove a user from the watch list.")
@@ -327,7 +402,11 @@ class WatchList(commands.Cog):
                               ephemeral=True)
             return
         del guild_data["users"][str(user.id)]
-        self._save_db()
+        if not self._save_db():
+            await ctx.respond("⚠️ The watch list could not be saved "
+                              "(database error) — the change did not stick. "
+                              "Try again in a moment.", ephemeral=True)
+            return
         await ctx.respond(f"🗑️ Removed {user.mention} from the watch list.",
                           ephemeral=True)
 
@@ -352,7 +431,11 @@ class WatchList(commands.Cog):
                               ephemeral=True)
             return
         guild_data["users"][str(member.id)] = self._user_record(member, ctx.author)
-        self._save_db()
+        if not self._save_db():
+            await ctx.respond("⚠️ The watch list could not be saved "
+                              "(database error) — the change did not stick. "
+                              "Try again in a moment.", ephemeral=True)
+            return
         await ctx.respond(embed=self._added_embed(member, ctx.author), ephemeral=True)
 
     @discord.slash_command(name="watch_remove_id", description="Remove a user from the watch list by ID.")
@@ -372,7 +455,11 @@ class WatchList(commands.Cog):
             await ctx.respond(f"❌ User ID `{numeric_id}` is not on the watch list.",
                               ephemeral=True)
             return
-        self._save_db()
+        if not self._save_db():
+            await ctx.respond("⚠️ The watch list could not be saved "
+                              "(database error) — the change did not stick. "
+                              "Try again in a moment.", ephemeral=True)
+            return
         member = ctx.guild.get_member(numeric_id)
         display = member.mention if member else f"`{removed.get('display_name', 'Unknown User')}`"
         await ctx.respond(f"🗑️ Removed {display} from the watch list.\nID: `{numeric_id}`",
@@ -494,7 +581,11 @@ class WatchList(commands.Cog):
                                 channel: discord.Option(discord.TextChannel, "Channel for watch-list logs")):  # type: ignore
         """Set the logging channel."""
         self._guild_data(ctx.guild.id)["log_channel_id"] = str(channel.id)
-        self._save_db()
+        if not self._save_db():
+            await ctx.respond("⚠️ The watch list could not be saved "
+                              "(database error) — the change did not stick. "
+                              "Try again in a moment.", ephemeral=True)
+            return
         embed = discord.Embed(
             title="👁️ Watch List Log Channel Updated",
             color=discord.Color.green(),
@@ -530,10 +621,30 @@ class WatchList(commands.Cog):
             @discord.ui.button(label="Clear Watch List",
                                style=discord.ButtonStyle.danger, emoji="🗑️")
             async def confirm(self, button, interaction):
-                data = self.cog._guild_data(interaction.guild.id)
+                try:
+                    data = self.cog._guild_data(interaction.guild.id)
+                except WatchListUnavailable:
+                    for child in self.children:
+                        child.disabled = True
+                    await interaction.response.edit_message(
+                        content="⚠️ The watch list is temporarily unavailable "
+                                "(the database could not be read). Nothing was "
+                                "changed — try again in a moment.",
+                        embed=None, view=self)
+                    self.stop()
+                    return
                 count = len(data.get("users", {}))
                 data["users"] = {}
-                self.cog._save_db()
+                if not self.cog._save_db():
+                    for child in self.children:
+                        child.disabled = True
+                    await interaction.response.edit_message(
+                        content="⚠️ The watch list could not be saved "
+                                "(database error) — the change did not stick. "
+                                "Try again in a moment.",
+                        embed=None, view=self)
+                    self.stop()
+                    return
                 for child in self.children:
                     child.disabled = True
                 await interaction.response.edit_message(
@@ -573,6 +684,24 @@ class WatchList(commands.Cog):
             if not str(name).startswith("watch_"):
                 return
         except Exception:
+            return
+        # Fail-closed path: the store could not be read, so the command
+        # never ran. Unwrap pycord's invoke wrapper if present.
+        err = error
+        while getattr(err, "original", None) is not None:
+            err = err.original
+        if isinstance(err, WatchListUnavailable):
+            print(f"[WatchList] Command unavailable: {err}")
+            try:
+                msg = ("⚠️ The watch list is temporarily unavailable "
+                       "(the database could not be read). Nothing was "
+                       "changed — try again in a moment.")
+                if ctx.response.is_done():
+                    await ctx.followup.send(msg, ephemeral=True)
+                else:
+                    await ctx.respond(msg, ephemeral=True)
+            except Exception:
+                pass
             return
         print(f"[WatchList] Command error: {error}")
         try:

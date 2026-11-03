@@ -5,7 +5,7 @@ const sidebars = {
     {
       type: 'category',
       label: 'Fundamentals',
-      items: ['project-map', 'boot-sequence', 'cogs', 'views-buttons', 'permissions', 'config-helpers'],
+      items: ['project-map', 'boot-sequence', 'cogs', 'commands', 'views-buttons', 'permissions', 'config-helpers'],
     },
     {
       type: 'category',

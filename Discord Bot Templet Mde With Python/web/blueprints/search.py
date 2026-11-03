@@ -1,6 +1,7 @@
 from flask import Blueprint, jsonify, request
 
-from web.services.discord_state import discord_state
+from web.services import bridge
+from web.services.member_service import MemberService
 from web.security.decorators import require_guild_manage, require_login, require_guild_moderator
 
 
@@ -12,17 +13,13 @@ search_api = Blueprint(
 
 def get_guild(guild_id):
 
-    bot = discord_state.get_bot()
-
-    if bot is None:
+    if not bridge.bot_is_ready():
         return None
 
-    if not discord_state.ready:
+    try:
+        return bridge.get_guild(int(guild_id))
+    except Exception:
         return None
-
-    return bot.get_guild(
-        int(guild_id)
-    )
 
 
 @search_api.get(
@@ -30,6 +27,13 @@ def get_guild(guild_id):
 )
 @require_guild_moderator
 def search_server(guild_id):
+
+    if not bridge.bot_is_ready():
+
+        return jsonify({
+            "success": False,
+            "error": "Discord bot is not connected."
+        }), 503
 
     guild = get_guild(
         guild_id
@@ -77,17 +81,17 @@ def search_server(guild_id):
     # MEMBERS
     # -----------------------------------------------------
 
-    for member in guild.members:
+    for member in MemberService().get_members(guild_id):
 
         values = [
 
-            str(member.id),
+            str(member.get("id")),
 
-            member.name or "",
+            member.get("username") or "",
 
-            member.display_name or "",
+            member.get("display_name") or "",
 
-            member.nick or ""
+            member.get("nickname") or ""
 
         ]
 
@@ -100,26 +104,22 @@ def search_server(guild_id):
             members.append({
 
                 "id":
-                    str(member.id),
+                    str(member.get("id")),
 
                 "username":
-                    member.name,
+                    member.get("username"),
 
                 "display_name":
-                    member.display_name,
+                    member.get("display_name"),
 
                 "nickname":
-                    member.nick,
+                    member.get("nickname"),
 
                 "bot":
-                    member.bot,
+                    member.get("bot"),
 
                 "avatar":
-                    (
-                        str(member.display_avatar.url)
-                        if member.display_avatar
-                        else None
-                    )
+                    member.get("avatar")
             })
 
 
@@ -127,34 +127,26 @@ def search_server(guild_id):
     # CHANNELS
     # -----------------------------------------------------
 
-    for channel in guild.channels:
+    for channel in (bridge.get_channels(int(guild_id)) or []):
 
-        if query in channel.name.lower():
+        if query in (channel.get("name") or "").lower():
 
             channels.append({
 
                 "id":
-                    str(channel.id),
+                    str(channel.get("id")),
 
                 "name":
-                    channel.name,
+                    channel.get("name"),
 
                 "type":
-                    str(channel.type),
+                    str(channel.get("type")),
 
                 "position":
-                    getattr(
-                        channel,
-                        "position",
-                        0
-                    ),
+                    channel.get("position", 0),
 
                 "category":
-                    (
-                        channel.category.name
-                        if channel.category
-                        else None
-                    )
+                    channel.get("category")
             })
 
 
@@ -162,36 +154,36 @@ def search_server(guild_id):
     # ROLES
     # -----------------------------------------------------
 
-    for role in guild.roles:
+    for role in (bridge.get_roles(int(guild_id)) or []):
 
-        if role.name == "@everyone":
+        if role.get("name") == "@everyone":
             continue
 
 
         if (
-            query in role.name.lower()
-            or query in str(role.id)
+            query in (role.get("name") or "").lower()
+            or query in str(role.get("id"))
         ):
 
             roles.append({
 
                 "id":
-                    str(role.id),
+                    str(role.get("id")),
 
                 "name":
-                    role.name,
+                    role.get("name"),
 
                 "position":
-                    role.position,
+                    role.get("position"),
 
                 "color":
-                    str(role.color),
+                    role.get("color"),
 
                 "managed":
-                    role.managed,
+                    role.get("managed"),
 
                 "mentionable":
-                    role.mentionable
+                    role.get("mentionable")
             })
 
 
@@ -200,7 +192,7 @@ def search_server(guild_id):
         "success": True,
 
         "guild_id":
-            str(guild.id),
+            str(guild.get("id")),
 
         "query":
             query,

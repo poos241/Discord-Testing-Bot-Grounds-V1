@@ -88,7 +88,7 @@ from web.services.discord_state import discord_state
 # CREATE APP
 # ============================================================
 
-def create_app(bot):
+def create_app(bot=None):
 
     # Windows registry maps .js to text/plain, which makes browsers refuse
     # to execute our scripts. Force the correct MIME types.
@@ -108,14 +108,22 @@ def create_app(bot):
         os.environ.get("WEB_COOKIE_SECURE", "").lower() in ("1", "true", "yes")
     )
 
-    # Store Discord bot inside Flask config.
+    # Store the (always None, post-split) bot reference inside Flask
+    # config for any legacy reader. The website holds no live bot.
     app.config["BOT"] = bot
     app.config["DISCORD_BOT"] = bot
 
-    # Hand the live bot to the discord_state shim used by blueprints/services.
+    # Hand the bot reference to the discord_state shim used by
+    # blueprints/services. Post-split this is always None: set_bot
+    # discards any live object and the shim answers from the bridge.
     discord_state.set_bot(bot)
 
-    app.config["MAX_CONTENT_LENGTH"] = 2 * 1024 * 1024
+    # Upload cap: must match MAX_UPLOAD_BYTES (5 MB) in
+    # web/blueprints/profiles.py and the "Max 5 MB" text on the edit
+    # page. Flask rejects anything over this with a generic 413 before
+    # the route's own check ever runs, so a lower cap here used to kill
+    # 2-5 MB background uploads the site advertises as allowed.
+    app.config["MAX_CONTENT_LENGTH"] = 5 * 1024 * 1024
 
     @app.context_processor
     def inject_security_helpers():
@@ -296,7 +304,6 @@ def create_app(bot):
             get_access_level,
             has_access,
         )
-        from web.services.discord_state import discord_state
 
         if not session.get("user"):
 
@@ -327,17 +334,45 @@ def create_app(bot):
             )
 
         # Regular members get a basic server info screen.
-        bot = discord_state.get_bot()
-        guild = bot.get_guild(int(guild_id)) if bot else None
+        # Bridge split: the guild dict comes from the bot-side bridge;
+        # when the bot is down the fallback ("Unknown server") already
+        # below is used, exactly as before.
         info = {
-            "name": guild.name if guild else "Unknown server",
-            "icon": str(guild.icon.url) if guild and guild.icon else None,
-            "member_count": guild.member_count if guild else 0,
-            "channel_count": len(guild.channels) if guild else 0,
-            "role_count": len(guild.roles) if guild else 0,
-            "created_at": guild.created_at.strftime("%B %d, %Y") if guild and guild.created_at else "Unknown",
-            "description": guild.description or "",
+            "name": "Unknown server",
+            "icon": None,
+            "member_count": 0,
+            "channel_count": 0,
+            "role_count": 0,
+            "created_at": "Unknown",
+            "description": "",
         }
+        try:
+            from web.services import bridge
+
+            guild = bridge.get_guild(int(guild_id))
+            if guild:
+                created_at = "Unknown"
+                raw_created = guild.get("created_at")
+                if raw_created:
+                    try:
+                        import datetime
+
+                        created_at = datetime.datetime.fromisoformat(
+                            str(raw_created).replace("Z", "+00:00")
+                        ).strftime("%B %d, %Y")
+                    except Exception:
+                        created_at = str(raw_created)
+                info = {
+                    "name": guild.get("name") or "Unknown server",
+                    "icon": guild.get("icon"),
+                    "member_count": int(guild.get("member_count") or 0),
+                    "channel_count": int(guild.get("channel_count") or 0),
+                    "role_count": int(guild.get("role_count") or 0),
+                    "created_at": created_at,
+                    "description": guild.get("description") or "",
+                }
+        except Exception as exc:
+            print(f"[Server Dashboard] Bridge guild lookup failed: {exc}")
 
         return render_template(
             "server_basic.html",
@@ -723,36 +758,21 @@ def create_app(bot):
     @app.get("/favicon.ico")
     def favicon():
 
-        bot = app.config.get(
-            "BOT"
-        )
+        # Bridge split: the bot avatar comes from the bridge status
+        # endpoint. When the bot is down, fall back to the static
+        # favicon (the fallback already existed).
+        try:
+            from web.services import bridge
 
+            user = (bridge.status().get("user") or {})
+            avatar_url = user.get("avatar_url")
+            if avatar_url:
+                return redirect(avatar_url)
+        except Exception as exc:
 
-        if (
-            bot is not None
-            and getattr(
-                bot,
-                "user",
-                None
-            ) is not None
-        ):
-
-            try:
-
-                avatar_url = str(
-                    bot.user.display_avatar.url
-                )
-
-                return redirect(
-                    avatar_url
-                )
-
-            except Exception as exc:
-
-                print(
-                    f"[Favicon] Failed to load bot avatar: {exc}"
-                )
-
+            print(
+                f"[Favicon] Failed to load bot avatar: {exc}"
+            )
 
         return redirect(
             url_for(

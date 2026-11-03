@@ -25,7 +25,7 @@ from flask import (
 
 from web.blueprints.auth import get_csrf_token, get_user_guilds
 from web.security.decorators import require_login
-from web.services.discord_state import discord_state, run_coro_threadsafe
+from web.services.discord_state import run_coro_threadsafe
 
 
 profiles_api = Blueprint(
@@ -482,6 +482,38 @@ def _load_eatyeet():
     return {}
 
 
+def _resolve_display(user_id):
+    """(display_name, avatar_url) for a user id, from the first bot
+    guild they are a member of (bridge), or (None, None).
+
+    The old code used bot.get_user() (global user cache); the bridge
+    has no global user lookup, so membership in any shared guild is
+    the source now. Shared by the public profile page, the member
+    directory, and the friends list. A user's banner is not
+    available this way and degrades to None on the public page.
+    """
+    try:
+        from web.services import bridge
+        guilds = bridge.get_guilds() or []
+    except Exception:
+        return None, None
+    try:
+        uid = int(user_id)
+    except (TypeError, ValueError):
+        return None, None
+    for guild in guilds:
+        try:
+            member = bridge.get_member(guild.get("id"), uid)
+        except Exception:
+            continue
+        if member:
+            return (
+                member.get("display_name") or member.get("username"),
+                member.get("avatar"),
+            )
+    return None, None
+
+
 def get_user_stats(user_id):
 
     """Aggregate a user's stats across every guild the bot is in.
@@ -491,7 +523,6 @@ def get_user_stats(user_id):
     """
 
     user_id = str(user_id)
-    bot = discord_state.bot
 
     per_guild = []
     total_xp = 0
@@ -505,7 +536,18 @@ def get_user_stats(user_id):
 
     eatyeet = _load_eatyeet()
 
-    if bot is None or not discord_state.ready:
+    # Bridge split: the guild list comes from the bridge, not
+    # bot.guilds. get_levels stays a local-loop (Class A) read.
+    try:
+        from web.services import bridge
+
+        bot_guilds = bridge.get_guilds() or []
+        bot_ready = True
+    except Exception:
+        bot_guilds = []
+        bot_ready = False
+
+    if not bot_ready:
 
         return {
             "per_guild": per_guild,
@@ -523,9 +565,9 @@ def get_user_stats(user_id):
             "bot_ready": False,
         }
 
-    for guild in bot.guilds:
+    for guild in bot_guilds:
 
-        gid = str(guild.id)
+        gid = str(guild.get("id"))
 
         try:
 
@@ -585,18 +627,20 @@ def get_user_stats(user_id):
 
         try:
 
-            member = guild.get_member(int(user_id))
+            member = bridge.get_member(gid, int(user_id))
 
-            if member is not None and member.joined_at is not None:
+            if member is not None and member.get("joined_at") is not None:
 
-                joined_at = member.joined_at.isoformat()
+                joined_at = member.get("joined_at")
 
                 if member_since is None or joined_at < member_since:
 
                     member_since = joined_at
 
-        except (ValueError, TypeError):
+        except Exception:
 
+            # Bad id, or the bridge died mid-loop: joined_at stays
+            # unknown for this guild rather than breaking the page.
             pass
 
         xp_needed = level * 100
@@ -607,8 +651,8 @@ def get_user_stats(user_id):
 
         per_guild.append({
             "guild_id": gid,
-            "guild_name": guild.name,
-            "guild_icon": str(guild.icon.url) if guild.icon else None,
+            "guild_name": guild.get("name"),
+            "guild_icon": guild.get("icon"),
             "xp": xp,
             "level": level,
             "rank": rank,
@@ -786,54 +830,58 @@ def _member_roles(guild_id, user_id):
 
     try:
 
-        bot = discord_state.bot
+        from web.services import bridge
 
-        if bot is None or not discord_state.ready:
-
-            return [], None
-
-        guild = bot.get_guild(int(guild_id))
+        guild = bridge.get_guild(int(guild_id))
 
         if guild is None:
 
             return [], None
 
-        member = guild.get_member(int(user_id))
+        member = bridge.get_member(int(guild_id), int(user_id))
 
         if member is None:
 
-            try:
-
-                member = run_coro_threadsafe(
-                    guild.fetch_member(int(user_id))
-                ).result(timeout=15)
-
-            except Exception:
-
-                member = None
-
-        if member is None:
-
-            return [], guild.name
+            return [], guild.get("name")
 
         roles = []
 
-        for r in getattr(member, "roles", []):
+        for r in member.get("roles") or []:
 
-            if r.name == "@everyone":
+            if r.get("name") == "@everyone":
 
                 continue
 
-            color = r.color.value if hasattr(r, "color") else 0
+            # Bridge role colour is a '#rrggbb' string; normalise to
+            # the old '#%06x' shape ('' when the value is 0/black).
+            raw_color = r.get("color")
+            color_value = 0
+            if isinstance(raw_color, str):
+                text = raw_color.strip()
+                if text.startswith("#"):
+                    try:
+                        color_value = int(text[1:], 16)
+                    except ValueError:
+                        color_value = 0
+                else:
+                    try:
+                        color_value = int(text)
+                    except ValueError:
+                        color_value = 0
+            else:
+                try:
+                    color_value = int(raw_color or 0)
+                except (TypeError, ValueError):
+                    color_value = 0
 
             roles.append({
-                "name": r.name,
-                "color": ("#%06x" % color) if color else "",
+                "name": r.get("name"),
+                "color": ("#%06x" % color_value) if color_value else "",
             })
 
         roles.reverse()
 
-        return roles, guild.name
+        return roles, guild.get("name")
 
     except Exception:
 
@@ -1189,32 +1237,12 @@ def get_public_profile(user_id):
         }), 404
 
     # Display name + avatar/banner from the bot (shared servers only).
-    display_name = None
-    avatar_url = None
+    # Bridge split: resolved from the first bot guild the user is a
+    # member of (see _resolve_display). There is no bridge endpoint
+    # for a user's banner, so banner_url degrades to None here -- the
+    # profile's own uploaded banner still shows when set.
+    display_name, avatar_url = _resolve_display(user_id)
     banner_url = None
-    bot = discord_state.bot
-
-    if bot is not None and discord_state.ready:
-
-        try:
-
-            member_user = bot.get_user(int(user_id))
-
-            if member_user is not None:
-
-                display_name = (
-                    member_user.global_name
-                    or member_user.name
-                )
-                avatar_url = str(member_user.display_avatar.url)
-
-                if member_user.banner is not None:
-
-                    banner_url = str(member_user.banner.url)
-
-        except (ValueError, TypeError):
-
-            pass
 
     stats = get_user_stats(user_id)
 

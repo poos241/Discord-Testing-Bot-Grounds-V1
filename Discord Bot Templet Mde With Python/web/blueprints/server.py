@@ -3,7 +3,7 @@ from flask import (
     jsonify,
 )
 
-from web.services.discord_state import discord_state
+from web.services import bridge
 
 from web.services.permissions import (
     get_access_level,
@@ -29,9 +29,7 @@ servers_api = Blueprint(
 @require_login
 def servers():
 
-    bot = discord_state.bot
-
-    if bot is None:
+    if not bridge.bot_is_ready():
 
         return jsonify({
 
@@ -50,28 +48,6 @@ def servers():
         }), 503
 
 
-    if (
-        not discord_state.ready
-        or not bot.is_ready()
-    ):
-
-        return jsonify({
-
-            "success":
-                False,
-
-            "error":
-                "Discord bot is not ready.",
-
-            "servers":
-                [],
-
-            "count":
-                0,
-
-        }), 503
-
-
     # =====================================================
     # BUILD SERVER LIST
     # =====================================================
@@ -80,11 +56,15 @@ def servers():
 
     result = []
 
+    try:
+        bot_guilds = bridge.get_guilds() or []
+    except Exception:
+        bot_guilds = []
 
-    for guild in bot.guilds:
+    for guild in bot_guilds:
 
         guild_id = str(
-            guild.id
+            guild.get("id")
         )
 
 
@@ -107,56 +87,32 @@ def servers():
                     guild_id,
 
                 "name":
-                    guild.name,
+                    guild.get("name"),
 
                 "member_count":
-                    int(
-                        guild.member_count
-                        or len(
-                            guild.members
-                        )
-                        or 0
-                    ),
+                    int(guild.get("member_count") or 0),
 
                 "channel_count":
-                    len(
-                        guild.channels
-                    ),
+                    int(guild.get("channel_count") or 0),
 
                 "role_count":
-                    len(
-                        guild.roles
-                    ),
+                    int(guild.get("role_count") or 0),
 
                 "category_count":
-                    len(
-                        guild.categories
-                    ),
+                    int(guild.get("category_count") or 0),
 
                 "icon":
-                    (
-                        str(
-                            guild.icon.url
-                        )
-                        if guild.icon
-                        else None
-                    ),
+                    guild.get("icon"),
 
                 "banner":
-                    (
-                        str(
-                            guild.banner.url
-                        )
-                        if guild.banner
-                        else None
-                    ),
+                    guild.get("banner"),
 
                 "owner_id":
                     (
                         str(
-                            guild.owner_id
+                            guild.get("owner_id")
                         )
-                        if guild.owner_id
+                        if guild.get("owner_id")
                         else None
                     ),
 
@@ -187,7 +143,7 @@ def servers():
 
             print(
                 "[Servers API] Failed to serialize "
-                f"{guild.id}: {exc}"
+                f"{guild.get('id')}: {exc}"
             )
 
 
@@ -223,10 +179,7 @@ def get_server_channels(
     guild_id
 ):
 
-    bot = discord_state.bot
-
-
-    if bot is None:
+    if not bridge.bot_is_ready():
 
         return jsonify({
 
@@ -239,23 +192,7 @@ def get_server_channels(
         }), 503
 
 
-    if (
-        not discord_state.ready
-        or not bot.is_ready()
-    ):
-
-        return jsonify({
-
-            "success":
-                False,
-
-            "error":
-                "Discord bot is not ready.",
-
-        }), 503
-
-
-    guild = bot.get_guild(
+    guild = bridge.get_guild(
         int(guild_id)
     )
 
@@ -273,60 +210,50 @@ def get_server_channels(
         }), 404
 
 
+    try:
+        bridge_channels = bridge.get_channels(int(guild_id)) or []
+    except Exception:
+        bridge_channels = []
+
     channels = []
 
 
-    for channel in guild.channels:
+    for channel in bridge_channels:
 
         channels.append({
 
             "id":
                 str(
-                    channel.id
+                    channel.get("id")
                 ),
 
             "name":
-                channel.name,
+                channel.get("name"),
 
             "type":
                 str(
-                    channel.type
+                    channel.get("type")
                 ),
 
             "position":
-                channel.position,
+                channel.get("position", 0),
 
             "category_id":
-                (
-                    str(
-                        channel.category_id
-                    )
-                    if channel.category_id
-                    else None
-                ),
+                channel.get("category_id"),
 
             "category":
-                (
-                    channel.category.name
-                    if channel.category
-                    else None
-                ),
+                channel.get("category"),
 
             "nsfw":
                 bool(
-                    getattr(
-                        channel,
+                    channel.get(
                         "nsfw",
                         False
                     )
                 ),
 
             "created_at":
-                (
-                    channel.created_at.isoformat()
-                    if channel.created_at
-                    else None
-                ),
+                channel.get("created_at"),
 
         })
 

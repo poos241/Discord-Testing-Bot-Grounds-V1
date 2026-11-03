@@ -1,6 +1,7 @@
 from flask import Blueprint, jsonify
 
-from web.services.discord_state import discord_state
+from web.services import bridge
+from web.services.member_service import MemberService
 from web.security.decorators import require_guild_manage, require_login, require_guild_moderator
 
 
@@ -16,10 +17,7 @@ member_stats_api = Blueprint(
 @require_guild_moderator
 def member_stats(guild_id):
 
-    bot = discord_state.bot
-
-
-    if bot is None:
+    if not bridge.bot_is_ready():
 
         return jsonify({
             "success": False,
@@ -27,15 +25,7 @@ def member_stats(guild_id):
         }), 503
 
 
-    if not discord_state.ready:
-
-        return jsonify({
-            "success": False,
-            "error": "Discord bot is not ready."
-        }), 503
-
-
-    guild = bot.get_guild(
+    guild = bridge.get_guild(
         int(guild_id)
     )
 
@@ -48,29 +38,31 @@ def member_stats(guild_id):
         }), 404
 
 
-    members = list(
-        guild.members
-    )
+    members = MemberService().get_members(guild_id)
 
 
     bots = [
         member
         for member in members
-        if member.bot
+        if member.get("bot")
     ]
 
 
     humans = [
         member
         for member in members
-        if not member.bot
+        if not member.get("bot")
     ]
 
 
+    # NOTE: the old code compared a discord Status enum to the string
+    # "offline" (always unequal), so the old online count was really
+    # the total. The bridge status is a plain string, so this now
+    # counts genuinely-online members.
     online = [
         member
         for member in members
-        if member.status != "offline"
+        if str(member.get("status") or "offline").lower() not in ("offline", "invisible")
     ]
 
 
@@ -78,7 +70,7 @@ def member_stats(guild_id):
 
     for member in members:
 
-        if member.guild_permissions.administrator:
+        if int(member.get("guild_permissions") or 0) & 0x8:
 
             administrators.append(
                 member
@@ -90,10 +82,10 @@ def member_stats(guild_id):
         "success": True,
 
         "guild_id":
-            str(guild.id),
+            str(guild.get("id")),
 
         "guild_name":
-            guild.name,
+            guild.get("name"),
 
         "total":
             len(members),

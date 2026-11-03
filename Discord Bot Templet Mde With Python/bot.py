@@ -42,6 +42,8 @@ COGS = [
     "cogs.TimeCmd",
     "cogs.CustomBadges",
     "cogs.GHLog",
+    "cogs.Introduction",
+    "cogs.Modlogs",
 ]
 
 for cog in COGS:
@@ -67,6 +69,24 @@ async def on_message(message):
 # Set when the status-rotation task is started, so a second on_ready
 # (full reconnect) does not start a duplicate loop.
 _status_task = None
+
+# Set when the bridge API task is started. Same reconnect rule as the
+# status loop: start once from on_ready, restart if it ever finished.
+_bridge_task = None
+
+
+async def _run_bridge():
+    """Start the bridge API the standalone website talks to.
+
+    A failed bridge start is logged, never fatal: the bot keeps
+    running and the website degrades to 503s until the bridge is up.
+    """
+    try:
+        from bridge_api import start_bridge
+        await start_bridge(client)
+    except Exception:
+        print("[ERROR] Bridge API failed unexpectedly; the website will degrade to 503s.")
+        traceback.print_exc()
 
 
 async def change_status():
@@ -103,7 +123,7 @@ async def on_ready():
         print("   Invite the bot to those servers, or remove the IDs from GUILD_IDS in config.py.")
 
     # [OK] Sync slash commands. A sync failure must not kill the rest of
-    # startup: the bot, the status rotation, and the web dashboard all
+    # startup: the bot, the status rotation, and the bridge API all
     # still start (this is what the 2026-10-29 GHLog 400 broke).
     synced = True
     try:
@@ -117,7 +137,7 @@ async def on_ready():
         synced = False
         print(f"[ERROR] Command sync failed: {e!r}")
         print("   Slash commands may be out of date; the bot, status rotation,")
-        print("   and web dashboard will still start. Fix the cause and restart to re-sync.")
+        print("   and bridge API will still start. Fix the cause and restart to re-sync.")
 
     currentDT = DT.datetime.now()
 
@@ -130,27 +150,17 @@ async def on_ready():
     # [OK] Start any background tasks (once: a full reconnect re-runs
     # on_ready, and must not start a second status loop; a finished task
     # is restarted so the loop self-heals).
-    global _status_task
+    global _status_task, _bridge_task
     if _status_task is None or _status_task.done():
         _status_task = client.loop.create_task(change_status())
 
-    # [OK] Start the web dashboard (Flask in a background thread)
-    if os.getenv("WEB_ENABLED", "true").lower() in ("1", "true", "yes"):
-        try:
-            import threading
-            from web.app import create_app
-            from web.serve import run_server
-            web_app = create_app(client)
-            web_host = os.getenv("WEB_HOST", "0.0.0.0")
-            web_port = int(os.getenv("WEB_PORT", "5000"))
-            threading.Thread(
-                target=run_server,
-                args=(web_app, web_host, web_port),
-                daemon=True, name="web-ui",
-            ).start()
-            print(f"[WEB] Web dashboard running at http://{web_host}:{web_port}")
-        except Exception as e:
-            print(f"[WARN] Web dashboard failed to start: {e!r}")
+    # [OK] Start the bridge API the standalone website talks to --
+    # once only, for the same reconnect reason as the status loop.
+    # (The in-process website is gone: the website now runs as its own
+    # process; WEB_ENABLED is no longer read by the bot.)
+    if _bridge_task is None or _bridge_task.done():
+        _bridge_task = client.loop.create_task(_run_bridge())
+    print("[INFO] The website now runs as a separate process; the bot no longer starts it in-process.")
 
 
 if __name__ == "__main__":

@@ -1,6 +1,8 @@
 from flask import Blueprint, jsonify
 
-from web.services.discord_state import discord_state
+import discord
+
+from web.services import bridge
 from web.security.decorators import require_guild_manage, require_login, require_guild_moderator
 
 
@@ -19,9 +21,7 @@ def member_details(
     user_id
 ):
 
-    bot = discord_state.bot
-
-    if bot is None:
+    if not bridge.bot_is_ready():
 
         return jsonify({
             "success": False,
@@ -29,7 +29,7 @@ def member_details(
         }), 503
 
 
-    guild = bot.get_guild(
+    guild = bridge.get_guild(
         int(guild_id)
     )
 
@@ -41,7 +41,8 @@ def member_details(
         }), 404
 
 
-    member = guild.get_member(
+    member = bridge.get_member(
+        int(guild_id),
         int(user_id)
     )
 
@@ -56,41 +57,40 @@ def member_details(
     roles = []
 
 
-    for role in member.roles:
+    for role in (member.get("roles") or []):
 
-        if role.name == "@everyone":
+        if role.get("name") == "@everyone":
             continue
 
 
         roles.append({
 
             "id":
-                str(role.id),
+                str(role.get("id")),
 
             "name":
-                role.name,
+                role.get("name"),
 
             "position":
-                role.position,
+                role.get("position"),
 
             "color":
-                str(role.color),
+                role.get("color"),
 
             "managed":
-                role.managed
+                role.get("managed")
         })
 
 
-    permissions = []
+    guild_permissions = discord.Permissions(
+        int(member.get("guild_permissions") or 0)
+    )
 
-
-    for permission, enabled in member.guild_permissions:
-
-        if enabled:
-
-            permissions.append(
-                permission
-            )
+    permissions = [
+        name
+        for name, enabled in guild_permissions
+        if enabled
+    ]
 
 
     return jsonify({
@@ -98,56 +98,51 @@ def member_details(
         "success": True,
 
         "guild_id":
-            str(guild.id),
+            str(guild.get("id")),
 
         "member": {
 
             "id":
-                str(member.id),
+                str(member.get("id")),
 
             "username":
-                member.name,
+                member.get("username"),
 
             "display_name":
-                member.display_name,
+                member.get("display_name"),
 
             "nickname":
-                member.nick,
+                member.get("nickname"),
 
             "bot":
-                member.bot,
+                member.get("bot"),
 
+            # The bridge exposes no "system" flag; always False.
             "system":
-                member.system,
+                False,
 
             "avatar":
-                (
-                    str(member.display_avatar.url)
-                    if member.display_avatar
-                    else None
-                ),
+                member.get("avatar"),
 
             "created_at":
-                member.created_at.isoformat(),
+                member.get("created_at"),
 
             "joined_at":
-                (
-                    member.joined_at.isoformat()
-                    if member.joined_at
-                    else None
-                ),
+                member.get("joined_at"),
 
             "status":
-                str(member.status),
+                str(member.get("status") or "offline"),
 
+            # The bridge exposes only an overall status, not per-client
+            # statuses, so these degrade to the overall status.
             "desktop_status":
-                str(member.desktop_status),
+                str(member.get("status") or "offline"),
 
             "mobile_status":
-                str(member.mobile_status),
+                str(member.get("status") or "offline"),
 
             "web_status":
-                str(member.web_status),
+                str(member.get("status") or "offline"),
 
             "roles":
                 roles,
@@ -155,20 +150,16 @@ def member_details(
             "role_count":
                 len(roles),
 
-            "top_role": {
-
-                "id":
-                    str(member.top_role.id),
-
-                "name":
-                    member.top_role.name,
-
-                "position":
-                    member.top_role.position,
-
-                "color":
-                    str(member.top_role.color)
-            },
+            "top_role": (
+                {
+                    "id": str((member.get("top_role") or {}).get("id")),
+                    "name": (member.get("top_role") or {}).get("name"),
+                    "position": (member.get("top_role") or {}).get("position"),
+                    "color": (member.get("top_role") or {}).get("color"),
+                }
+                if member.get("top_role")
+                else None
+            ),
 
             "permissions":
                 permissions,
@@ -177,31 +168,31 @@ def member_details(
                 len(permissions),
 
             "administrator":
-                member.guild_permissions.administrator,
+                guild_permissions.administrator,
 
             "manage_guild":
-                member.guild_permissions.manage_guild,
+                guild_permissions.manage_guild,
 
             "manage_channels":
-                member.guild_permissions.manage_channels,
+                guild_permissions.manage_channels,
 
             "manage_roles":
-                member.guild_permissions.manage_roles,
+                guild_permissions.manage_roles,
 
             "manage_messages":
-                member.guild_permissions.manage_messages,
+                guild_permissions.manage_messages,
 
             "kick_members":
-                member.guild_permissions.kick_members,
+                guild_permissions.kick_members,
 
             "ban_members":
-                member.guild_permissions.ban_members,
+                guild_permissions.ban_members,
 
             "moderate_members":
-                member.guild_permissions.moderate_members,
+                guild_permissions.moderate_members,
 
             "manage_nicknames":
-                member.guild_permissions.manage_nicknames,
+                guild_permissions.manage_nicknames,
         }
 
     })

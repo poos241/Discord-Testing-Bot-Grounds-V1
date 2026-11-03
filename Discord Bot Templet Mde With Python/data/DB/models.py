@@ -521,3 +521,48 @@ ghlog_items = sqlalchemy.Table(
     sqlalchemy.Column("logged_by", sqlalchemy.String, default=""),
     sqlalchemy.Column("created_at", sqlalchemy.DateTime, server_default=func.now()),
 )
+
+# Introduction tracking (built 2026-11-02; see cogs/Introduction.py).
+# Ported from the Little Haven bot's introduction system. Per-guild
+# config (which channel/role, which behaviours are on) plus one row
+# per member per guild: whether they posted an introduction, when,
+# and the link to the intro message. New tables only --
+# create_all() creates these on the next bot boot and never alters
+# an existing table.
+
+introduction_status = sqlalchemy.Table(
+    "introduction_status", metadata,
+    sqlalchemy.Column("guild_id", sqlalchemy.String, nullable=False),
+    sqlalchemy.Column("user_id", sqlalchemy.String, nullable=False),
+    sqlalchemy.Column("has_introduced", sqlalchemy.Boolean, nullable=False, default=False),
+    sqlalchemy.Column("introduced_at", sqlalchemy.DateTime),
+    sqlalchemy.Column("message_url", sqlalchemy.String, default=""),
+    sqlalchemy.Column("created_at", sqlalchemy.DateTime, server_default=func.now()),
+    sqlalchemy.Column("updated_at", sqlalchemy.DateTime, server_default=func.now(), onupdate=func.now()),
+    sqlalchemy.PrimaryKeyConstraint("guild_id", "user_id")
+)
+
+introduction_config = sqlalchemy.Table(
+    "introduction_config", metadata,
+    sqlalchemy.Column("guild_id", sqlalchemy.String, primary_key=True),
+    sqlalchemy.Column("channel_id", sqlalchemy.String, default=""),
+    sqlalchemy.Column("role_id", sqlalchemy.String, default=""),
+    sqlalchemy.Column("log_channel_id", sqlalchemy.String, default=""),
+    sqlalchemy.Column("auto_assign_role", sqlalchemy.Boolean, nullable=False, default=True),
+    sqlalchemy.Column("auto_remove_role", sqlalchemy.Boolean, nullable=False, default=True),
+    sqlalchemy.Column("scan_on_message", sqlalchemy.Boolean, nullable=False, default=True),
+    sqlalchemy.Column("scan_limit", sqlalchemy.Integer, nullable=False, default=100),
+    sqlalchemy.Column("created_at", sqlalchemy.DateTime, server_default=func.now()),
+    sqlalchemy.Column("updated_at", sqlalchemy.DateTime, server_default=func.now(), onupdate=func.now())
+)
+
+# Timeout tracker board (built 2026-11-02; see cogs/admin_cog.py).
+# One row per guild: where the Active Timeouts board lives.
+timeout_board_config = sqlalchemy.Table(
+    "timeout_board_config", metadata,
+    sqlalchemy.Column("guild_id", sqlalchemy.String, primary_key=True),
+    sqlalchemy.Column("channel_id", sqlalchemy.String, default=""),
+    sqlalchemy.Column("message_id", sqlalchemy.String, default=""),
+    sqlalchemy.Column("created_at", sqlalchemy.DateTime, server_default=func.now()),
+    sqlalchemy.Column("updated_at", sqlalchemy.DateTime, server_default=func.now(), onupdate=func.now())
+)

@@ -13,7 +13,6 @@ from flask import Blueprint, jsonify, request, session, render_template
 
 from web import debug as dbg
 from web.blueprints.auth import get_csrf_token, get_user_guilds
-from web.services.discord_state import discord_state
 from web.services.permissions import has_access
 import secrets
 
@@ -154,10 +153,9 @@ def _is_staff():
     if not session.get("user"):
         return False
     try:
-        bot = discord_state.get_bot()
-        if bot is None:
-            return False
-        bot_guild_ids = {str(g.id) for g in bot.guilds}
+        from web.services import bridge
+
+        bot_guild_ids = {str(gid) for gid in bridge.get_bot_guild_ids()}
     except Exception:
         return False
     try:
@@ -266,7 +264,14 @@ def debug_clear_logs():
 
 @debug_api.get("/api/debug/bot-status")
 def debug_bot_status():
-    """Check if the Discord bot is alive and responsive."""
+    """Check if the Discord bot is alive and responsive.
+
+    Bridge split: bot state comes from bridge.status() /
+    bridge.get_guilds() -- there is no live bot object in this
+    process any more, so the old get_bot() read always said
+    "NOT CONNECTED". When the bridge is down the fields stay at
+    their disconnected defaults (same shape, connected False).
+    """
     denied = _require_staff()
     if denied:
         return denied
@@ -276,35 +281,37 @@ def debug_bot_status():
         "guild_count": 0,
         "guilds": [],
         "user": None,
+        # None when the boot-time profile-column migration succeeded;
+        # the error text when it failed (see data/DB/db.py).
+        "profile_migration_error": None,
     }
     try:
-        from web.services.discord_state import discord_state
-        bot = discord_state.get_bot()
-        if bot is not None:
-            try:
-                status["connected"] = bool(bot.is_ready())
-            except Exception:
-                pass
-            try:
-                latency = getattr(bot, "latency", None)
-                if latency is not None:
-                    status["latency_ms"] = round(latency * 1000, 1)
-            except Exception:
-                pass
-            try:
-                guilds = list(getattr(bot, "guilds", []) or [])
-                status["guild_count"] = len(guilds)
-                status["guilds"] = [
-                    {"id": str(g.id), "name": g.name} for g in guilds[:20]
-                ]
-            except Exception:
-                pass
-            try:
-                u = getattr(bot, "user", None)
-                if u:
-                    status["user"] = str(u)
-            except Exception:
-                pass
+        from data.DB.db import PROFILE_MIGRATION_ERROR
+        status["profile_migration_error"] = PROFILE_MIGRATION_ERROR
+    except Exception:
+        pass
+    try:
+        from web.services import bridge
+
+        info = bridge.status()
+        status["connected"] = bool(info.get("ready"))
+        latency = info.get("latency_ms")
+        if latency is not None:
+            status["latency_ms"] = round(float(latency), 1)
+        status["guild_count"] = int(info.get("guild_count") or 0)
+        user = info.get("user") or {}
+        if user.get("name"):
+            status["user"] = user["name"]
+        try:
+            guilds = bridge.get_guilds() or []
+            status["guilds"] = [
+                {"id": str(g.get("id")), "name": g.get("name")}
+                for g in guilds[:20]
+            ]
+            if status["guild_count"] == 0:
+                status["guild_count"] = len(status["guilds"])
+        except Exception:
+            pass
     except Exception as e:
         status["error"] = str(e)
     return jsonify({"success": True, **status})
@@ -324,11 +331,16 @@ def debug_bundle():
 
     # Bot status (reuse the logic)
     try:
-        from web.services.discord_state import discord_state
-        bot = discord_state.get_bot()
-        if bot is not None and bot.is_ready():
-            lines.append(f"Bot: CONNECTED as {bot.user} (latency {round(bot.latency*1000,1)}ms)")
-            lines.append(f"Guilds: {len(list(bot.guilds or []))}")
+        from web.services import bridge
+
+        info = bridge.status()
+        if info.get("ready"):
+            user = (info.get("user") or {}).get("name") or "?"
+            lines.append(
+                "Bot: CONNECTED as %s (latency %sms)"
+                % (user, info.get("latency_ms"))
+            )
+            lines.append("Guilds: %s" % (info.get("guild_count") or 0))
         else:
             lines.append("Bot: NOT CONNECTED / NOT READY")
     except Exception as e:

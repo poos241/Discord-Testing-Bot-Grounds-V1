@@ -38,7 +38,7 @@ from web.blueprints.profiles import (
     get_user_stats,
 )
 from web.security.decorators import require_login
-from web.services.discord_state import discord_state, run_coro_threadsafe
+from web.services.discord_state import run_coro_threadsafe
 
 
 directory_api = Blueprint(
@@ -56,23 +56,23 @@ def _person(user_id, profile):
     Same fallback order as the friends blueprint: live Discord
     name/avatar, then the saved profile display name / avatar
     URL, then a bare id fallback. No guild info is ever used,
-    so this cannot leak which servers the person is in.
+    so this cannot leak which servers the person is in. The live
+    lookup is the bridge-backed resolver in profiles.py.
     """
 
     user_id = str(user_id)
     name = ""
     avatar_url = ""
 
-    bot = discord_state.bot
-
-    if bot is not None and discord_state.ready:
-        try:
-            member_user = bot.get_user(int(user_id))
-            if member_user is not None:
-                name = member_user.global_name or member_user.name
-                avatar_url = str(member_user.display_avatar.url)
-        except (ValueError, TypeError):
-            pass
+    try:
+        from web.blueprints.profiles import _resolve_display
+        live_name, live_avatar = _resolve_display(user_id)
+        if live_name:
+            name = live_name
+        if live_avatar:
+            avatar_url = live_avatar
+    except Exception:
+        pass
 
     if not name:
         name = profile.get("display_name") or ""

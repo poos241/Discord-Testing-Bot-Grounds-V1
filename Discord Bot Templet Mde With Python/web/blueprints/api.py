@@ -4,8 +4,10 @@ from flask import Blueprint, jsonify, render_template, request, session
 import json
 
 from web.services.logger_db import logger_db as database
-from web.services.discord_state import discord_state
+from web.services import bridge
+from web.services.bridge import BridgeUnavailable
 from web.services.event_store import event_store
+from web.services.member_service import MemberService
 
 
 from web.services.statistics import statistics
@@ -28,6 +30,79 @@ api = Blueprint(
 
 
 # =========================================================
+# BRIDGE HELPERS
+#
+# Bridge split: there is no live bot object in this process.
+# These helpers replace the old "bot = discord_state.bot / if bot
+# is None / if not discord_state.ready" pairs, keeping each
+# route's exact error strings and status codes.
+# =========================================================
+
+def _bot_error(guild_id=None):
+    """(response, status) when the bot is down/not ready, else None.
+
+    Bridge unreachable -> "Discord bot is not connected." (503);
+    bridge up but bot not ready -> "Discord bot is not ready."
+    (503). guild_id is included in the payload when given (some
+    routes send it).
+    """
+    try:
+        info = bridge.status()
+    except Exception:
+        payload = {
+            "success": False,
+            "error": "Discord bot is not connected.",
+        }
+        if guild_id is not None:
+            payload["guild_id"] = str(guild_id)
+        return jsonify(payload), 503
+    if not info.get("ready"):
+        payload = {
+            "success": False,
+            "error": "Discord bot is not ready.",
+        }
+        if guild_id is not None:
+            payload["guild_id"] = str(guild_id)
+        return jsonify(payload), 503
+    return None
+
+
+def _guild_or_error(guild_id):
+    """(guild_dict, None) or (None, (response, status)).
+
+    Guild dicts come from the bridge. A 404 means the bot is not
+    in the guild; a 503 means the bot is down/not ready.
+    """
+    denied = _bot_error(guild_id)
+    if denied:
+        return None, denied
+    try:
+        guild = bridge.get_guild(int(guild_id))
+    except BridgeUnavailable:
+        return None, (jsonify({
+            "success": False,
+            "error": "Discord bot is not connected.",
+        }), 503)
+    if guild is None:
+        return None, (jsonify({
+            "success": False,
+            "error": "Discord server not found.",
+        }), 404)
+    return guild, None
+
+
+def _perm_names(value):
+    """Enabled permission names from a bitfield int (bridge roles
+    and guild_permissions are ints; the old code iterated live
+    discord.py Permissions objects)."""
+    try:
+        perms = discord.Permissions(int(value or 0))
+    except Exception:
+        return []
+    return [name for name, enabled in perms if enabled]
+
+
+# =========================================================
 # SYSTEM STATUS
 # =========================================================
 
@@ -35,96 +110,25 @@ api = Blueprint(
 @require_login
 def status():
 
-    bot = discord_state.bot
-
-    connected = (
-        bot is not None
-    )
-
-    ready = (
-        connected
-        and discord_state.ready
-        and bot.is_ready()
-    )
-
-
-    bot_data = None
-
-
-    if (
-        bot is not None
-        and bot.user is not None
-    ):
-
-        avatar = None
-
-        try:
-
-            avatar = str(
-                bot.user.display_avatar.url
-            )
-
-        except Exception:
-
-            avatar = None
-
-
-        bot_data = {
-
-            "id":
-                str(
-                    bot.user.id
-                ),
-
-            "name":
-                str(
-                    bot.user
-                ),
-
-            "username":
-                getattr(
-                    bot.user,
-                    "name",
-                    None
-                ),
-
-            "avatar":
-                avatar
-
-        }
-
-
-    bot_avatar = None
+    # Bridge split: bot identity/latency come from bridge.status().
+    # When the bridge is down everything reports disconnected (same
+    # shape as the old bot-is-None branch).
     bot_name = None
     bot_id = None
+    bot_avatar = None
+    connected = False
+    ready = False
 
-
-    if bot is not None:
-
-        bot_name = (
-            str(bot.user.name)
-            if bot.user
-            else None
-        )
-
-        bot_id = (
-            str(bot.user.id)
-            if bot.user
-            else None
-        )
-
-        if bot.user:
-
-            try:
-
-                bot_avatar = str(
-                    bot.user.display_avatar.url
-                )
-
-            except Exception:
-
-                bot_avatar = None
-
+    try:
+        info = bridge.status()
+        connected = True
+        ready = bool(info.get("ready"))
+        user = info.get("user") or {}
+        bot_id = user.get("id")
+        bot_name = user.get("name")
+        bot_avatar = user.get("avatar_url")
+    except Exception:
+        pass
 
     return {
 
@@ -327,24 +331,9 @@ def stats():
 @require_guild_moderator
 def server_info(guild_id):
 
-    bot = discord_state.bot
-
-    if bot is None:
-
-        return jsonify({
-            "success": False,
-            "error": "Discord bot is not connected.",
-            "guild_id": str(guild_id)
-        }), 503
-
-    if not discord_state.ready:
-
-        return jsonify({
-            "success": False,
-            "error": "Discord bot is not ready.",
-            "guild_id": str(guild_id)
-        }), 503
-
+    denied = _bot_error(guild_id)
+    if denied:
+        return denied
 
     info = guilds.get_guild_info(
         guild_id
@@ -377,93 +366,60 @@ def server_info(guild_id):
 @require_guild_moderator
 def server_overview(guild_id):
 
-    bot = discord_state.bot
+    guild, error = _guild_or_error(guild_id)
+    if error:
+        return error
 
-    if bot is None:
-        return jsonify({
-            "success": False,
-            "error": "Discord bot is not connected."
-        }), 503
-
-
-    if not discord_state.ready:
-        return jsonify({
-            "success": False,
-            "error": "Discord bot is not ready."
-        }), 503
-
-
-    guild = bot.get_guild(
-        int(guild_id)
-    )
-
-
-    if guild is None:
-        return jsonify({
-            "success": False,
-            "error": "Discord server not found."
-        }), 404
-
-
-    members = list(
-        guild.members
-    )
-
+    service = MemberService()
+    members = service.get_members(guild_id)
+    try:
+        channels = bridge.get_channels(int(guild_id)) or []
+    except Exception:
+        channels = []
+    try:
+        roles = bridge.get_roles(int(guild_id)) or []
+    except Exception:
+        roles = []
 
     humans = [
         member
         for member in members
-        if not member.bot
+        if not member.get("bot")
     ]
-
 
     bots = [
         member
         for member in members
-        if member.bot
+        if member.get("bot")
     ]
-
 
     online = [
         member
         for member in members
-        if member.status
+        if str(member.get("status") or "offline").lower()
         not in (
-            discord.Status.offline,
-            discord.Status.invisible
+            "offline",
+            "invisible"
         )
     ]
-
 
     text_channels = [
         channel
-        for channel in guild.channels
-        if isinstance(
-            channel,
-            discord.TextChannel
-        )
+        for channel in channels
+        if (channel.get("type") or "") == "text"
     ]
-
 
     voice_channels = [
         channel
-        for channel in guild.channels
-        if isinstance(
-            channel,
-            discord.VoiceChannel
-        )
+        for channel in channels
+        if (channel.get("type") or "") == "voice"
     ]
-
 
     categories = [
         channel
-        for channel in guild.channels
-        if isinstance(
-            channel,
-            discord.CategoryChannel
-        )
+        for channel in channels
+        if (channel.get("type") or "") == "category"
     ]
-
 
     return jsonify({
 
@@ -472,36 +428,32 @@ def server_overview(guild_id):
         "server": {
 
             "id":
-                str(guild.id),
+                str(guild.get("id")),
 
             "name":
-                guild.name,
+                guild.get("name"),
 
             "icon":
-                (
-                    guild.icon.url
-                    if guild.icon
-                    else None
-                ),
+                guild.get("icon"),
 
             "owner_id":
                 (
-                    str(guild.owner_id)
-                    if guild.owner_id
+                    str(guild.get("owner_id"))
+                    if guild.get("owner_id")
                     else None
                 ),
 
             "created_at":
-                guild.created_at.isoformat(),
+                guild.get("created_at"),
 
             "member_count":
-                guild.member_count,
+                int(guild.get("member_count") or len(members) or 0),
 
             "channel_count":
-                len(guild.channels),
+                len(channels),
 
             "role_count":
-                len(guild.roles)
+                len(roles)
 
         },
 
@@ -526,7 +478,7 @@ def server_overview(guild_id):
         "channels": {
 
             "count":
-                len(guild.channels),
+                len(channels),
 
             "text":
                 len(text_channels),
@@ -543,7 +495,7 @@ def server_overview(guild_id):
         "roles": {
 
             "count":
-                len(guild.roles)
+                len(roles)
 
         }
 
@@ -676,36 +628,22 @@ def server_channel(
     channel_id
 ):
 
-    bot = discord_state.bot
+    guild, error = _guild_or_error(guild_id)
+    if error:
+        return error
 
-    if bot is None:
-
+    try:
+        channels = bridge.get_channels(int(guild_id)) or []
+    except BridgeUnavailable:
         return jsonify({
             "success": False,
             "error": "Discord bot is not connected."
         }), 503
-
-    if not discord_state.ready:
-
-        return jsonify({
-            "success": False,
-            "error": "Discord bot is not ready."
-        }), 503
-
-    guild = bot.get_guild(
-        int(guild_id)
-    )
-
-    if guild is None:
-
-        return jsonify({
-            "success": False,
-            "error": "Discord server not found."
-        }), 404
-
-    channel = guild.get_channel(
-        int(channel_id)
-    )
+    channel = None
+    for candidate in channels:
+        if str(candidate.get("id")) == str(channel_id):
+            channel = candidate
+            break
 
     if channel is None:
 
@@ -719,67 +657,36 @@ def server_channel(
         "success": True,
 
         "guild_id":
-            str(guild.id),
+            str(guild.get("id")),
 
         "guild_name":
-            guild.name,
+            guild.get("name"),
 
         "channel": {
 
             "id":
-                str(channel.id),
+                str(channel.get("id")),
 
             "name":
-                channel.name,
+                channel.get("name"),
 
             "type":
-                str(channel.type),
+                channel.get("type"),
 
             "position":
-                getattr(
-                    channel,
-                    "position",
-                    0
-                ),
+                channel.get("position", 0),
 
-            "category_id": (
-                str(channel.category_id)
-                if getattr(
-                    channel,
-                    "category_id",
-                    None
-                )
-                else None
-            ),
+            "category_id":
+                channel.get("category_id"),
 
-            "category": (
-                channel.category.name
-                if getattr(
-                    channel,
-                    "category",
-                    None
-                )
-                else None
-            ),
+            "category":
+                channel.get("category"),
 
-            "created_at": (
-                channel.created_at.isoformat()
-                if getattr(
-                    channel,
-                    "created_at",
-                    None
-                )
-                else None
-            ),
+            "created_at":
+                channel.get("created_at"),
 
-            "mention": (
-                channel.mention
-                if hasattr(
-                    channel,
-                    "mention"
-                )
-                else None
-            )
+            "mention":
+                channel.get("mention")
         }
     })
 
@@ -794,80 +701,41 @@ def server_channel(
 @require_guild_moderator
 def server_channels_summary(guild_id):
 
-    bot = discord_state.bot
+    guild, error = _guild_or_error(guild_id)
+    if error:
+        return error
 
-    if bot is None:
-
+    try:
+        channels = bridge.get_channels(int(guild_id)) or []
+    except BridgeUnavailable:
         return jsonify({
             "success": False,
             "error": "Discord bot is not connected."
         }), 503
 
-    if not discord_state.ready:
+    def _of_type(*types):
+        return [
+            channel
+            for channel in channels
+            if (channel.get("type") or "") in types
+        ]
 
-        return jsonify({
-            "success": False,
-            "error": "Discord bot is not ready."
-        }), 503
-
-    guild = bot.get_guild(
-        int(guild_id)
-    )
-
-    if guild is None:
-
-        return jsonify({
-            "success": False,
-            "error": "Discord server not found."
-        }), 404
-
-    channels = guild.channels
-
-    text_channels = [
-        channel
-        for channel in channels
-        if str(channel.type) == "text"
-    ]
-
-    voice_channels = [
-        channel
-        for channel in channels
-        if str(channel.type) == "voice"
-    ]
-
-    categories = [
-        channel
-        for channel in channels
-        if str(channel.type) == "category"
-    ]
-
-    announcement_channels = [
-        channel
-        for channel in channels
-        if str(channel.type) == "news"
-    ]
-
-    stage_channels = [
-        channel
-        for channel in channels
-        if str(channel.type) == "stage_voice"
-    ]
-
-    forum_channels = [
-        channel
-        for channel in channels
-        if str(channel.type) == "forum"
-    ]
+    text_channels = _of_type("text")
+    voice_channels = _of_type("voice")
+    categories = _of_type("category")
+    announcement_channels = _of_type("news")
+    stage_channels = _of_type("stage_voice")
+    forum_channels = _of_type("forum")
 
     return jsonify({
 
         "success": True,
 
         "guild_id":
-            str(guild.id),
+            str(guild.get("id")),
 
         "guild_name":
-            guild.name,
+            guild.get("name"),
 
         "summary": {
 
@@ -954,23 +822,33 @@ def logger_channels(guild_id):
     if denied:
         return denied
 
-    bot = discord_state.bot
-    if bot is None or not discord_state.ready:
+    guild, error = _guild_or_error(guild_id)
+    if error:
+        return error
+
+    try:
+        bridge_channels = bridge.get_channels(int(guild_id)) or []
+    except BridgeUnavailable:
         return jsonify({"success": False, "error": "Discord bot is not ready."}), 503
 
-    guild = bot.get_guild(int(guild_id))
-    if guild is None:
-        return jsonify({"success": False, "error": "Discord server not found."}), 404
-
+    # Text-like channels can receive log messages (the old code kept
+    # channels with a .send method: text + news; forum channels can
+    # also receive messages).
     channels = []
-    for channel in sorted(guild.channels, key=lambda c: (getattr(c, "position", 0), str(c.name).lower())):
-        if not hasattr(channel, "send"):
+    for channel in sorted(
+        bridge_channels,
+        key=lambda c: (
+            c.get("position") or 0,
+            str(c.get("name") or "").lower(),
+        ),
+    ):
+        if (channel.get("type") or "") not in ("text", "news", "forum"):
             continue
         channels.append({
-            "id": str(channel.id),
-            "name": str(channel.name),
-            "type": str(getattr(channel, "type", "unknown")),
-            "category": getattr(getattr(channel, "category", None), "name", None),
+            "id": str(channel.get("id")),
+            "name": str(channel.get("name")),
+            "type": str(channel.get("type") or "unknown"),
+            "category": channel.get("category"),
         })
 
     return jsonify({"success": True, "guild_id": str(guild_id), "channels": channels})
@@ -992,18 +870,19 @@ def save_server_logging(guild_id):
     if not supplied or not secrets.compare_digest(supplied, expected):
         return jsonify({"success": False, "error": "Invalid CSRF token."}), 403
 
-    bot = discord_state.bot
-    if bot is None or not discord_state.ready:
+    guild, error = _guild_or_error(guild_id)
+    if error:
+        return error
+
+    try:
+        bridge_channels = bridge.get_channels(int(guild_id)) or []
+    except BridgeUnavailable:
         return jsonify({"success": False, "error": "Discord bot is not ready."}), 503
 
-    guild = bot.get_guild(int(guild_id))
-    if guild is None:
-        return jsonify({"success": False, "error": "Discord server not found."}), 404
-
     valid_channels = {
-        str(channel.id): channel
-        for channel in guild.channels
-        if hasattr(channel, "send")
+        str(channel.get("id"))
+        for channel in bridge_channels
+        if (channel.get("type") or "") in ("text", "news", "forum")
     }
 
     data = request.get_json(silent=True) or {}
@@ -1072,23 +951,11 @@ def server_members_page(guild_id):
 @require_guild_moderator
 def server_dashboard_data(guild_id):
 
-    bot = discord_state.bot
+    denied = _bot_error()
+    if denied:
+        return denied
 
-    if bot is None:
-
-        return jsonify({
-            "success": False,
-            "error": "Discord bot is not connected."
-        }), 503
-
-    if not discord_state.ready:
-
-        return jsonify({
-            "success": False,
-            "error": "Discord bot is not ready."
-        }), 503
-
-    service = DashboardService(bot)
+    service = DashboardService()
 
     dashboard = service.get_dashboard(
         guild_id
@@ -1293,116 +1160,50 @@ def server_health(
     guild_id
 ):
 
-    bot = discord_state.bot
+    guild, error = _guild_or_error(guild_id)
+    if error:
+        return error
 
+    try:
+        info = bridge.status()
+        latency = round(float(info.get("latency_ms") or 0))
+    except Exception:
+        latency = 0
 
-    if bot is None:
-
-        return jsonify({
-
-            "success":
-                False,
-
-            "error":
-                "Discord bot is not connected.",
-
-        }), 503
-
-
-    if (
-        not discord_state.ready
-        or not bot.is_ready()
-    ):
-
-        return jsonify({
-
-            "success":
-                False,
-
-            "error":
-                "Discord bot is not ready.",
-
-        }), 503
-
-
-    guild = bot.get_guild(
-        int(guild_id)
-    )
-
-
-    if guild is None:
-
-        return jsonify({
-
-            "success":
-                False,
-
-            "error":
-                "Discord server not found.",
-
-        }), 404
-
-
-    latency = round(
-        bot.latency * 1000
-    )
-
+    try:
+        channels = bridge.get_channels(int(guild_id)) or []
+    except Exception:
+        channels = []
+    try:
+        roles = bridge.get_roles(int(guild_id)) or []
+    except Exception:
+        roles = []
 
     member_count = (
-        guild.member_count
-        or len(
-            guild.members
-        )
+        int(guild.get("member_count") or 0)
+        or len(MemberService().get_members(guild_id))
         or 0
     )
 
-
-    channels = list(
-        guild.channels
-    )
-
-
     text_count = sum(
-
         1
-
-        for channel
-        in channels
-
-        if str(
-            channel.type
-        ).lower()
-        == "text"
-
+        for channel in channels
+        if str(channel.get("type") or "").lower() == "text"
     )
-
 
     voice_count = sum(
-
         1
-
-        for channel
-        in channels
-
-        if str(
-            channel.type
-        ).lower()
-        == "voice"
-
+        for channel in channels
+        if str(channel.get("type") or "").lower() == "voice"
     )
 
-
-    role_count = len(
-        guild.roles
-    )
-
+    role_count = len(roles)
 
     event_count = (
         event_store.count_for_guild(
             guild_id
         )
     )
-
 
     recent_events = (
         event_store.for_guild(
@@ -1411,9 +1212,7 @@ def server_health(
         )
     )
 
-
     last_event_at = None
-
 
     if (
         recent_events
@@ -1430,7 +1229,6 @@ def server_health(
             )
         )
 
-
     if latency < 200:
 
         status = "healthy"
@@ -1443,14 +1241,13 @@ def server_health(
 
         status = "poor"
 
-
     return jsonify({
 
         "success":
             True,
 
         "guild_id":
-            str(guild.id),
+            str(guild.get("id")),
 
         "health": {
 
@@ -1495,11 +1292,7 @@ def server_health(
                 ),
 
             "guild_available":
-                getattr(
-                    guild,
-                    "available",
-                    True
-                ),
+                guild.get("available", True),
 
         }
 
@@ -1515,29 +1308,22 @@ def server_health(
 @require_guild_moderator
 def channel_details(guild_id, channel_id):
 
-    bot = discord_state.bot
+    guild, error = _guild_or_error(guild_id)
+    if error:
+        return error
 
-    if bot is None:
+    try:
+        channels = bridge.get_channels(int(guild_id)) or []
+    except BridgeUnavailable:
         return jsonify({
             "success": False,
             "error": "Discord bot is not connected."
         }), 503
-
-    if not discord_state.ready:
-        return jsonify({
-            "success": False,
-            "error": "Discord bot is not ready."
-        }), 503
-
-    guild = bot.get_guild(guild_id)
-
-    if guild is None:
-        return jsonify({
-            "success": False,
-            "error": "Discord server not found."
-        }), 404
-
-    channel = guild.get_channel(channel_id)
+    channel = None
+    for candidate in channels:
+        if str(candidate.get("id")) == str(channel_id):
+            channel = candidate
+            break
 
     if channel is None:
         return jsonify({
@@ -1545,46 +1331,26 @@ def channel_details(guild_id, channel_id):
             "error": "Channel not found."
         }), 404
 
-    category = getattr(channel, "category", None)
-
     data = {
-        "id": str(channel.id),
-        "name": channel.name,
-        "type": str(channel.type),
-        "position": getattr(channel, "position", None),
-        "category_id": (
-            str(category.id)
-            if category
-            else None
-        ),
-        "category": (
-            category.name
-            if category
-            else None
-        ),
-        "guild_id": str(guild.id),
-        "guild_name": guild.name,
-        "created_at": (
-            channel.created_at.isoformat()
-            if hasattr(channel, "created_at")
-            else None
-        )
+        "id": str(channel.get("id")),
+        "name": channel.get("name"),
+        "type": str(channel.get("type")),
+        "position": channel.get("position"),
+        "category_id": channel.get("category_id"),
+        "category": channel.get("category"),
+        "guild_id": str(guild.get("id")),
+        "guild_name": guild.get("name"),
+        "created_at": channel.get("created_at"),
     }
 
-    if hasattr(channel, "topic"):
-        data["topic"] = channel.topic
-
-    if hasattr(channel, "slowmode_delay"):
-        data["slowmode_delay"] = channel.slowmode_delay
-
-    if hasattr(channel, "nsfw"):
-        data["nsfw"] = channel.nsfw
-
-    if hasattr(channel, "bitrate"):
-        data["bitrate"] = channel.bitrate
-
-    if hasattr(channel, "user_limit"):
-        data["user_limit"] = channel.user_limit
+    # Type-specific extras, as the old hasattr-gated code sent them.
+    if (channel.get("type") or "") in ("text", "news", "forum"):
+        data["topic"] = channel.get("topic")
+        data["slowmode_delay"] = channel.get("slowmode_delay", 0)
+        data["nsfw"] = bool(channel.get("nsfw", False))
+    if (channel.get("type") or "") == "voice":
+        data["bitrate"] = channel.get("bitrate")
+        data["user_limit"] = channel.get("user_limit")
 
     return jsonify({
         "success": True,
@@ -1599,29 +1365,17 @@ def channel_details(guild_id, channel_id):
 @require_guild_moderator
 def channel_summary(guild_id):
 
-    bot = discord_state.bot
+    guild, error = _guild_or_error(guild_id)
+    if error:
+        return error
 
-    if bot is None:
+    try:
+        channels = bridge.get_channels(int(guild_id)) or []
+    except BridgeUnavailable:
         return jsonify({
             "success": False,
             "error": "Discord bot is not connected."
         }), 503
-
-    if not discord_state.ready:
-        return jsonify({
-            "success": False,
-            "error": "Discord bot is not ready."
-        }), 503
-
-    guild = bot.get_guild(guild_id)
-
-    if guild is None:
-        return jsonify({
-            "success": False,
-            "error": "Discord server not found."
-        }), 404
-
-    channels = guild.channels
 
     text_channels = []
     voice_channels = []
@@ -1631,7 +1385,7 @@ def channel_summary(guild_id):
 
     for channel in channels:
 
-        channel_type = str(channel.type).lower()
+        channel_type = str(channel.get("type") or "").lower()
 
         if channel_type == "text":
             text_channels.append(channel)
@@ -1651,9 +1405,9 @@ def channel_summary(guild_id):
     return jsonify({
         "success": True,
 
-        "guild_id": str(guild.id),
+        "guild_id": str(guild.get("id")),
 
-        "guild_name": guild.name,
+        "guild_name": guild.get("name"),
 
         "summary": {
             "total": len(channels),
@@ -1680,29 +1434,23 @@ def channel_summary(guild_id):
 @require_guild_moderator
 def role_details(guild_id, role_id):
 
-    bot = discord_state.bot
+    guild, error = _guild_or_error(guild_id)
+    if error:
+        return error
 
-    if bot is None:
+    try:
+        roles = bridge.get_roles(int(guild_id)) or []
+    except BridgeUnavailable:
         return jsonify({
             "success": False,
             "error": "Discord bot is not connected."
         }), 503
 
-    if not discord_state.ready:
-        return jsonify({
-            "success": False,
-            "error": "Discord bot is not ready."
-        }), 503
-
-    guild = bot.get_guild(guild_id)
-
-    if guild is None:
-        return jsonify({
-            "success": False,
-            "error": "Discord server not found."
-        }), 404
-
-    role = guild.get_role(role_id)
+    role = None
+    for candidate in roles:
+        if str(candidate.get("id")) == str(role_id):
+            role = candidate
+            break
 
     if role is None:
         return jsonify({
@@ -1710,37 +1458,36 @@ def role_details(guild_id, role_id):
             "error": "Role not found."
         }), 404
 
+    members = MemberService().get_members(guild_id)
     members_with_role = [
         member
-        for member in guild.members
-        if role in member.roles
+        for member in members
+        if any(
+            str(r.get("id")) == str(role_id)
+            for r in (member.get("roles") or [])
+        )
     ]
 
     return jsonify({
         "success": True,
 
         "role": {
-            "id": str(role.id),
-            "name": role.name,
-            "position": role.position,
-            "color": str(role.color),
-            "hoist": role.hoist,
-            "mentionable": role.mentionable,
-            "managed": role.managed,
+            "id": str(role.get("id")),
+            "name": role.get("name"),
+            "position": role.get("position"),
+            "color": role.get("color"),
+            "hoist": role.get("hoist"),
+            "mentionable": role.get("mentionable"),
+            "managed": role.get("managed"),
 
             "member_count": len(
                 members_with_role
             ),
 
-            "permissions": [
-                permission
-                for permission, enabled
-                in role.permissions
-                if enabled
-            ]
+            "permissions": _perm_names(role.get("permissions")),
         }
     })
-    
+
 # =========================================================
 # BOT HEALTH
 # GET /api/health
@@ -1750,10 +1497,11 @@ def role_details(guild_id, role_id):
 @require_login
 def bot_health():
 
-    bot = discord_state.bot
-
-    if bot is None:
-
+    # Bridge split: health comes from bridge.status(). Down -> the
+    # old offline shape; up-but-not-ready -> "starting".
+    try:
+        info = bridge.status()
+    except Exception:
         return jsonify({
 
             "success": True,
@@ -1777,25 +1525,26 @@ def bot_health():
 
         })
 
-    latency = round(
-        bot.latency * 1000
-    )
+    latency = info.get("latency_ms")
+    latency = round(float(latency)) if latency is not None else None
 
-    if not discord_state.ready:
+    if not info.get("ready"):
 
         status = "starting"
 
-    elif latency < 200:
+    elif latency is not None and latency < 200:
 
         status = "healthy"
 
-    elif latency < 500:
+    elif latency is not None and latency < 500:
 
         status = "degraded"
 
     else:
 
         status = "poor"
+
+    user = info.get("user") or {}
 
     return jsonify({
 
@@ -1810,10 +1559,10 @@ def bot_health():
                 True,
 
             "discord_ready":
-                discord_state.ready,
+                bool(info.get("ready")),
 
             "guild_count":
-                len(bot.guilds),
+                int(info.get("guild_count") or 0),
 
             "latency_ms":
                 latency,
@@ -1821,16 +1570,16 @@ def bot_health():
             "user":
                 (
                     {
-                        "id": str(bot.user.id),
-                        "name": str(bot.user)
+                        "id": str(user.get("id")),
+                        "name": user.get("name")
                     }
-                    if bot.user
+                    if user.get("id")
                     else None
                 )
         }
 
     })
-    
+
 # =========================================================
 # API INFO
 # GET /api
@@ -1854,7 +1603,7 @@ def api_info():
             "online",
 
         "discord_ready":
-            discord_state.ready,
+            bridge.bot_is_ready(),
 
         "endpoints": {
 
@@ -1888,21 +1637,13 @@ def api_info():
 @require_guild_moderator
 def server_statistics(guild_id):
 
-    bot = discord_state.bot
+    denied = _bot_error()
+    if denied:
+        return denied
 
-    if bot is None:
-        return jsonify({
-            "success": False,
-            "error": "Discord bot is not connected."
-        }), 503
-
-    if not discord_state.ready:
-        return jsonify({
-            "success": False,
-            "error": "Discord bot is not ready."
-        }), 503
-
-    service = ServerService(bot)
+    # ServerService.get_statistics is new (the old call site was
+    # broken: no such method existed, so this always 500'd).
+    service = ServerService()
 
     statistics = service.get_statistics(guild_id)
 
@@ -1927,34 +1668,9 @@ def server_statistics(guild_id):
 @require_guild_moderator
 def server_activity(guild_id):
 
-    bot = discord_state.bot
-
-    if bot is None:
-
-        return jsonify({
-            "success": False,
-            "error": "Discord bot is not connected."
-        }), 503
-
-
-    if not discord_state.ready:
-
-        return jsonify({
-            "success": False,
-            "error": "Discord bot is not ready."
-        }), 503
-
-
-    guild = bot.get_guild(
-        int(guild_id)
-    )
-
-    if guild is None:
-
-        return jsonify({
-            "success": False,
-            "error": "Discord server not found."
-        }), 404
+    guild, error = _guild_or_error(guild_id)
+    if error:
+        return error
 
 
     limit = request.args.get(
@@ -2085,10 +1801,10 @@ def server_activity(guild_id):
             True,
 
         "guild_id":
-            str(guild.id),
+            str(guild.get("id")),
 
         "guild_name":
-            guild.name,
+            guild.get("name"),
 
         "count":
             len(serialized_events),
@@ -2115,32 +1831,9 @@ def server_activity_summary(
     guild_id
 ):
 
-    bot = discord_state.bot
-
-    if bot is None:
-
-        return jsonify({
-            "success": False,
-            "error": "Discord bot is not connected."
-        }), 503
-
-    if not discord_state.ready:
-
-        return jsonify({
-            "success": False,
-            "error": "Discord bot is not ready."
-        }), 503
-
-    guild = bot.get_guild(
-        guild_id
-    )
-
-    if guild is None:
-
-        return jsonify({
-            "success": False,
-            "error": "Discord server not found."
-        }), 404
+    guild, error = _guild_or_error(guild_id)
+    if error:
+        return error
 
     total_events = (
         event_store.count_for_guild(
@@ -2190,10 +1883,10 @@ def server_activity_summary(
 
         "server": {
             "id":
-                str(guild.id),
+                str(guild.get("id")),
 
             "name":
-                guild.name
+                guild.get("name")
         },
 
         "summary": {
@@ -2269,43 +1962,16 @@ def server_analytics(
     from collections import Counter
     from datetime import datetime, timezone, timedelta
 
-    bot = discord_state.bot
-
-    if bot is None:
-
-        return jsonify({
-            "success": False,
-            "error": "Discord bot is not connected."
-        }), 503
-
-
-    if not discord_state.ready:
-
-        return jsonify({
-            "success": False,
-            "error": "Discord bot is not ready."
-        }), 503
-
-
-    guild = bot.get_guild(
-        int(guild_id)
-    )
-
-    if guild is None:
-
-        return jsonify({
-            "success": False,
-            "error": "Discord server not found."
-        }), 404
+    guild, error = _guild_or_error(guild_id)
+    if error:
+        return error
 
 
     # =====================================================
     # MEMBERS
     # =====================================================
 
-    members = list(
-        guild.members
-    )
+    members = MemberService().get_members(guild_id)
 
     human_count = 0
     bot_count = 0
@@ -2317,7 +1983,7 @@ def server_analytics(
 
     for member in members:
 
-        if member.bot:
+        if member.get("bot"):
 
             bot_count += 1
 
@@ -2327,8 +1993,8 @@ def server_analytics(
 
 
         status = str(
-            member.status
-        )
+            member.get("status") or "offline"
+        ).lower()
 
 
         if status == "online":
@@ -2352,27 +2018,34 @@ def server_analytics(
     # CHANNELS
     # =====================================================
 
-    channels = list(
-        guild.channels
+    try:
+        channels = bridge.get_channels(int(guild_id)) or []
+    except Exception:
+        channels = []
+
+    text_channels = sum(
+        1
+        for channel in channels
+        if str(channel.get("type") or "") == "text"
     )
 
-    text_channels = len(
-        guild.text_channels
+    voice_channels = sum(
+        1
+        for channel in channels
+        if str(channel.get("type") or "") == "voice"
     )
 
-    voice_channels = len(
-        guild.voice_channels
-    )
-
-    categories = len(
-        guild.categories
+    categories = sum(
+        1
+        for channel in channels
+        if str(channel.get("type") or "") == "category"
     )
 
     stage_channels = sum(
         1
         for channel in channels
         if str(
-            channel.type
+            channel.get("type") or ""
         ) == "stage_voice"
     )
 
@@ -2380,7 +2053,7 @@ def server_analytics(
         1
         for channel in channels
         if str(
-            channel.type
+            channel.get("type") or ""
         ) == "forum"
     )
 
@@ -2389,27 +2062,28 @@ def server_analytics(
     # ROLES
     # =====================================================
 
-    roles = list(
-        guild.roles
-    )
+    try:
+        roles = bridge.get_roles(int(guild_id)) or []
+    except Exception:
+        roles = []
 
     managed_roles = sum(
         1
         for role in roles
-        if role.managed
+        if role.get("managed")
     )
 
     custom_roles = sum(
         1
         for role in roles
-        if not role.managed
-        and role.name != "@everyone"
+        if not role.get("managed")
+        and role.get("name") != "@everyone"
     )
 
     administrator_roles = sum(
         1
         for role in roles
-        if role.permissions.administrator
+        if discord.Permissions(int(role.get("permissions") or 0)).administrator
     )
 
 
@@ -2418,7 +2092,7 @@ def server_analytics(
     # =====================================================
 
     events = event_store.all_for_guild(
-        guild.id
+        guild.get("id")
     )
 
 
@@ -2584,7 +2258,7 @@ def server_analytics(
 
         "guild_id":
             str(
-                guild.id
+                guild.get("id")
             ),
 
         "generated_at":
@@ -2593,7 +2267,7 @@ def server_analytics(
         "members": {
 
             "total":
-                guild.member_count
+                int(guild.get("member_count") or 0)
                 or len(members),
 
             "humans":

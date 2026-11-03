@@ -1,40 +1,25 @@
+"""Guild data service -- bridge client (BRIDGE_CONTRACT.md section 6).
+
+Same public interface and return shapes as before, but every live
+Discord read goes through the bot-side bridge instead of the live bot
+object. The bridge returns guild dicts in the ServerService
+serialize_guild() shape; this module maps them onto the shapes its
+existing callers expect. The Logger-DB event helpers are unchanged --
+they read the local message_log database, not Discord.
+"""
 from flask import current_app
+from web.services import bridge
+from web.services.bridge import BridgeUnavailable
 from web.services.logger_db import logger_db as database
+
+
 class GuildService:
 
     def get_bot(self):
-
-        bot = current_app.config.get(
-            "DISCORD_BOT"
-        )
-
-        if bot is None:
-            bot = current_app.config.get(
-                "BOT"
-            )
-
-        return bot
-
+        # No live bot object in the website process any more.
+        return None
 
     def get_guild(self, guild_id):
-
-        bot = self.get_bot()
-
-        if bot is None:
-
-            print(
-                "[GuildService] Discord bot is not connected."
-            )
-
-            return None
-
-        if not bot.is_ready():
-
-            print(
-                "[GuildService] Discord bot is not ready."
-            )
-
-            return None
 
         try:
 
@@ -48,9 +33,13 @@ class GuildService:
 
             return None
 
-        guild = bot.get_guild(
-            guild_id
-        )
+        try:
+            guild = bridge.get_guild(guild_id)
+        except BridgeUnavailable:
+            print(
+                "[GuildService] Bridge is not reachable."
+            )
+            return None
 
         if guild is None:
 
@@ -60,7 +49,9 @@ class GuildService:
 
             return None
 
-        return guild
+        from web.services.bridge import wrap
+
+        return wrap(guild)
 
     def get_guild_event_statistics(self, guild_id):
         # TODO(webui): re-point at new Logger schema (old logger_events SQL removed)
@@ -80,46 +71,39 @@ class GuildService:
 
     def get_guilds(self):
 
-        bot = self.get_bot()
-
-        if bot is None:
-            return []
-
-        if not bot.is_ready():
+        try:
+            guilds = bridge.get_guilds()
+        except BridgeUnavailable:
             return []
 
         servers = []
 
-        for guild in bot.guilds:
+        for guild in guilds:
 
             servers.append({
 
-                "id": str(guild.id),
+                "id": str(guild.get("id")),
 
-                "guild_id": str(guild.id),
+                "guild_id": str(guild.get("id")),
 
-                "name": guild.name,
+                "name": guild.get("name"),
 
                 "member_count":
-                    guild.member_count or 0,
+                    int(guild.get("member_count") or 0),
 
                 "channel_count":
-                    len(guild.channels),
+                    int(guild.get("channel_count") or 0),
 
                 "event_count":
-                    database.count_events(guild.id),
+                    database.count_events(guild.get("id")),
 
                 "icon":
-                    (
-                        str(guild.icon.with_size(128).url)
-                        if guild.icon
-                        else None
-                    )
+                    guild.get("icon"),
 
             })
 
         return servers
-    
+
     def search_events(
         self,
         guild_id,
@@ -146,58 +130,25 @@ class GuildService:
 
         try:
 
-            if guild.owner:
+            if guild.get("owner_id"):
 
                 owner = {
                     "id":
-                        str(guild.owner.id),
+                        str(guild.get("owner_id")),
 
                     "name":
-                        guild.owner.name,
+                        guild.get("owner_name"),
 
                     "display_name":
-                        guild.owner.display_name,
+                        guild.get("owner_name"),
 
                     "avatar":
-                        (
-                            str(guild.owner.display_avatar.url)
-                            if guild.owner.display_avatar
-                            else None
-                        )
+                        guild.get("owner_avatar"),
                 }
 
         except Exception:
 
             owner = None
-
-
-        icon = None
-
-        try:
-
-            if guild.icon:
-                icon = str(
-                    guild.icon.with_size(128).url
-                )
-
-        except Exception:
-
-            icon = None
-
-
-        banner = None
-
-        try:
-
-            if guild.banner:
-                banner = str(
-                    guild.banner.url
-                )
-
-        except Exception:
-
-            banner = None
-
 
         return {
 
@@ -205,105 +156,82 @@ class GuildService:
                 True,
 
             "id":
-                str(guild.id),
+                str(guild.get("id")),
 
             "guild_id":
-                str(guild.id),
+                str(guild.get("id")),
 
             "name":
-                guild.name,
+                guild.get("name"),
 
             "description":
-                guild.description,
+                guild.get("description"),
 
             "icon":
-                icon,
+                guild.get("icon"),
 
             "banner":
-                banner,
+                guild.get("banner"),
 
-            "owner":
-                owner,
+            "owner": owner,
 
             "owner_id":
                 (
-                    str(guild.owner_id)
-                    if guild.owner_id
+                    str(guild.get("owner_id"))
+                    if guild.get("owner_id")
                     else None
                 ),
 
-            "member_count":
-                guild.member_count or 0,
+            "member_count": int(guild.get("member_count") or 0),
 
-            "channel_count":
-                len(guild.channels),
+            "channel_count": int(guild.get("channel_count") or 0),
 
             "text_channel_count":
-                len(guild.text_channels),
+                int(guild.get("text_channel_count") or 0),
 
             "voice_channel_count":
-                len(guild.voice_channels),
+                int(guild.get("voice_channel_count") or 0),
 
             "category_count":
-                len(guild.categories),
+                int(guild.get("category_count") or 0),
 
             "role_count":
-            len(guild.roles),
+                int(guild.get("role_count") or 0),
 
             "event_count":
                 self.get_guild_event_statistics(
-                    guild.id
+                    guild.get("id")
                 ).get(
                     "total_events",
                     0
                 ),
 
             "emoji_count":
-                len(guild.emojis),
+                int(guild.get("emoji_count") or 0),
 
             "sticker_count":
-                len(guild.stickers),
+                int(guild.get("sticker_count") or 0),
 
             "created_at":
-                (
-                    guild.created_at.isoformat()
-                    if guild.created_at
-                    else None
-                ),
+                guild.get("created_at"),
 
             "verification_level":
-                str(
-                    guild.verification_level
-                ),
+                str(guild.get("verification_level", "unknown")),
 
             "default_notifications":
-                str(
-                    guild.default_notifications
-                ),
+                str(guild.get("default_notifications", "unknown")),
 
             "explicit_content_filter":
-                str(
-                    guild.explicit_content_filter
-                ),
+                str(guild.get("explicit_content_filter", "unknown")),
 
             "premium_tier":
-                getattr(
-                    guild,
-                    "premium_tier",
-                    0
-                ),
+                int(guild.get("premium_tier") or 0),
 
             "premium_subscription_count":
-                getattr(
-                    guild,
-                    "premium_subscription_count",
-                    0
-                ),
+                int(guild.get("premium_subscription_count") or 0),
 
             "features":
-                list(
-                    guild.features
-                )
+                list(guild.get("features") or []),
     }
 
     def get_guild_statistics(self, guild_id):
@@ -315,107 +243,55 @@ class GuildService:
         if guild is None:
             return None
 
-
-        text_channels = len(
-            guild.text_channels
-        )
-
-        voice_channels = len(
-            guild.voice_channels
-        )
-
-        categories = len(
-            guild.categories
-        )
-
-
         return {
 
             "members":
-                guild.member_count or 0,
+                int(guild.get("member_count") or 0),
 
             "channels":
-                len(guild.channels),
+                int(guild.get("channel_count") or 0),
 
             "text_channels":
-                text_channels,
+                int(guild.get("text_channel_count") or 0),
 
             "voice_channels":
-                voice_channels,
+                int(guild.get("voice_channel_count") or 0),
 
             "categories":
-                categories,
+                int(guild.get("category_count") or 0),
 
             "roles":
-                len(guild.roles),
+                int(guild.get("role_count") or 0),
 
             "emojis":
-                len(guild.emojis),
+                int(guild.get("emoji_count") or 0),
 
             "stickers":
-                len(guild.stickers)
+                int(guild.get("sticker_count") or 0),
 
         }
-    
+
     def get_guild_channels(self, guild_id):
 
-        guild = self.get_guild(
-            guild_id
-        )
+        try:
+            channels = bridge.get_channels(guild_id)
+        except BridgeUnavailable:
+            return None
 
-
-        if guild is None:
+        if channels is None:
 
             return None
 
-
-        channels = []
-
-
-        for channel in guild.channels:
-
-            if channel in guild.text_channels:
-
-                channel_type = "text"
-
-            elif channel in guild.voice_channels:
-
-                channel_type = "voice"
-
-            elif channel in guild.categories:
-
-                channel_type = "category"
-
-            else:
-
-                channel_type = "other"
-
-
-            channels.append({
-
-                "id":
-                    str(channel.id),
-
-                "name":
-                    channel.name,
-
-                "type":
-                    channel_type,
-
-                "position":
-                    channel.position,
-
-                "category":
-                    (
-                        channel.category.name
-                        if channel.category
-                        else None
-                    )
-
-            })
-
-
-        return channels
+        return [
+            {
+                "id": str(channel.get("id")),
+                "name": channel.get("name"),
+                "type": channel.get("type"),
+                "position": channel.get("position"),
+                "category": channel.get("category"),
+            }
+            for channel in channels
+        ]
 
 
 guilds = GuildService()

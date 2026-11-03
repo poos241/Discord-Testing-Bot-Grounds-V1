@@ -1,7 +1,7 @@
 from flask import Blueprint, jsonify
 
 from web.services.server_service import ServerService
-from web.services.discord_state import discord_state
+from web.services import bridge
 from web.security.decorators import require_guild_manage, require_login, require_guild_moderator
 
 
@@ -16,8 +16,9 @@ dashboard_api = Blueprint(
 # ============================================================
 
 def get_bot():
-
-    return discord_state.get_bot()
+    """Kept for call-site compat. Always None now -- there is no live
+    bot object in this process."""
+    return None
 
 
 # ============================================================
@@ -34,10 +35,7 @@ def server_dashboard(
     guild_id
 ):
 
-    bot = get_bot()
-
-
-    if bot is None:
+    if not bridge.bot_is_ready():
 
         return jsonify({
 
@@ -48,23 +46,11 @@ def server_dashboard(
 
         }), 503
 
-
-    if not bot.is_ready():
-
-        return jsonify({
-
-            "success": False,
-
-            "error":
-                "Discord bot is not ready."
-
-        }), 503
-
-
-    guild = bot.get_guild(
-        int(guild_id)
-    )
-
+    guild = None
+    try:
+        guild = bridge.get_guild(int(guild_id))
+    except Exception:
+        guild = None
 
     if guild is None:
 
@@ -76,11 +62,15 @@ def server_dashboard(
             "[Dashboard] Connected guilds:"
         )
 
-        for connected_guild in bot.guilds:
+        try:
+            connected = bridge.get_guilds() or []
+        except Exception:
+            connected = []
+        for connected_guild in connected:
 
             print(
-                f"  - {connected_guild.name} "
-                f"({connected_guild.id})"
+                f"  - {connected_guild.get('name')} "
+                f"({connected_guild.get('id')})"
             )
 
 
@@ -97,9 +87,7 @@ def server_dashboard(
         }), 404
 
 
-    service = ServerService(
-        bot
-    )
+    service = ServerService()
 
 
     dashboard = service.get_dashboard(

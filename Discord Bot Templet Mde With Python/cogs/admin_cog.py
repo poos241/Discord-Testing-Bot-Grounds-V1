@@ -9,6 +9,14 @@ import sys
 import subprocess
 import asyncio
 from config import  GUILD_IDS, admin_required, is_owner, load_json, save_json, autocomplete_commands , extra_help
+import traceback
+
+from data.DB.Storage.storage import (
+    get_timeout_board_config,
+    save_timeout_board_config,
+    delete_timeout_board_config,
+    list_timeout_board_configs,
+)
 
 USERINFO_COOLDOWN = 60
 
@@ -18,20 +26,72 @@ USERINFO_COOLDOWN = 60
 # ---------------------------------------------------------------------------
 
 def parse_mod_duration(text):
-    """Parse '10m', '2h', '1d', '30s', '1w' (bare number = minutes) -> timedelta.
+    """Parse '10m', '2h', '1d', '30s', '1w', and combined forms like
+    '1h30m' or '2w4d' (bare number = minutes) -> timedelta.
 
     Returns None when the text is invalid or outside Discord's 28-day cap.
     """
-    m = re.match(r"^\s*(\d+)\s*([smhdwSMHDW]?)\s*$", text or "")
-    if not m:
+    clean = re.sub(r"\s+", "", text or "")
+    if not clean:
         return None
-    amount = int(m.group(1))
-    unit = (m.group(2) or "m").lower()
-    seconds = amount * {"s": 1, "m": 60, "h": 3600, "d": 86400, "w": 604800}[unit]
+    # Bare number = minutes (legacy behaviour).
+    if clean.isdigit():
+        return _duration_from_seconds(int(clean) * 60)
+    parts = re.findall(r"(\d+)([smhdwSMHDW])", clean)
+    if not parts:
+        return None
+    if "".join(f"{n}{u}" for n, u in parts).lower() != clean.lower():
+        return None
+    seconds = sum(
+        int(n) * {"s": 1, "m": 60, "h": 3600, "d": 86400, "w": 604800}[u.lower()]
+        for n, u in parts
+    )
+    return _duration_from_seconds(seconds)
+
+
+def _duration_from_seconds(seconds):
+    """timedelta for a second count, or None when out of (0, 28d]."""
     delta = timedelta(seconds=seconds)
     if delta <= timedelta(0) or delta > timedelta(days=28):
         return None
     return delta
+
+
+# Timeout presets (Little Haven: light 5m / short 15m / medium 1h /
+# long 1d / extended 1w / severe 2w). Values are (timedelta, label).
+TIMEOUT_PRESETS = {
+    "light": (timedelta(minutes=5), "light (5m)"),
+    "short": (timedelta(minutes=15), "short (15m)"),
+    "medium": (timedelta(hours=1), "medium (1h)"),
+    "long": (timedelta(days=1), "long (1d)"),
+    "extended": (timedelta(weeks=1), "extended (1w)"),
+    "severe": (timedelta(weeks=2), "severe (2w)"),
+}
+
+
+def _resolve_timeout_duration(preset, raw):
+    """Resolve a preset and/or free-form duration into (timedelta, label).
+
+    Returns (None, error_message) when neither is usable.
+    """
+    if preset:
+        entry = TIMEOUT_PRESETS.get(preset)
+        if entry is None:
+            return None, "Unknown preset."
+        return entry[0], entry[1]
+    if raw:
+        duration = parse_mod_duration(raw)
+        if duration is None:
+            return None, "Couldn't parse that duration. Try e.g. `10m`, `2h`, `1d`, or a preset."
+        return duration, raw.strip()
+    return None, "Give a preset or a duration (e.g. `1h30m`)."
+
+
+def _safe_int(value):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
 
 
 class TimeoutModal(discord.ui.Modal):
@@ -73,6 +133,30 @@ class TimeoutModal(discord.ui.Modal):
                 ephemeral=True,
             )
             await self.panel._refresh_panel()
+            return
+        active_until = _active_timeout_until(self.panel.guild, member)
+        if active_until is not None:
+            summary = f"\u23f1\ufe0f Timeout {member.mention} for `{raw}`\n**Reason:** {reason}"
+
+            async def _proceed(inter):
+                await inter.response.edit_message(
+                    content=f"{summary}\n\n_Use the toggle to choose whether they get a DM, then confirm._",
+                    view=ModConfirmView(
+                        self.panel, "timeout",
+                        {"reason": reason, "duration": duration, "duration_str": raw},
+                        summary,
+                    ),
+                )
+
+            await interaction.response.send_message(
+                f"\u23f1\ufe0f {member.mention} already has an active timeout "
+                f"(until <t:{int(active_until)}:R>).\n"
+                f"Replace it with `{raw}`?\n**Reason:** {reason}",
+                view=TimeoutReplaceView(
+                    self.panel.guild.id, member.id, summary, _proceed
+                ),
+                ephemeral=True,
+            )
             return
         summary = f"\u23f1\ufe0f Timeout {member.mention} for `{raw}`\n**Reason:** {reason}"
         await interaction.response.send_message(
@@ -376,6 +460,72 @@ def _tempban_data(guild_id):
     return data, grec.setdefault("tempbans", {})
 
 
+def _timeout_data(guild_id):
+    """Load mod_data.json and return (full_data, timeouts_dict).
+
+    timeouts: {user_id: {"until": epoch_seconds, "reason": str,
+    "mod_id": int|None, "mod_name": str}} -- Discord timeouts the bot
+    applied or detected, so the board can list them after a restart.
+    """
+    data = load_json(MOD_DATA_FILE) or {}
+    grec = data.setdefault(str(guild_id), {})
+    return data, grec.setdefault("timeouts", {})
+
+
+# Guild ids whose timeout board needs a refresh. _do_timeout, the panel,
+# the sweep and manual detection add to this; the board loop drains it.
+_BOARD_REFRESH_PENDING = set()
+
+
+def _request_board_refresh(guild_id):
+    """Ask the board loop to refresh one guild on its next tick."""
+    try:
+        _BOARD_REFRESH_PENDING.add(int(guild_id))
+    except (TypeError, ValueError):
+        pass
+
+
+def _active_timeout_until(guild, member):
+    """Epoch seconds when the member's current timeout ends, or None."""
+    now = time.time()
+    try:
+        live = getattr(member, "timed_out_until", None)
+        if live is not None and live.timestamp() > now:
+            return live.timestamp()
+    except Exception:
+        pass
+    try:
+        _, timeouts = _timeout_data(guild.id)
+        entry = timeouts.get(str(member.id)) or {}
+        until = entry.get("until", 0) or 0
+        if until > now:
+            return until
+    except Exception:
+        pass
+    return None
+
+
+def _latest_timeout_case(guild_id, user_id):
+    """(reason, mod_name) from the user's latest timeout case, if any."""
+    try:
+        data = load_json(MOD_DATA_FILE) or {}
+        urec = data.get(str(guild_id), {}).get(str(user_id), {})
+        for case in reversed(urec.get("cases", []) or []):
+            if case.get("action") == "timeout":
+                return case.get("reason") or "No reason given", case.get("mod_name") or "Unknown"
+    except Exception:
+        pass
+    return "Timed out in Discord", "Unknown"
+
+
+def _short_reason(text, limit=80):
+    """One-line reason for the board (no newlines, capped)."""
+    clean = " ".join(str(text or "").split())
+    if len(clean) > limit:
+        return clean[: limit - 3] + "..."
+    return clean or "No reason given"
+
+
 async def _dm_target(target, text):
     """Try to DM someone. Returns True on success, False when DMs are closed."""
     try:
@@ -383,6 +533,316 @@ async def _dm_target(target, text):
         return True
     except Exception:
         return False
+
+
+async def _do_timeout(guild, member, duration, raw, reason, moderator, dm_enabled=True):
+    """Apply a Discord timeout and record it. Returns a result string.
+
+    Shared by the panel confirm flow and the /timeout command so both
+    behave identically. Also stores the timeout (for the board) and asks
+    the board loop to refresh.
+    """
+    audit = f"{moderator} ({getattr(moderator, 'id', '?')}): {reason}"
+
+    def dm_note(ok):
+        return "\U0001f4e8 DM sent" if ok else "\U0001f4ea Couldn't DM them (DMs closed?)"
+
+    note = ""
+    if dm_enabled:
+        ok = await _dm_target(
+            member,
+            f"\u23f1\ufe0f You've been timed out in **{guild.name}** for `{raw}`\n**Reason:** {reason}\n\nTo appeal this, DM me the word `appeal`.",
+        )
+        note = f"\n{dm_note(ok)}"
+    try:
+        await member.timeout_for(duration, reason=audit)
+    except discord.Forbidden:
+        return "\u274c I can't time out that user \u2014 is my role above theirs?"
+    except Exception as e:
+        return f"\u274c Timeout failed: `{e}`"
+    # Update the cached member so the refreshed card is accurate immediately.
+    try:
+        member.timed_out_until = datetime.now(timezone.utc) + duration
+    except Exception:
+        pass
+    _record_case(guild.id, member.id, "timeout", reason, moderator, {"duration": raw})
+    try:
+        data, timeouts = _timeout_data(guild.id)
+        timeouts[str(member.id)] = {
+            "until": time.time() + duration.total_seconds(),
+            "reason": reason,
+            "mod_id": getattr(moderator, "id", None),
+            "mod_name": str(moderator),
+        }
+        _save_mod_data(data)
+    except Exception as e:
+        print(f"[TIMEOUT] Could not store timeout for board: {e!r}")
+    _request_board_refresh(guild.id)
+    return f"\u23f1\ufe0f Timed out {member.mention} for `{raw}`\n**Reason:** {reason}{note}"
+
+
+async def _find_timeout_actor(guild, member):
+    """Best-effort: who changed this member's timeout, per the audit log.
+
+    Returns (actor_or_None, reason_or_None). The most recent member_update
+    entry for this member within the last 2 minutes wins. Returns
+    (None, None) when the audit log can't be read.
+    """
+    try:
+        async for entry in guild.audit_logs(limit=5, action=discord.AuditLogAction.member_update):
+            target = getattr(entry, "target", None)
+            if target is None or getattr(target, "id", None) != member.id:
+                continue
+            created = getattr(entry, "created_at", None)
+            if created is not None:
+                try:
+                    age = (discord.utils.utcnow() - created).total_seconds()
+                except Exception:
+                    age = 0
+                if age > 120:
+                    continue
+            return getattr(entry, "user", None), getattr(entry, "reason", None)
+    except Exception as e:
+        print(f"[TIMEOUT] Could not read audit log in guild {guild.id}: {e!r}")
+    return None, None
+
+
+async def _collect_board_entries(bot, guild):
+    """Active timed punishments for the board, soonest expiry first.
+
+    Sources: the stored Discord timeouts (pruned when expired, lifted
+    early, or the member left with a full member cache) + a live member
+    scan (heals timeouts the bot missed, e.g. applied while it was down)
+    + active tempbans.
+    """
+    now = time.time()
+    entries = []
+    try:
+        # Sync SQLite read off the event loop: a slow/locked database
+        # used to stall the Discord heartbeat for 10-20s on this tick.
+        data, timeouts = await asyncio.to_thread(_timeout_data, guild.id)
+    except Exception as e:
+        print(f"[TIMEOUT] Could not load timeouts for board in guild {guild.id}: {e!r}")
+        data, timeouts = None, {}
+    members = list(getattr(guild, "members", []) or [])
+    member_count = getattr(guild, "member_count", None)
+    cache_complete = bool(member_count) and len(members) >= member_count
+    changed = False
+    for uid, entry in list(timeouts.items()):
+        until = (entry or {}).get("until", 0) or 0
+        if until <= now:
+            del timeouts[uid]
+            changed = True
+            continue
+        member = guild.get_member(int(uid)) if str(uid).isdigit() else None
+        if member is None:
+            # Only trust "left the server" when the member cache is full;
+            # otherwise keep the entry until it expires.
+            if cache_complete:
+                del timeouts[uid]
+                changed = True
+                continue
+            # Cache incomplete: can't verify the live state, so show the
+            # stored entry (it expires on its own, like a tempban).
+            if str(uid).isdigit():
+                entries.append({
+                    "uid": int(uid), "kind": "timeout",
+                    "reason": (entry or {}).get("reason") or "No reason given",
+                    "mod_name": (entry or {}).get("mod_name") or "Unknown",
+                    "until": until,
+                })
+            continue
+        live = getattr(member, "timed_out_until", None)
+        if live is None:
+            # Timeout was lifted early (e.g. a manual removal the bot missed).
+            del timeouts[uid]
+            changed = True
+            continue
+        entries.append({
+            "uid": int(uid), "kind": "timeout",
+            "reason": (entry or {}).get("reason") or "No reason given",
+            "mod_name": (entry or {}).get("mod_name") or "Unknown",
+            "until": until,
+        })
+    # Heal: members Discord shows as timed out but with no stored entry.
+    try:
+        for member in members:
+            live = getattr(member, "timed_out_until", None)
+            if live is None:
+                continue
+            try:
+                ts = live.timestamp()
+            except Exception:
+                continue
+            if ts <= now:
+                continue
+            if any(e["uid"] == member.id and e["kind"] == "timeout" for e in entries):
+                continue
+            reason, mod_name = await asyncio.to_thread(
+                _latest_timeout_case, guild.id, member.id
+            )
+            entries.append({
+                "uid": member.id, "kind": "timeout",
+                "reason": reason, "mod_name": mod_name, "until": ts,
+            })
+    except Exception as e:
+        print(f"[TIMEOUT] Member scan failed for board in guild {guild.id}: {e!r}")
+    if changed and data is not None:
+        try:
+            await asyncio.to_thread(_save_mod_data, data)
+        except Exception:
+            pass
+    try:
+        _, tb = await asyncio.to_thread(_tempban_data, guild.id)
+        for uid, entry in list(tb.items()):
+            until = (entry or {}).get("unban_at", 0) or 0
+            if until <= now:
+                continue
+            entries.append({
+                "uid": int(uid), "kind": "tempban",
+                "reason": (entry or {}).get("reason") or "No reason given",
+                "mod_name": (entry or {}).get("mod_name") or "Unknown",
+                "until": until,
+            })
+    except Exception as e:
+        print(f"[TIMEOUT] Could not load tempbans for board in guild {guild.id}: {e!r}")
+    entries.sort(key=lambda e: e["until"])
+    return entries
+
+
+def _build_board_embed(entries, guild_name):
+    """Embed for the Active Timeouts board. Pure function (no I/O)."""
+    total = len(entries)
+    shown = entries[:25]
+    lines = []
+    timeouts = [e for e in shown if e["kind"] == "timeout"]
+    tempbans = [e for e in shown if e["kind"] == "tempban"]
+    if timeouts:
+        lines.append("**Timed out:**")
+        for e in timeouts:
+            lines.append(
+                f"<@{e['uid']}> \u2014 {_short_reason(e.get('reason'))} "
+                f"\u2014 expires <t:{int(e['until'])}:R> ({e.get('mod_name') or 'Unknown'})"
+            )
+    if tempbans:
+        lines.append("**Tempbanned:**")
+        for e in tempbans:
+            lines.append(
+                f"<@{e['uid']}> \u2014 {_short_reason(e.get('reason'))} "
+                f"\u2014 unbanned <t:{int(e['until'])}:R> ({e.get('mod_name') or 'Unknown'})"
+            )
+    if total > len(shown):
+        lines.append(f"_+{total - len(shown)} more_")
+    desc = "\n".join(lines) if lines else "No active timeouts or tempbans."
+    embed = discord.Embed(
+        title="\u23f1\ufe0f Active Timeouts",
+        description=desc,
+        color=discord.Color.orange(),
+        timestamp=discord.utils.utcnow(),
+    )
+    footer = f"Showing {len(shown)} of {total}"
+    if guild_name:
+        footer += f" \u2022 {guild_name}"
+    embed.set_footer(text=footer)
+    return embed
+
+
+async def _refresh_board(bot, guild):
+    """Post or edit the Active Timeouts board for one guild.
+
+    Returns True on success. No-ops (False) when no board is configured.
+    Re-posts when the stored message is gone; clears the config when the
+    channel itself is gone.
+    """
+    try:
+        cfg = await get_timeout_board_config(str(guild.id))
+    except Exception as e:
+        print(f"[TIMEOUT] Could not load board config for guild {guild.id}: {e!r}")
+        return False
+    channel_id = _safe_int((cfg or {}).get("channel_id"))
+    if not channel_id:
+        return False
+    try:
+        channel = guild.get_channel(channel_id)
+        if channel is None:
+            try:
+                channel = await guild.fetch_channel(channel_id)
+            except discord.NotFound:
+                print(f"[TIMEOUT] Board channel {channel_id} gone in guild {guild.id}; clearing board config.")
+                try:
+                    await delete_timeout_board_config(str(guild.id))
+                except Exception:
+                    pass
+                return False
+            except Exception as e:
+                print(f"[TIMEOUT] Could not fetch board channel {channel_id} in guild {guild.id}: {e!r}")
+                return False
+        if not isinstance(channel, discord.TextChannel):
+            return False
+        entries = await _collect_board_entries(bot, guild)
+        embed = _build_board_embed(entries, getattr(guild, "name", ""))
+        message_id = _safe_int((cfg or {}).get("message_id"))
+        if message_id:
+            try:
+                msg = await channel.fetch_message(message_id)
+                await msg.edit(embed=embed)
+                return True
+            except discord.NotFound:
+                pass  # Message deleted: fall through and re-post.
+            except Exception as e:
+                print(f"[TIMEOUT] Could not edit board message in guild {guild.id}: {e!r}")
+                return False
+        msg = await channel.send(embed=embed)
+        try:
+            await save_timeout_board_config(str(guild.id), {
+                "channel_id": str(channel_id),
+                "message_id": str(msg.id),
+            })
+        except Exception as e:
+            print(f"[TIMEOUT] Could not save board message id for guild {guild.id}: {e!r}")
+        return True
+    except Exception as e:
+        print(f"[TIMEOUT] Board refresh failed for guild {guild.id}: {e!r}")
+        return False
+
+
+class TimeoutReplaceView(discord.ui.View):
+    """Replace/Cancel when the target already has an active timeout.
+
+    The pending timeout lives in this view instance (keyed by its
+    guild+user); the view expires after 5 minutes.
+    """
+
+    def __init__(self, guild_id, user_id, summary, on_replace):
+        super().__init__(timeout=300)
+        self.guild_id = guild_id
+        self.user_id = user_id
+        self.summary = summary
+        self.on_replace = on_replace
+        self.done = False
+
+    @discord.ui.button(label="Replace timeout", style=discord.ButtonStyle.danger)
+    async def replace_button(self, button: discord.ui.Button, interaction: discord.Interaction):
+        if self.done:
+            return
+        self.done = True
+        try:
+            await self.on_replace(interaction)
+        except Exception as e:
+            print(f"[TIMEOUT] Replace failed: {e!r}")
+            try:
+                await interaction.response.edit_message(content="\u274c Replace failed.", view=None)
+            except Exception:
+                pass
+
+    @discord.ui.button(label="Keep current timeout", style=discord.ButtonStyle.secondary)
+    async def cancel_button(self, button: discord.ui.Button, interaction: discord.Interaction):
+        if self.done:
+            return
+        self.done = True
+        await interaction.response.edit_message(
+            content="\u274c Kept the current timeout.", view=None
+        )
 
 
 class WarnModal(discord.ui.Modal):
@@ -1184,28 +1644,10 @@ class UserinfoModView(discord.ui.View):
             return "\u274c That user isn't in the server anymore."
 
         if action == "timeout":
-            duration = params["duration"]
-            raw = params["duration_str"]
-            note = ""
-            if dm_enabled:
-                ok = await _dm_target(
-                    member,
-                    f"\u23f1\ufe0f You've been timed out in **{guild.name}** for `{raw}`\n**Reason:** {reason}\n\nTo appeal this, DM me the word `appeal`.",
-                )
-                note = f"\n{dm_note(ok)}"
-            try:
-                await member.timeout_for(duration, reason=audit)
-            except discord.Forbidden:
-                return "\u274c I can't time out that user \u2014 is my role above theirs?"
-            except Exception as e:
-                return f"\u274c Timeout failed: `{e}`"
-            # Update the cached member so the refreshed card is accurate immediately.
-            try:
-                member.timed_out_until = datetime.now(timezone.utc) + duration
-            except Exception:
-                pass
-            _record_case(guild.id, member.id, "timeout", reason, moderator, {"duration": raw})
-            return f"\u23f1\ufe0f Timed out {member.mention} for `{raw}`\n**Reason:** {reason}{note}"
+            return await _do_timeout(
+                guild, member, params["duration"], params["duration_str"],
+                reason, moderator, dm_enabled,
+            )
 
         if action == "kick":
             note = ""
@@ -1311,6 +1753,14 @@ class UserinfoModView(discord.ui.View):
                 pass
             _record_case(self.guild.id, self.target_id, "untimeout",
                          "Timeout removed via panel", interaction.user)
+            try:
+                _tb_data, _timeouts = _timeout_data(self.guild.id)
+                if str(self.target_id) in _timeouts:
+                    del _timeouts[str(self.target_id)]
+                    _save_mod_data(_tb_data)
+            except Exception as e:
+                print(f"[TIMEOUT] Could not clear stored timeout for {self.target_id}: {e!r}")
+            _request_board_refresh(self.guild.id)
             await self._refresh_panel()
             await interaction.followup.send(
                 f"\u23f1\ufe0f Removed timeout from {member.mention}", ephemeral=True
@@ -1536,10 +1986,13 @@ class AdminCog(commands.Cog):
     """Admin commands (e.g. clear_user)."""
     def __init__(self, client):
         self.bot = client
+        self._board_tick = 0
         self._tempban_sweep.start()
+        self._board_refresh.start()
 
     def cog_unload(self):
         self._tempban_sweep.cancel()
+        self._board_refresh.cancel()
 
     @tasks.loop(minutes=1)
     async def _tempban_sweep(self):
@@ -1602,6 +2055,7 @@ class AdminCog(commands.Cog):
                         pass
                     tb.pop(uid, None)
                     changed = True
+                    _request_board_refresh(int(gid))
         if changed:
             try:
                 save_json(MOD_DATA_FILE, data)
@@ -1620,6 +2074,260 @@ class AdminCog(commands.Cog):
         
      
         
+    @tasks.loop(minutes=1)
+    async def _board_refresh(self):
+        """Refresh timeout boards: pending guilds every tick, all boards every 5 ticks."""
+        try:
+            pending = set(_BOARD_REFRESH_PENDING)
+            _BOARD_REFRESH_PENDING.clear()
+        except Exception:
+            pending = set()
+        self._board_tick += 1
+        try:
+            configs = await list_timeout_board_configs()
+        except Exception as e:
+            print(f"[TIMEOUT] ERROR: could not list board configs: {e!r}")
+            configs = []
+        targets = set(pending)
+        if self._board_tick % 5 == 0:
+            for cfg in configs:
+                try:
+                    targets.add(str(cfg.get("guild_id")))
+                except Exception:
+                    continue
+        for gid in sorted(targets):
+            try:
+                guild = self.bot.get_guild(int(gid))
+                if guild is None:
+                    continue
+                await _refresh_board(self.bot, guild)
+            except Exception:
+                print(f"[TIMEOUT] Board refresh failed for guild {gid}:")
+                traceback.print_exc()
+
+    @_board_refresh.before_loop
+    async def _before_board_refresh(self):
+        await self.bot.wait_until_ready()
+
+    @commands.Cog.listener()
+    async def on_member_update(self, before, after):
+        try:
+            await self._on_member_update(before, after)
+        except Exception:
+            print("[TIMEOUT] on_member_update failed:")
+            traceback.print_exc()
+
+    async def _on_member_update(self, before, after):
+        """Notice timeouts applied/removed by hand in the Discord client."""
+        if getattr(before, "guild", None) is None or getattr(after, "guild", None) is None:
+            return
+        before_until = getattr(before, "timed_out_until", None)
+        after_until = getattr(after, "timed_out_until", None)
+        if before_until == after_until:
+            return
+        guild = after.guild
+        gid = guild.id
+        uid = after.id
+        if after_until is not None:
+            # Timeout applied.
+            try:
+                until = after_until.timestamp()
+            except Exception:
+                return
+            try:
+                _, timeouts = _timeout_data(gid)
+            except Exception:
+                timeouts = {}
+            existing = timeouts.get(str(uid)) or {}
+            if existing and abs((existing.get("until", 0) or 0) - until) <= 10:
+                return  # The bot's own apply; already recorded.
+            actor, audit_reason = await _find_timeout_actor(guild, after)
+            me = getattr(guild, "me", None)
+            if actor is not None and me is not None and actor.id == me.id:
+                return  # The bot's own action.
+            mod_name = str(actor) if actor is not None else "Unknown"
+            reason = audit_reason or "Timed out in Discord (manual)"
+            try:
+                data, timeouts = _timeout_data(gid)
+                timeouts[str(uid)] = {
+                    "until": until,
+                    "reason": reason,
+                    "mod_id": getattr(actor, "id", None),
+                    "mod_name": mod_name,
+                }
+                _save_mod_data(data)
+            except Exception as e:
+                print(f"[TIMEOUT] Could not store manual timeout for {uid}: {e!r}")
+                return
+            try:
+                _record_case(gid, uid, "timeout", reason, actor if actor is not None else "Unknown", {"duration": "manual"})
+            except Exception as e:
+                print(f"[TIMEOUT] Could not record manual timeout case for {uid}: {e!r}")
+            _request_board_refresh(gid)
+            try:
+                await _refresh_board(self.bot, guild)
+            except Exception:
+                pass
+            return
+        # Timeout removed.
+        try:
+            _, timeouts = _timeout_data(gid)
+        except Exception:
+            return
+        if str(uid) not in timeouts:
+            return  # Nothing recorded; nothing to do.
+        actor, _audit_reason = await _find_timeout_actor(guild, after)
+        me = getattr(guild, "me", None)
+        if actor is not None and me is not None and actor.id == me.id:
+            return  # The bot's own removal; the panel already handled it.
+        try:
+            data, timeouts = _timeout_data(gid)
+            timeouts.pop(str(uid), None)
+            _save_mod_data(data)
+        except Exception as e:
+            print(f"[TIMEOUT] Could not clear manual untimeout for {uid}: {e!r}")
+            return
+        try:
+            _record_case(gid, uid, "untimeout", "Timeout removed in Discord (manual)", actor if actor is not None else "Unknown")
+        except Exception as e:
+            print(f"[TIMEOUT] Could not record manual untimeout case for {uid}: {e!r}")
+        _request_board_refresh(gid)
+        try:
+            await _refresh_board(self.bot, guild)
+        except Exception:
+            pass
+
+    @staticmethod
+    def _is_manager(ctx):
+        """Manage Server or Administrator (same gate as the /userinfo panel)."""
+        perms = ctx.author.guild_permissions
+        return bool(perms.manage_guild or perms.administrator)
+
+    @discord.slash_command(name="timeout", description="Time out a member (preset or custom duration).", guild_ids=GUILD_IDS)
+    @extra_help("Time out a member with a preset length (light 5m, short 15m, medium 1h, long 1d, extended 1w, severe 2w) or a free-form duration like 1h30m (max 28d). Asks to replace when the member already has an active timeout.")
+    async def timeout_cmd(
+        self,
+        interaction: discord.ApplicationContext,
+        member: discord.Option(discord.Member, "Member to time out"),  # type: ignore
+        preset: discord.Option(str, "Preset length", choices=[  # type: ignore
+            discord.OptionChoice(name="Light \u2014 5 minutes", value="light"),
+            discord.OptionChoice(name="Short \u2014 15 minutes", value="short"),
+            discord.OptionChoice(name="Medium \u2014 1 hour", value="medium"),
+            discord.OptionChoice(name="Long \u2014 1 day", value="long"),
+            discord.OptionChoice(name="Extended \u2014 1 week", value="extended"),
+            discord.OptionChoice(name="Severe \u2014 2 weeks", value="severe"),
+        ], default=None, required=False),
+        duration: discord.Option(str, "Custom duration, e.g. 1h30m (max 28d)", default=None, required=False),  # type: ignore
+        reason: discord.Option(str, "Reason", default="No reason given", required=False),  # type: ignore
+    ):
+        """Time out a member with a preset or a custom duration."""
+        if interaction.guild is None:
+            await interaction.response.send_message("\u274c Use this in a server.", ephemeral=True)
+            return
+        if not self._is_manager(interaction):
+            await interaction.response.send_message("\u274c You need **Manage Server** or **Administrator** to time people out.", ephemeral=True)
+            return
+        duration_td, label = _resolve_timeout_duration(preset, duration)
+        if duration_td is None:
+            await interaction.response.send_message(f"\u274c {label}", ephemeral=True)
+            return
+        reason = (reason or "").strip() or "No reason given"
+        guild = interaction.guild
+        active_until = _active_timeout_until(guild, member)
+        if active_until is not None:
+            async def _apply_replace(inter):
+                result = await _do_timeout(guild, member, duration_td, label, reason, interaction.user, True)
+                try:
+                    await inter.response.edit_message(content=result, view=None)
+                except Exception:
+                    pass
+                try:
+                    await _refresh_board(self.bot, guild)
+                except Exception:
+                    pass
+
+            await interaction.response.send_message(
+                f"\u23f1\ufe0f {member.mention} already has an active timeout "
+                f"(until <t:{int(active_until)}:R>).\n"
+                f"Replace it with `{label}`?\n**Reason:** {reason}",
+                view=TimeoutReplaceView(guild.id, member.id, "", _apply_replace),
+                ephemeral=True,
+            )
+            return
+        await interaction.response.defer(ephemeral=True)
+        result = await _do_timeout(guild, member, duration_td, label, reason, interaction.user, True)
+        try:
+            await _refresh_board(self.bot, guild)
+        except Exception:
+            pass
+        await interaction.followup.send(result, ephemeral=True)
+
+    @discord.slash_command(name="timeout_board", description="Set up or remove the Active Timeouts board.", guild_ids=GUILD_IDS)
+    @extra_help("Posts the Active Timeouts board in a channel (it lists every active Discord timeout and tempban, soonest expiry first, and refreshes itself). Run it again in another channel to move the board; run it with remove to take the board down.")
+    async def timeout_board_cmd(
+        self,
+        interaction: discord.ApplicationContext,
+        channel: discord.Option(discord.TextChannel, "Channel for the board", default=None, required=False),  # type: ignore
+        remove: discord.Option(bool, "Remove the board", default=False, required=False),  # type: ignore
+    ):
+        """Set up, move, show, or remove the Active Timeouts board."""
+        if interaction.guild is None:
+            await interaction.response.send_message("\u274c Use this in a server.", ephemeral=True)
+            return
+        if not self._is_manager(interaction):
+            await interaction.response.send_message("\u274c You need **Manage Server** or **Administrator** to manage the timeout board.", ephemeral=True)
+            return
+        guild = interaction.guild
+        if remove:
+            try:
+                cfg = await get_timeout_board_config(str(guild.id))
+            except Exception:
+                cfg = {}
+            message_id = _safe_int((cfg or {}).get("message_id"))
+            channel_id = _safe_int((cfg or {}).get("channel_id"))
+            if message_id and channel_id:
+                try:
+                    old_channel = guild.get_channel(channel_id)
+                    if old_channel is not None:
+                        msg = await old_channel.fetch_message(message_id)
+                        await msg.delete()
+                except Exception:
+                    pass
+            try:
+                await delete_timeout_board_config(str(guild.id))
+            except Exception as e:
+                await interaction.response.send_message(f"\u274c Could not remove the board: `{e}`", ephemeral=True)
+                return
+            await interaction.response.send_message("\U0001f5d1\ufe0f Timeout board removed.", ephemeral=True)
+            return
+        if channel is not None:
+            try:
+                await save_timeout_board_config(str(guild.id), {"channel_id": str(channel.id), "message_id": ""})
+            except Exception as e:
+                await interaction.response.send_message(f"\u274c Could not save the board setup: `{e}`", ephemeral=True)
+                return
+            ok = await _refresh_board(self.bot, guild)
+            if ok:
+                await interaction.response.send_message(f"\u23f1\ufe0f Active Timeouts board is live in {channel.mention}.", ephemeral=True)
+            else:
+                await interaction.response.send_message(f"\u274c Could not post the board in {channel.mention}. Check I can see it and send messages there.", ephemeral=True)
+            return
+        try:
+            cfg = await get_timeout_board_config(str(guild.id))
+        except Exception:
+            cfg = {}
+        channel_id = _safe_int((cfg or {}).get("channel_id"))
+        if not channel_id:
+            await interaction.response.send_message("No timeout board is set up. Run `/timeout_board` with a channel to set one up.", ephemeral=True)
+            return
+        ch = guild.get_channel(channel_id)
+        entries = await _collect_board_entries(self.bot, guild)
+        await interaction.response.send_message(
+            f"\u23f1\ufe0f Timeout board is in {ch.mention if ch is not None else f'<#{channel_id}>'} "
+            f"with {len(entries)} active timeout(s)/tempban(s).",
+            ephemeral=True,
+        )
+
     @discord.slash_command(name="clear_user", description="Clear messages from a user across one or all channels.")
     @extra_help("Clears messages from a specific user in one or all channels. You can specify a user by selecting them or by providing their ID. You can also choose a specific channel to clear messages from.")
     @admin_required()
@@ -1968,6 +2676,11 @@ class AdminCog(commands.Cog):
         embed = discord.Embed(description="Shutting down. Bye! :wave:", color=0xBEBEFE)
         await interaction.send(embed=embed)
         await self.bot.close()
+        # Exit code 0: the watchdog stays stopped (clean shutdown).
+        # os._exit, not sys.exit: a SystemExit raised inside an
+        # event-loop task is swallowed by the loop and the process
+        # would keep running; the gateway is already closed here.
+        os._exit(0)
 
     
     
@@ -1979,11 +2692,15 @@ class AdminCog(commands.Cog):
         embed = discord.Embed(description="Restarting... Be right back! 🔁", color=0xBEBEFE)
         await ctx.respond(embed=embed)
 
-        # Windows-friendly restart using subprocess
-        python = sys.executable
-        subprocess.Popen([python] + sys.argv)
-
+        # Close the gateway cleanly, then exit with code 42 so the
+        # watchdog relaunches the bot. Do NOT spawn a new process
+        # from inside the bot (that was the old P1-19 bug: the child
+        # inherited the parent's locks/handles).
         await self.bot.close()
+        # os._exit, not sys.exit: a SystemExit raised inside an
+        # event-loop task is swallowed by the loop and the process
+        # would keep running; the gateway is already closed here.
+        os._exit(42)
     
 
         

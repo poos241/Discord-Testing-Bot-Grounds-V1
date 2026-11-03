@@ -1,4 +1,5 @@
 import time
+import traceback
 
 import discord
 from discord.ext import commands, tasks
@@ -156,23 +157,33 @@ class Lockdown(commands.Cog):
             print(f"[Lockdown] Auto-unlock sweep failed: {e!r}")
             return
         for row in due:
-            guild = self.bot.get_guild(int(row["guild_id"]))
-            if guild is None:
-                # Bot left the server: drop the row, nothing to unlock.
-                await delete_lockdown(row["guild_id"], row["channel_id"])
+            try:
+                guild = self.bot.get_guild(int(row["guild_id"]))
+                if guild is None:
+                    # Bot left the server: drop the row, nothing to unlock.
+                    await delete_lockdown(row["guild_id"], row["channel_id"])
+                    continue
+                channel = guild.get_channel(int(row["channel_id"]))
+                ok, note = await self._unlock_channel(
+                    guild, row, "Timed lockdown expired (automatic)")
+                if channel is not None:
+                    print(f"[Lockdown] Auto-unlocked #{channel.name} in "
+                          f"{guild.name} (ok={ok}, {note})")
+                    await self._log(guild, discord.Embed(
+                        title="Lockdown Expired",
+                        description=f"{channel.mention} has been unlocked "
+                                    f"(timed lockdown expired).",
+                        color=discord.Color.green(),
+                        timestamp=discord.utils.utcnow()))
+            except Exception:
+                # One bad row (DB error, malformed row, Discord error)
+                # must never kill the sweep: log it loudly and move on.
+                # The row stays queued and is retried on the next tick,
+                # so a transient failure delays the unlock instead of
+                # leaving it stuck until restart.
+                print(f"[Lockdown] Auto-unlock failed for row {row!r}:")
+                traceback.print_exc()
                 continue
-            channel = guild.get_channel(int(row["channel_id"]))
-            ok, note = await self._unlock_channel(
-                guild, row, "Timed lockdown expired (automatic)")
-            if channel is not None:
-                print(f"[Lockdown] Auto-unlocked #{channel.name} in "
-                      f"{guild.name} (ok={ok}, {note})")
-                await self._log(guild, discord.Embed(
-                    title="Lockdown Expired",
-                    description=f"{channel.mention} has been unlocked "
-                                f"(timed lockdown expired).",
-                    color=discord.Color.green(),
-                    timestamp=discord.utils.utcnow()))
 
     @auto_unlock.before_loop
     async def before_auto_unlock(self):

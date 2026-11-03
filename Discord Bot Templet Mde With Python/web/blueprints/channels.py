@@ -1,6 +1,7 @@
 from flask import Blueprint, jsonify
 
-from web.services.discord_state import discord_state
+from web.services import bridge
+from web.services.bridge import BridgeUnavailable
 from web.security.decorators import require_guild_manage, require_login, require_guild_moderator
 
 
@@ -11,21 +12,32 @@ channels_api = Blueprint(
 
 
 def get_bot():
-    return discord_state.bot
+    """Kept for call-site compat (members.py used to import it).
+    Always None now -- there is no live bot object in this process."""
+    return None
 
 
 def get_guild(guild_id):
-    bot = get_bot()
-
-    if bot is None:
+    """Bridge guild dict, or None when the bot is down / not in it."""
+    try:
+        if not bridge.bot_is_ready():
+            print("[ChannelsAPI] Discord bot is not ready.")
+            return None
+        return bridge.get_guild(int(guild_id))
+    except Exception:
         print("[ChannelsAPI] Discord bot is not connected.")
         return None
 
-    if not discord_state.ready:
-        print("[ChannelsAPI] Discord bot is not ready.")
-        return None
 
-    return bot.get_guild(int(guild_id))
+def _bot_error():
+    """(response, status) when the bot is down/not ready, else None."""
+    if not bridge.bot_is_ready():
+        return jsonify({
+            "success": False,
+            "error": "Discord bot is not connected.",
+            "channels": []
+        }), 503
+    return None
 
 
 # ============================================================
@@ -40,30 +52,11 @@ def get_guild(guild_id):
 @require_guild_moderator
 def get_server_channels(guild_id):
 
-    bot = get_bot()
+    denied = _bot_error()
+    if denied:
+        return denied
 
-    if bot is None:
-
-        return jsonify({
-            "success": False,
-            "error": "Discord bot is not connected.",
-            "channels": []
-        }), 503
-
-
-    if not discord_state.ready:
-
-        return jsonify({
-            "success": False,
-            "error": "Discord bot is not ready.",
-            "channels": []
-        }), 503
-
-
-    guild = bot.get_guild(
-        int(guild_id)
-    )
-
+    guild = get_guild(guild_id)
 
     if guild is None:
 
@@ -74,70 +67,37 @@ def get_server_channels(guild_id):
             "channels": []
         }), 404
 
+    try:
+        bridge_channels = bridge.get_channels(int(guild_id)) or []
+    except BridgeUnavailable:
+        return jsonify({
+            "success": False,
+            "error": "Discord bot is not connected.",
+            "channels": []
+        }), 503
 
-    channels = []
-
-
-    for channel in guild.channels:
-
-        category = getattr(
-            channel,
-            "category",
-            None
-        )
-
-
-        channels.append({
-
-            "id":
-                str(channel.id),
-
-            "name":
-                channel.name,
-
-            "type":
-                str(channel.type),
-
-            "position":
-                channel.position,
-
-            "category_id":
-                (
-                    str(category.id)
-                    if category
-                    else None
-                ),
-
-            "category":
-                (
-                    category.name
-                    if category
-                    else None
-                ),
-
-            "created_at":
-                (
-                    channel.created_at.isoformat()
-                    if getattr(
-                        channel,
-                        "created_at",
-                        None
-                    )
-                    else None
-                )
-
-        })
-
+    channels = [
+        {
+            "id": str(channel.get("id")),
+            "name": channel.get("name"),
+            "type": channel.get("type"),
+            "position": channel.get("position", 0),
+            "category_id": channel.get("category_id"),
+            "category": channel.get("category"),
+            "created_at": channel.get("created_at"),
+        }
+        for channel in bridge_channels
+    ]
 
     return jsonify({
 
         "success": True,
 
         "guild_id":
-            str(guild.id),
+            str(guild.get("id")),
 
         "guild_name":
-            guild.name,
+            guild.get("name"),
 
         "count":
             len(channels),
@@ -160,75 +120,69 @@ def get_server_channels(guild_id):
 @require_guild_moderator
 def channel_summary(guild_id):
 
-    bot = get_bot()
-
-
-    if bot is None:
+    if not bridge.bot_is_ready():
 
         return jsonify({
-            "success": False,
-            "error": "Discord bot is not connected."
+
+            "success":
+                False,
+
+            "error":
+                "Discord bot is not connected."
+
         }), 503
 
 
-    if not discord_state.ready:
-
-        return jsonify({
-            "success": False,
-            "error": "Discord bot is not ready."
-        }), 503
-
-
-    guild = bot.get_guild(
-        int(guild_id)
+    guild = get_guild(
+        guild_id
     )
 
 
     if guild is None:
 
         return jsonify({
-            "success": False,
-            "error": "Discord server not found."
+
+            "success":
+                False,
+
+            "error":
+                "Discord server not found."
+
         }), 404
 
+    try:
+        bridge_channels = bridge.get_channels(int(guild_id)) or []
+    except BridgeUnavailable:
+        return jsonify({
+            "success": False,
+            "error": "Discord bot is not connected."
+        }), 503
 
-    text_channels = len(
-        guild.text_channels
-    )
+    def _count(*types):
+        return sum(
+            1
+            for channel in bridge_channels
+            if (channel.get("type") or "") in types
+        )
 
-    voice_channels = len(
-        guild.voice_channels
-    )
-
-    categories = len(
-        guild.categories
-    )
-
-    stage_channels = len([
-        channel
-        for channel in guild.channels
-        if str(channel.type) == "stage_voice"
-    ])
-
-    forum_channels = len([
-        channel
-        for channel in guild.channels
-        if str(channel.type) == "forum"
-    ])
-
+    text_channels = _count("text")
+    voice_channels = _count("voice")
+    categories = _count("category")
+    stage_channels = _count("stage_voice")
+    forum_channels = _count("forum")
 
     return jsonify({
 
         "success": True,
 
         "guild_id":
-            str(guild.id),
+            str(guild.get("id")),
 
         "guild_name":
-            guild.name,
+            guild.get("name"),
 
         "total":
-            len(guild.channels),
+            len(bridge_channels),
 
         "text":
             text_channels,

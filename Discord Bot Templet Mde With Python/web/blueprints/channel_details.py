@@ -1,6 +1,7 @@
 from flask import Blueprint, jsonify
 
-from web.services.discord_state import discord_state
+from web.services import bridge
+from web.services.bridge import BridgeUnavailable
 from web.security.decorators import require_guild_manage, require_login, require_guild_moderator
 
 
@@ -11,23 +12,19 @@ channel_details_api = Blueprint(
 
 
 def get_bot():
-
-    return discord_state.get_bot()
+    """Kept for call-site compat. Always None now -- there is no live
+    bot object in this process."""
+    return None
 
 
 def get_guild(guild_id):
-
-    bot = get_bot()
-
-    if bot is None:
+    """Bridge guild dict, or None when the bot is down / not in it."""
+    try:
+        if not bridge.bot_is_ready():
+            return None
+        return bridge.get_guild(int(guild_id))
+    except Exception:
         return None
-
-    if not discord_state.ready:
-        return None
-
-    return bot.get_guild(
-        int(guild_id)
-    )
 
 
 @channel_details_api.get(
@@ -38,6 +35,13 @@ def channel_details(
     guild_id,
     channel_id
 ):
+
+    if not bridge.bot_is_ready():
+
+        return jsonify({
+            "success": False,
+            "error": "Discord bot is not connected."
+        }), 503
 
     guild = get_guild(
         guild_id
@@ -51,9 +55,18 @@ def channel_details(
         }), 404
 
 
-    channel = guild.get_channel(
-        int(channel_id)
-    )
+    try:
+        bridge_channels = bridge.get_channels(int(guild_id)) or []
+    except BridgeUnavailable:
+        return jsonify({
+            "success": False,
+            "error": "Discord bot is not connected."
+        }), 503
+    channel = None
+    for candidate in bridge_channels:
+        if str(candidate.get("id")) == str(channel_id):
+            channel = candidate
+            break
 
     if channel is None:
 
@@ -66,134 +79,47 @@ def channel_details(
     data = {
 
         "id":
-            str(channel.id),
+            str(channel.get("id")),
 
         "name":
-            channel.name,
+            channel.get("name"),
 
         "type":
-            str(channel.type),
+            str(channel.get("type")),
 
         "position":
-            getattr(
-                channel,
-                "position",
-                None
-            ),
+            channel.get("position"),
 
         "category_id":
-            (
-                str(channel.category_id)
-                if getattr(
-                    channel,
-                    "category_id",
-                    None
-                )
-                else None
-            ),
+            channel.get("category_id"),
 
         "category":
-            (
-                channel.category.name
-                if getattr(
-                    channel,
-                    "category",
-                    None
-                )
-                else None
-            ),
+            channel.get("category"),
 
         "topic":
-            getattr(
-                channel,
-                "topic",
-                None
-            ),
+            channel.get("topic"),
 
         "nsfw":
-            getattr(
-                channel,
-                "nsfw",
-                False
-            ),
+            bool(channel.get("nsfw", False)),
 
         "slowmode_delay":
-            getattr(
-                channel,
-                "slowmode_delay",
-                0
-            ),
+            channel.get("slowmode_delay", 0),
 
         "created_at":
-            (
-                channel.created_at.isoformat()
-                if getattr(
-                    channel,
-                    "created_at",
-                    None
-                )
-                else None
-            )
+            channel.get("created_at"),
     }
 
 
     # -----------------------------------------------------
     # PERMISSIONS
     # -----------------------------------------------------
+    # Channel permission overwrites are NOT exposed by the bridge
+    # (no endpoint for them), so this degrades to an empty list
+    # instead of crashing. The key stays so the frontend shape is
+    # unchanged. A bridge overwrites endpoint is the follow-up if
+    # the panel needs them back.
 
-    permissions = []
-
-
-    for role in guild.roles:
-
-        try:
-
-            overwrite = channel.overwrites_for(
-                role
-            )
-
-            allowed = []
-
-            denied = []
-
-
-            for permission, value in overwrite:
-
-                if value is True:
-
-                    allowed.append(
-                        permission
-                    )
-
-                elif value is False:
-
-                    denied.append(
-                        permission
-                    )
-
-
-            if allowed or denied:
-
-                permissions.append({
-
-                    "role_id":
-                        str(role.id),
-
-                    "role_name":
-                        role.name,
-
-                    "allowed":
-                        allowed,
-
-                    "denied":
-                        denied
-                })
-
-        except Exception:
-            continue
-
-
-    data["permissions"] = permissions
+    data["permissions"] = []
 
 
     return jsonify({
@@ -201,7 +127,7 @@ def channel_details(
         "success": True,
 
         "guild_id":
-            str(guild.id),
+            str(guild.get("id")),
 
         "channel":
             data

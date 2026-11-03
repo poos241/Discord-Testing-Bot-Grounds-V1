@@ -5,7 +5,7 @@ from flask import (
     jsonify
 )
 
-from web.services.discord_state import discord_state
+from web.services import bridge
 from web.services.event_store import event_store
 from web.security.decorators import require_guild_manage, require_login, require_guild_moderator
 
@@ -24,10 +24,7 @@ def event_stats(
     guild_id
 ):
 
-    bot = discord_state.get_bot()
-
-
-    if bot is None:
+    if not bridge.bot_is_ready():
 
         return jsonify({
 
@@ -40,22 +37,11 @@ def event_stats(
         }), 503
 
 
-    if not discord_state.ready:
-
-        return jsonify({
-
-            "success":
-                False,
-
-            "error":
-                "Discord bot is not ready."
-
-        }), 503
-
-
-    guild = bot.get_guild(
-        int(guild_id)
-    )
+    guild = None
+    try:
+        guild = bridge.get_guild(int(guild_id))
+    except Exception:
+        guild = None
 
 
     if guild is None:
@@ -72,7 +58,7 @@ def event_stats(
 
 
     events = event_store.for_guild(
-        guild.id,
+        guild.get("id"),
         limit=5000
     )
 
@@ -132,12 +118,12 @@ def event_stats(
 
         "guild_id":
             str(
-                guild.id
+                guild.get("id")
             ),
 
         "total_events":
             event_store.count_for_guild(
-                guild.id
+                guild.get("id")
             ),
 
         "categories":

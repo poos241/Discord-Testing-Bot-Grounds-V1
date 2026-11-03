@@ -3,7 +3,10 @@ from flask import (
     jsonify,
 )
 
-from web.services.discord_state import discord_state
+import discord
+
+from web.services import bridge
+from web.services.member_service import MemberService
 from web.security.decorators import require_guild_manage, require_login, require_guild_moderator
 
 
@@ -18,23 +21,19 @@ roles_api = Blueprint(
 # =========================================================
 
 def get_bot():
-
-    return discord_state.bot
+    """Kept for call-site compat. Always None now -- there is no live
+    bot object in this process."""
+    return None
 
 
 def get_guild(guild_id):
 
-    bot = get_bot()
-
-    if bot is None:
-        return None
-
-    if not discord_state.ready:
+    if not bridge.bot_is_ready():
         return None
 
     try:
 
-        return bot.get_guild(
+        return bridge.get_guild(
             int(guild_id)
         )
 
@@ -50,56 +49,79 @@ def get_guild(guild_id):
 # SERIALIZE ROLE
 # =========================================================
 
+def _role_color(role):
+    """(color_str, color_value) from a bridge role dict.
+
+    The real bridge sends color as a "#rrggbb" string; the harness
+    fake (and any int source) may send an int instead."""
+    raw = role.get("color")
+    if isinstance(raw, int):
+        return ("#%06x" % (raw & 0xFFFFFF)), raw
+    if isinstance(raw, str) and raw:
+        try:
+            return raw, int(raw.lstrip("#"), 16)
+        except ValueError:
+            return raw, 0
+    return "#000000", 0
+
+
 def serialize_role(
     role,
-    guild
+    member_role_ids
 ):
 
-    permissions = []
+    role_perms = discord.Permissions(
+        int(role.get("permissions") or 0)
+    )
 
-    for permission, enabled in role.permissions:
+    permissions = [
+        name
+        for name, enabled in role_perms
+        if enabled
+    ]
 
-        if enabled:
+    color, color_value = _role_color(role)
 
-            permissions.append(
-                permission
-            )
+    role_id = str(role.get("id"))
+    member_count = sum(
+        1
+        for ids in member_role_ids
+        if role_id in ids
+    )
 
-
-    member_count = 0
-
-    for member in guild.members:
-
-        if role in member.roles:
-
-            member_count += 1
-
+    created = None
+    try:
+        created = discord.utils.snowflake_time(
+            int(role.get("id"))
+        ).isoformat()
+    except Exception:
+        created = None
 
     return {
 
         "id":
-            str(role.id),
+            role_id,
 
         "name":
-            role.name,
+            role.get("name"),
 
         "position":
-            role.position,
+            role.get("position"),
 
         "color":
-            str(role.color),
+            color,
 
         "color_value":
-            role.color.value,
+            color_value,
 
         "hoist":
-            role.hoist,
+            role.get("hoist"),
 
         "managed":
-            role.managed,
+            role.get("managed"),
 
         "mentionable":
-            role.mentionable,
+            role.get("mentionable"),
 
         "permissions":
             permissions,
@@ -111,11 +133,7 @@ def serialize_role(
             member_count,
 
         "created_at":
-            (
-                role.created_at.isoformat()
-                if role.created_at
-                else None
-            ),
+            created,
 
     }
 
@@ -134,10 +152,7 @@ def get_server_roles(
     guild_id
 ):
 
-    bot = get_bot()
-
-
-    if bot is None:
+    if not bridge.bot_is_ready():
 
         return jsonify({
 
@@ -146,22 +161,6 @@ def get_server_roles(
 
             "error":
                 "Discord bot is not connected.",
-
-            "roles":
-                []
-
-        }), 503
-
-
-    if not discord_state.ready:
-
-        return jsonify({
-
-            "success":
-                False,
-
-            "error":
-                "Discord bot is not ready.",
 
             "roles":
                 []
@@ -189,15 +188,22 @@ def get_server_roles(
 
         }), 404
 
+    bridge_roles = bridge.get_roles(int(guild_id)) or []
+
+    # One member fetch; each member's role-id set for counting.
+    member_role_ids = [
+        {str(r.get("id")) for r in (m.get("roles") or [])}
+        for m in MemberService().get_members(guild_id)
+    ]
 
     roles = [
 
         serialize_role(
             role,
-            guild
+            member_role_ids
         )
 
-        for role in guild.roles
+        for role in bridge_roles
 
     ]
 
@@ -217,10 +223,10 @@ def get_server_roles(
             True,
 
         "guild_id":
-            str(guild.id),
+            str(guild.get("id")),
 
         "guild_name":
-            guild.name,
+            guild.get("name"),
 
         "count":
             len(roles),

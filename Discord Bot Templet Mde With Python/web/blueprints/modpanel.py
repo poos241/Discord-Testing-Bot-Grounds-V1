@@ -3,8 +3,32 @@
 # Web version of the /userinfo mini-admin panel.
 # Provides member moderation data and actions via the web dashboard.
 #
-# Data layer: imports module-level helpers from cogs.admin_cog
-# (they operate directly on data/mod_data.json).
+# Bridge split: live Discord work (member lookup, DM, timeout/kick/
+# ban/rename/strip-roles/purge/XP) goes through the bot-side bridge
+# via ModerationService / bridge. Mod-case data (warns/notes/cases)
+# still lives in mod_data.json in bot.db, read/written directly with
+# the _mod_record/_save_mod_data helpers from cogs.admin_cog -- those
+# are pure storage helpers and import standalone in this process
+# (verified by the migration harness import test).
+#
+# The WatchList cog is NOT used any more: its watch_add/watch_remove
+# are Discord slash-command handlers (they take a ctx), so the old
+# web code calling them with plain ids never worked. Watch state is
+# read/written directly on watchlist_data.json via config.load_json /
+# save_json (same store the cog uses). See _watch_put_entry for the
+# re-read mitigation and the report for the residual risk: the bot's
+# WatchList cog caches the store in memory, so it will not see a
+# website-added watch (and may overwrite it on its next save) until
+# the bot restarts.
+#
+# Mod-case writes use _save_mod_record (from moderation.py): re-read
+# fresh immediately before the write and retry once when the change
+# did not land, narrowing the cross-process last-writer-wins window
+# with the bot. Residual risk is named there.
+
+import datetime
+import re as _re
+import time as _time
 
 from flask import Blueprint, request, jsonify
 
@@ -12,7 +36,15 @@ import secrets
 
 from flask import session
 
-from web.services.discord_state import discord_state, run_coro_threadsafe
+from web.services import bridge
+from web.services.bridge import BridgeUnavailable
+from web.services.discord_state import run_coro_threadsafe
+from web.services.moderation_service import ModerationService
+from web.blueprints.moderation import (
+    _save_mod_record,
+    _save_tempban,
+    _service as _moderation_service,
+)
 from web.security.decorators import (
     require_guild_access,
     require_guild_moderator,
@@ -29,15 +61,9 @@ from web.blueprints.auth import get_csrf_token
 
 def _record_case_direct(guild_id, user_id, action, reason, evidence=None, dm_sent=False):
     """Record a case directly to mod_data.json with full moderator attribution."""
-    import datetime
     try:
-        _mod_record, _, _save_mod_data = _mod_helpers()
-        if not _mod_record:
-            return
         mod_name, mod_id, mod_avatar = _moderator()
-        mod_data, urec = _mod_record(str(guild_id), str(user_id))
-        cases = urec.setdefault("cases", [])
-        cases.append({
+        case = {
             "action": action,
             "reason": reason,
             "moderator": mod_name,
@@ -46,11 +72,18 @@ def _record_case_direct(guild_id, user_id, action, reason, evidence=None, dm_sen
             "evidence": evidence,
             "dm_sent": dm_sent,
             "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-        })
-        # Keep last 50
-        if len(cases) > 50:
-            cases[:] = cases[-50:]
-        _save_mod_data(mod_data)
+        }
+
+        def _mutate(urec):
+            cases = urec.setdefault("cases", [])
+            cases.append(case)
+            if len(cases) > 50:
+                cases[:] = cases[-50:]
+
+        def _verify(urec):
+            return case in (urec.get("cases") or [])
+
+        _save_mod_record(guild_id, user_id, _mutate, _verify)
     except Exception:
         pass
 
@@ -73,15 +106,25 @@ def _moderator():
     return name, uid, avatar_url
 
 
-def _try_dm(member, text):
-    """Try to DM the member. Returns True on success."""
+def _try_dm(guild_id, user_id, text):
+    """Try to DM the member via the bridge. Returns True on success."""
     try:
-        from cogs.admin_cog import _dm_target
-        return bool(
-            run_coro_threadsafe(_dm_target(member, text)).result(timeout=15)
-        )
+        service = ModerationService()
+        result = run_coro_threadsafe(
+            service.send_dm(guild_id, user_id, text)
+        ).result(timeout=20)
+        if isinstance(result, dict):
+            return bool(result.get("sent"))
+        return bool(result)
     except Exception:
         return False
+
+
+def _guild_name(guild):
+    """Display name from a bridge guild dict (or 'the server')."""
+    if isinstance(guild, dict):
+        return guild.get("name") or "the server"
+    return "the server"
 
 
 modpanel_api = Blueprint(
@@ -104,22 +147,37 @@ def _check_csrf():
 
 
 def _get_member(guild_id, user_id):
-    """Return (guild, member_or_user) or (None, None)."""
-    bot = discord_state.bot
-    if bot is None or not discord_state.ready:
+    """Return (guild_dict, member_dict) or (None, None).
+
+    Bridge split: both come from the bot-side bridge, not a live bot
+    object. (guild, None) means the server is known but the user is
+    not a member of it; (None, None) means the server is unknown or
+    the bot is down.
+    """
+    try:
+        guild = bridge.get_guild(int(guild_id))
+    except Exception:
         return None, None
-    guild = bot.get_guild(int(guild_id))
     if guild is None:
         return None, None
-    member = guild.get_member(int(user_id))
-    if member is None:
-        try:
-            member = run_coro_threadsafe(
-                guild.fetch_member(int(user_id))
-            ).result(timeout=15)
-        except Exception:
-            member = None
+    try:
+        member = bridge.get_member(int(guild_id), int(user_id))
+    except Exception:
+        return guild, None
     return guild, member
+
+
+def _bot_down_response():
+    """503 when the bridge is down, else 404 (server unknown)."""
+    if not bridge.bot_is_ready():
+        return jsonify({
+            "success": False,
+            "error": "Discord bot is not connected.",
+        }), 503
+    return jsonify({
+        "success": False,
+        "error": "Discord server not found.",
+    }), 404
 
 
 def _mod_helpers():
@@ -131,14 +189,90 @@ def _mod_helpers():
         return None, None, None
 
 
-def _watch_cog():
-    bot = discord_state.bot
-    if bot is None:
-        return None
+# ============================================================
+# WATCH LIST — direct store access (no cog in this process)
+# ============================================================
+
+WATCHLIST_FILE = "watchlist_data.json"
+
+
+def _watch_load():
+    """Fresh watchlist_data.json, or None when the store cannot be
+    read. Fail-closed: load_json raises on a persistent store failure
+    instead of returning a stale/empty fallback, so None here must
+    never be saved over."""
     try:
-        return bot.get_cog("WatchList")
+        from config import load_json
+        data = load_json(WATCHLIST_FILE)
+        return data if isinstance(data, dict) else {}
     except Exception:
         return None
+
+
+def _watch_save(data):
+    """Persist the watchlist store; False when the save failed."""
+    try:
+        from config import save_json
+        save_json(WATCHLIST_FILE, data)
+        return True
+    except Exception:
+        return False
+
+
+def _watch_entry(guild_id, user_id):
+    """(store, entry) for one watched user; (None, None) when the
+    store could not be read."""
+    data = _watch_load()
+    if data is None:
+        return None, None
+    users = (data.get(str(guild_id)) or {}).get("users") or {}
+    return data, users.get(str(user_id))
+
+
+def _watch_put_entry(guild_id, user_id, entry):
+    """Write one watch entry with a re-read + one retry (same
+    cross-process mitigation as the mod-case writes). Returns True
+    when the entry is visible in a fresh load afterwards."""
+    data = _watch_load()
+    if data is None:
+        return False
+    grec = data.setdefault(str(guild_id), {})
+    grec.setdefault("log_channel_id", None)
+    grec.setdefault("users", {})[str(user_id)] = dict(entry)
+    if not _watch_save(data):
+        return False
+    fresh = _watch_load()
+    if fresh is None:
+        return False
+    got = (fresh.get(str(guild_id)) or {}).get("users", {}).get(str(user_id))
+    if got == dict(entry):
+        return True
+    grec = fresh.setdefault(str(guild_id), {})
+    grec.setdefault("log_channel_id", None)
+    grec.setdefault("users", {})[str(user_id)] = dict(entry)
+    return _watch_save(fresh)
+
+
+def _watch_remove_entry(guild_id, user_id):
+    """Remove one watch entry with a re-read + one retry. True when
+    the user is not watched afterwards (including already-gone)."""
+    data = _watch_load()
+    if data is None:
+        return False
+    users = (data.get(str(guild_id)) or {}).get("users") or {}
+    if str(user_id) not in users:
+        return True
+    del users[str(user_id)]
+    if not _watch_save(data):
+        return False
+    fresh = _watch_load()
+    if fresh is None:
+        return False
+    users = (fresh.get(str(guild_id)) or {}).get("users") or {}
+    if str(user_id) not in users:
+        return True
+    users.pop(str(user_id), None)
+    return _watch_save(fresh)
 
 
 def _xp_for(guild_id, user_id):
@@ -154,6 +288,54 @@ def _xp_for(guild_id, user_id):
     except Exception:
         pass
     return 0, 1
+
+
+def _award_xp_chunked(guild_id, user_id, amount, display_name):
+    """Award XP through the bridge, chunked to its +/-1000-per-grant
+    clamp so the old any-amount behaviour is kept."""
+    service = ModerationService()
+    remaining = int(amount)
+    while remaining != 0:
+        chunk = max(-1000, min(1000, remaining))
+        run_coro_threadsafe(
+            service.award_xp(guild_id, user_id, chunk, display_name)
+        ).result(timeout=20)
+        remaining -= chunk
+
+
+def _timed_out(member):
+    """True when a bridge member dict shows an active timeout."""
+    until = (member or {}).get("timed_out_until")
+    if not until:
+        return False
+    try:
+        end = datetime.datetime.fromisoformat(
+            str(until).replace("Z", "+00:00")
+        )
+        if end.tzinfo is None:
+            end = end.replace(tzinfo=datetime.timezone.utc)
+        return end > datetime.datetime.now(datetime.timezone.utc)
+    except Exception:
+        return True
+
+
+def _role_color_value(color):
+    """Role colour as an int, from a '#rrggbb' string or an int."""
+    if isinstance(color, str):
+        text = color.strip()
+        if text.startswith("#"):
+            try:
+                return int(text[1:], 16)
+            except ValueError:
+                return 0
+        try:
+            return int(text)
+        except ValueError:
+            return 0
+    try:
+        return int(color or 0)
+    except (TypeError, ValueError):
+        return 0
 
 
 # ============================================================
@@ -185,43 +367,45 @@ def get_modpanel(guild_id, user_id):
         except Exception:
             pass
 
-    # Watch status
+    # Watch status (direct store read; unreadable store reads as
+    # "not watched", same as the old cog-missing path).
     watched = False
     watch_info = None
-    wc = _watch_cog()
-    if wc:
-        try:
-            if hasattr(wc, "_guild_data"):
-                gdata = wc._guild_data(guild_id)
-                rec = gdata.get("users", {}).get(str(user_id))
-                if rec:
-                    watched = True
-                    watch_info = rec
-            elif hasattr(wc, "_is_watched"):
-                watched = bool(wc._is_watched(str(guild_id), str(user_id)))
-        except Exception:
-            pass
+    try:
+        _, watch_rec = _watch_entry(guild_id, user_id)
+        if watch_rec:
+            watched = True
+            watch_info = watch_rec
+    except Exception:
+        pass
 
     xp, level = _xp_for(guild_id, user_id)
 
-    # Member info
+    # Member info (bridge member dict shape: username/display_name/
+    # avatar URL string, ISO joined_at/created_at, roles already
+    # excluding @everyone, timed_out_until instead of is_timed_out()).
     minfo = {"id": str(user_id), "is_member": member is not None}
     if member:
         try:
+            roles = []
+            for r in member.get("roles") or []:
+                if r.get("name") == "@everyone":
+                    continue
+                roles.append({
+                    "id": str(r.get("id")),
+                    "name": r.get("name"),
+                    "color": _role_color_value(r.get("color")),
+                })
             minfo.update({
-                "name": member.name,
-                "display_name": member.display_name,
-                "discriminator": getattr(member, "discriminator", "0"),
-                "avatar": str(member.display_avatar.url) if member.display_avatar else None,
-                "bot": bool(getattr(member, "bot", False)),
-                "joined_at": member.joined_at.isoformat() if getattr(member, "joined_at", None) else None,
-                "created_at": member.created_at.isoformat() if getattr(member, "created_at", None) else None,
-                "roles": [
-                    {"id": str(r.id), "name": r.name, "color": r.color.value}
-                    for r in getattr(member, "roles", [])
-                    if r.name != "@everyone"
-                ],
-                "timed_out": member.is_timed_out() if hasattr(member, "is_timed_out") else False,
+                "name": member.get("username"),
+                "display_name": member.get("display_name"),
+                "discriminator": "0",
+                "avatar": member.get("avatar"),
+                "bot": bool(member.get("bot", False)),
+                "joined_at": member.get("joined_at"),
+                "created_at": member.get("created_at"),
+                "roles": roles,
+                "timed_out": _timed_out(member),
             })
         except Exception:
             pass
@@ -279,35 +463,45 @@ def modpanel_warn(guild_id, user_id):
         guild, member = _get_member(guild_id, user_id)
         if member:
             dm_sent = _try_dm(
-                member,
-                f"⚠️ You've been warned in **{guild.name}**\n**Reason:** {reason}",
+                guild_id, user_id,
+                f"⚠️ You've been warned in **{_guild_name(guild)}**\n**Reason:** {reason}",
             )
 
-    mod_data, urec = _mod_record(guild_id, user_id)
-    warns = urec.setdefault("warns", [])
-    warns.append({
+    warn = {
         "reason": reason,
         "moderator": mod_label,
         "moderator_id": mod_id,
         "moderator_avatar": mod_avatar,
         "evidence": evidence,
         "dm_sent": dm_sent,
-        "timestamp": __import__("datetime").datetime.now(
-            __import__("datetime").timezone.utc
+        "timestamp": datetime.datetime.now(
+            datetime.timezone.utc
         ).isoformat(),
-    })
-    _save_mod_data(mod_data)
+    }
+
+    def _mutate(urec):
+        urec.setdefault("warns", []).append(warn)
+
+    def _verify(urec):
+        return warn in (urec.get("warns") or [])
+
+    urec = _save_mod_record(guild_id, user_id, _mutate, _verify)
+    if urec is None:
+        return jsonify({
+            "success": False,
+            "error": "Mod data helpers unavailable.",
+        }), 500
     _record_case_direct(guild_id, user_id, "warn", reason,
                         evidence=evidence, dm_sent=dm_sent)
 
-    return jsonify({"success": True, "warn_count": len(warns), "dm_sent": dm_sent})
+    return jsonify({"success": True, "warn_count": len(urec.get("warns", [])), "dm_sent": dm_sent})
 
 
 # ============================================================
 # NOTES
 #
 # POST /api/servers/<guild_id>/members/<user_id>/notes
-# DELETE /api/servers/<guild_id>/members/<user_id>/notes/<int:index>
+# DELETE /api/servers/<int:guild_id>/members/<user_id>/notes/<int:index>
 # ============================================================
 
 @modpanel_api.post(
@@ -328,18 +522,28 @@ def modpanel_add_note(guild_id, user_id):
     if not _mod_record:
         return jsonify({"success": False, "error": "Mod data helpers unavailable."}), 500
 
-    mod_data, urec = _mod_record(guild_id, user_id)
-    notes = urec.setdefault("notes", [])
-    notes.append({
+    note = {
         "text": text,
         "moderator": "Web dashboard",
-        "timestamp": __import__("datetime").datetime.now(
-            __import__("datetime").timezone.utc
+        "timestamp": datetime.datetime.now(
+            datetime.timezone.utc
         ).isoformat(),
-    })
-    _save_mod_data(mod_data)
+    }
 
-    return jsonify({"success": True, "note_count": len(notes)})
+    def _mutate(urec):
+        urec.setdefault("notes", []).append(note)
+
+    def _verify(urec):
+        return note in (urec.get("notes") or [])
+
+    urec = _save_mod_record(guild_id, user_id, _mutate, _verify)
+    if urec is None:
+        return jsonify({
+            "success": False,
+            "error": "Mod data helpers unavailable.",
+        }), 500
+
+    return jsonify({"success": True, "note_count": len(urec.get("notes", []))})
 
 
 @modpanel_api.delete(
@@ -355,14 +559,32 @@ def modpanel_delete_note(guild_id, user_id, index):
     if not _mod_record:
         return jsonify({"success": False, "error": "Mod data helpers unavailable."}), 500
 
-    mod_data, urec = _mod_record(guild_id, user_id)
-    notes = urec.get("notes", [])
-    if index < 0 or index >= len(notes):
+    try:
+        _, urec0 = _mod_record(guild_id, user_id)
+    except Exception:
+        return jsonify({"success": False, "error": "Mod data helpers unavailable."}), 500
+    notes0 = urec0.get("notes", [])
+    if index < 0 or index >= len(notes0):
         return jsonify({"success": False, "error": "Note not found."}), 404
-    notes.pop(index)
-    _save_mod_data(mod_data)
+    expected_len = len(notes0) - 1
 
-    return jsonify({"success": True, "note_count": len(notes)})
+    def _mutate(urec):
+        notes = urec.get("notes", [])
+        if index < 0 or index >= len(notes):
+            raise IndexError("Note not found.")
+        notes.pop(index)
+
+    def _verify(urec):
+        return len(urec.get("notes", [])) == expected_len
+
+    urec = _save_mod_record(guild_id, user_id, _mutate, _verify)
+    if urec is None:
+        return jsonify({
+            "success": False,
+            "error": "Mod data helpers unavailable.",
+        }), 500
+
+    return jsonify({"success": True, "note_count": len(urec.get("notes", []))})
 
 
 # ============================================================
@@ -381,32 +603,33 @@ def modpanel_watch(guild_id, user_id):
     if denied:
         return denied
 
-    wc = _watch_cog()
-    if wc is None:
-        return jsonify({"success": False, "error": "WatchList cog not loaded."}), 503
-
     data = request.get_json(silent=True) or {}
     reason = (data.get("reason") or "Watched via web dashboard.").strip()
 
     mod_name, mod_id, _ = _moderator()
     mod_label = f"{mod_name} ({mod_id})" if mod_id else mod_name
 
-    try:
-        if hasattr(wc, "watch_add"):
-            result = wc.watch_add(str(guild_id), str(user_id))
-            if hasattr(result, "__await__"):
-                run_coro_threadsafe(result).result(timeout=15)
-        # Set reason/moderator directly on the watch entry
-        try:
-            users = wc._guild_data(str(guild_id)).get("users", {})
-            entry = users.get(str(user_id))
-            if isinstance(entry, dict):
-                entry["reason"] = reason
-                entry["added_by"] = mod_label
-        except Exception:
-            pass
-    except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 500
+    _g, member = _get_member(guild_id, user_id)
+    entry = {
+        "user_id": str(user_id),
+        "username": (member.get("username") if member else None) or str(user_id),
+        "display_name": (member.get("display_name") if member else None) or str(user_id),
+        "added_by": mod_label,
+        "added_by_name": mod_name,
+        "added_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        "reason": reason,
+    }
+    store, existing = _watch_entry(guild_id, user_id)
+    if store is None:
+        # Store unreadable (as opposed to "user simply not watched").
+        return jsonify({"success": False, "error": "Watch list unavailable."}), 503
+    if isinstance(existing, dict):
+        # Already watched: keep the original entry, refresh the
+        # reason/attribution (as the old code did after watch_add).
+        entry = {**existing, "reason": reason,
+                 "added_by": mod_label, "added_by_name": mod_name}
+    if not _watch_put_entry(guild_id, user_id, entry):
+        return jsonify({"success": False, "error": "Watch list could not be saved."}), 503
 
     _record_case_direct(guild_id, user_id, "watch", reason)
 
@@ -422,17 +645,8 @@ def modpanel_unwatch(guild_id, user_id):
     if denied:
         return denied
 
-    wc = _watch_cog()
-    if wc is None:
-        return jsonify({"success": False, "error": "WatchList cog not loaded."}), 503
-
-    try:
-        if hasattr(wc, "watch_remove"):
-            result = wc.watch_remove(str(guild_id), str(user_id))
-            if hasattr(result, "__await__"):
-                run_coro_threadsafe(result).result(timeout=15)
-    except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 500
+    if not _watch_remove_entry(guild_id, user_id):
+        return jsonify({"success": False, "error": "Watch list unavailable."}), 503
 
     _record_case_direct(guild_id, user_id, "unwatch", "Watch removed via web dashboard.")
 
@@ -464,20 +678,19 @@ def modpanel_xp(guild_id, user_id):
 
     guild, member = _get_member(guild_id, user_id)
     if guild is None:
-        return jsonify({"success": False, "error": "Discord server not found."}), 404
-    display = member.display_name if member else str(user_id)
+        return _bot_down_response()
+    display = (member.get("display_name") if member else None) or str(user_id)
 
     try:
-        from cogs.Level_system import award_xp
-        run_coro_threadsafe(
-            award_xp(guild, int(user_id), display, amount, apply_event=False)
-        ).result(timeout=15)
+        _award_xp_chunked(guild_id, user_id, amount, display)
+    except BridgeUnavailable:
+        return jsonify({"success": False, "error": "Discord bot is not reachable."}), 503
     except Exception as e:
         return jsonify({"success": False, "error": f"XP update failed: {e}"}), 500
 
-    _, _record_case, _ = _mod_helpers()
-    action = "add_xp" if amount > 0 else "remove_xp"
-    _record_case_direct(guild_id, user_id, action, f"{amount} XP")
+    _record_case_direct(guild_id, user_id,
+                        "add_xp" if amount > 0 else "remove_xp",
+                        f"{amount} XP")
 
     xp, level = _xp_for(guild_id, user_id)
     return jsonify({"success": True, "xp": xp, "level": level})
@@ -490,7 +703,7 @@ def modpanel_xp(guild_id, user_id):
 # ============================================================
 
 @modpanel_api.post(
-    "/servers/<int:guild_id>/members/<int:user_id>/rename"
+    "/servers/<int:guild_id>/members/<user_id>/rename"
 )
 @require_guild_permission(MANAGE_NICKNAMES, label="Manage Nicknames permission required.")
 def modpanel_rename(guild_id, user_id):
@@ -500,17 +713,23 @@ def modpanel_rename(guild_id, user_id):
 
     guild, member = _get_member(guild_id, user_id)
     if guild is None or member is None:
+        if guild is None:
+            return _bot_down_response()
         return jsonify({"success": False, "error": "Member not found."}), 404
 
     data = request.get_json(silent=True) or {}
     nickname = (data.get("nickname") or "").strip() or None  # None resets
 
     try:
-        run_coro_threadsafe(member.edit(nick=nickname)).result(timeout=15)
+        service = ModerationService()
+        run_coro_threadsafe(
+            service.rename(guild_id, user_id, nickname)
+        ).result(timeout=20)
+    except BridgeUnavailable:
+        return jsonify({"success": False, "error": "Discord bot is not reachable."}), 503
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
-    _, _record_case, _ = _mod_helpers()
     _record_case_direct(
         guild_id, user_id, "rename",
         f"Nickname set to '{nickname}'" if nickname else "Nickname reset",
@@ -536,20 +755,40 @@ def modpanel_strip_roles(guild_id, user_id):
 
     guild, member = _get_member(guild_id, user_id)
     if guild is None or member is None:
+        if guild is None:
+            return _bot_down_response()
         return jsonify({"success": False, "error": "Member not found."}), 404
 
-    removed = []
     try:
-        roles_to_remove = [r for r in member.roles if r.name != "@everyone"]
-        removed = [r.name for r in roles_to_remove]
-        if roles_to_remove:
-            run_coro_threadsafe(
-                member.remove_roles(*roles_to_remove, reason="Strip roles via web dashboard")
-            ).result(timeout=20)
+        service = ModerationService()
+        result = run_coro_threadsafe(
+            service.strip_roles(
+                guild_id, user_id, "Strip roles via web dashboard"
+            )
+        ).result(timeout=20)
+    except BridgeUnavailable:
+        return jsonify({"success": False, "error": "Discord bot is not reachable."}), 503
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
-    _, _record_case, _ = _mod_helpers()
+    # Bridge returns removed as [{id, name}, ...] (real bridge) or as
+    # plain id strings (harness fake); normalise both to the plain
+    # name list the old response (and the frontend) expects, resolving
+    # bare ids through the guild's role list.
+    removed = []
+    if isinstance(result, dict):
+        role_names = {}
+        try:
+            for role in (bridge.get_roles(int(guild_id)) or []):
+                role_names[str(role.get("id"))] = role.get("name")
+        except Exception:
+            role_names = {}
+        for entry in result.get("removed") or []:
+            if isinstance(entry, dict):
+                removed.append(entry.get("name"))
+            else:
+                removed.append(role_names.get(str(entry), str(entry)))
+
     _record_case_direct(
         guild_id, user_id, "strip_roles",
         f"Removed {len(removed)} roles: {', '.join(removed[:10])}",
@@ -575,7 +814,7 @@ def modpanel_clear(guild_id, user_id):
 
     guild, member = _get_member(guild_id, user_id)
     if guild is None:
-        return jsonify({"success": False, "error": "Discord server not found."}), 404
+        return _bot_down_response()
 
     data = request.get_json(silent=True) or {}
     try:
@@ -585,27 +824,31 @@ def modpanel_clear(guild_id, user_id):
 
     cleared = 0
     target_id = int(user_id)
-    for channel in guild.text_channels:
+    service = ModerationService()
+    try:
+        channels = bridge.get_channels(int(guild_id)) or []
+    except Exception:
+        channels = []
+    # Old code walked guild.text_channels (TextChannel incl. news).
+    # Per-channel permission skips are now bridge-side: a channel the
+    # bot cannot purge in answers 403 and is skipped, same outcome.
+    for channel in channels:
         if cleared >= amount:
             break
-        try:
-            perms = channel.permissions_for(guild.me)
-            if not (perms.read_messages and perms.manage_messages):
-                continue
-        except Exception:
+        if (channel.get("type") or "") not in ("text", "news"):
             continue
         try:
-            deleted = run_coro_threadsafe(
-                channel.purge(
-                    limit=200,
-                    check=lambda m: m.author.id == target_id,
+            result = run_coro_threadsafe(
+                service.purge(
+                    guild_id, int(channel["id"]), target_id,
+                    min(200, amount - cleared),
                 )
             ).result(timeout=30)
-            cleared += len(deleted)
+            if isinstance(result, dict):
+                cleared += int(result.get("deleted") or 0)
         except Exception:
             continue
 
-    _, _record_case, _ = _mod_helpers()
     _record_case_direct(
         guild_id, user_id, "clear",
         f"Cleared ~{cleared} messages via web dashboard.",
@@ -618,8 +861,8 @@ def modpanel_clear(guild_id, user_id):
 # TEMPBAN
 #
 # POST /api/servers/<guild_id>/members/<user_id>/tempban  {duration, reason}
-# Duration like "7d", "12h", "30m". Stored in mod_data.json;
-# AdminCog's 1-minute sweep auto-unbans when it expires.
+# Duration like "7d", "12h", "30m". Stored in mod_data.json; the
+# bot's 1-minute sweep auto-unbans when it expires.
 # ============================================================
 
 @modpanel_api.post(
@@ -633,7 +876,7 @@ def modpanel_tempban(guild_id, user_id):
 
     guild, member = _get_member(guild_id, user_id)
     if guild is None:
-        return jsonify({"success": False, "error": "Discord server not found."}), 404
+        return _bot_down_response()
 
     data = request.get_json(silent=True) or {}
     duration_str = (data.get("duration") or "").strip()
@@ -641,11 +884,7 @@ def modpanel_tempban(guild_id, user_id):
     want_dm = bool(data.get("dm"))
     evidence = (data.get("evidence") or "").strip() or None
 
-    mod_name, mod_id, mod_avatar = _moderator()
-    mod_label = f"{mod_name} ({mod_id})" if mod_id else mod_name
-
     # Parse duration
-    import re as _re
     m = _re.match(r"^(\d+)\s*([mhd])$", duration_str, _re.IGNORECASE)
     if not m:
         return jsonify({"success": False, "error": "Invalid duration (e.g. 7d, 12h, 30m)."}), 400
@@ -659,35 +898,31 @@ def modpanel_tempban(guild_id, user_id):
     dm_sent = False
     if want_dm:
         dm_sent = _try_dm(
-            member,
-            f"🔨 You've been banned from **{guild.name}**\n**Reason:** {reason}\n**Duration:** {duration_str}",
+            guild_id, user_id,
+            f"🔨 You've been banned from **{_guild_name(guild)}**\n**Reason:** {reason}\n**Duration:** {duration_str}",
         )
 
-    # Ban via Discord
+    # Ban via Discord (through the bridge; _service aborts 503 when
+    # the bot is down -- called outside the try so the abort is not
+    # swallowed into a 500).
+    service = _moderation_service()
     try:
-        from web.blueprints.moderation import _service
-        service = _service()
         run_coro_threadsafe(
             service.ban(guild_id, user_id, reason, 0)
         ).result(timeout=20)
+    except BridgeUnavailable:
+        return jsonify({"success": False, "error": "Discord bot is not reachable."}), 503
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
-    # Store expiration for the sweep task
-    import time as _time
-    try:
-        from cogs.admin_cog import _tempban_data, _save_mod_data
-        mod_data, tempbans = _tempban_data(guild_id)
-        tempbans[str(user_id)] = {
-            "until": _time.time() + seconds,
-            "reason": reason,
-            "moderator": "Web dashboard",
-        }
-        _save_mod_data(mod_data)
-    except Exception:
-        pass
+    # Store expiration for the sweep task (best effort; the ban
+    # itself already succeeded).
+    _save_tempban(guild_id, user_id, {
+        "until": _time.time() + seconds,
+        "reason": reason,
+        "moderator": "Web dashboard",
+    })
 
-    _, _record_case, _ = _mod_helpers()
     _record_case_direct(
         guild_id, user_id, "ban",
         f"{reason} (tempban: {duration_str})",
@@ -725,63 +960,57 @@ def modpanel_wipe(guild_id, user_id):
     if not _mod_record:
         return jsonify({"success": False, "error": "Mod data helpers unavailable."}), 500
 
-    mod_name, mod_id, _ = _moderator()
-    mod_label = f"{mod_name} ({mod_id})" if mod_id else mod_name
-
     # Unban if banned
     guild, member = _get_member(guild_id, user_id)
     if guild:
         try:
-            bans = run_coro_threadsafe(guild.bans()).result(timeout=15)
+            bans = bridge.get_bans(int(guild_id)) or []
             for ban_entry in bans:
-                if ban_entry.user.id == int(user_id):
+                ban_user = (ban_entry or {}).get("user") or {}
+                if str(ban_user.get("id")) == str(user_id):
+                    service = ModerationService()
                     run_coro_threadsafe(
-                        guild.unban(ban_entry.user, reason="Wipe data via web dashboard")
+                        service.unban(guild_id, user_id, "Wipe data via web dashboard")
                     ).result(timeout=15)
                     break
         except Exception:
             pass
         # Remove timeout if timed out
-        if member:
+        if member and member.get("timed_out_until"):
             try:
-                if hasattr(member, "is_timed_out") and member.is_timed_out():
-                    run_coro_threadsafe(
-                        member.timeout(None, reason="Wipe data via web dashboard")
-                    ).result(timeout=15)
+                service = ModerationService()
+                run_coro_threadsafe(
+                    service.untimeout(guild_id, user_id, "Wipe data via web dashboard")
+                ).result(timeout=15)
             except Exception:
                 pass
 
     # Clear warns/notes/cases from mod_data.json
-    mod_data, urec = _mod_record(guild_id, user_id)
-    urec["warns"] = []
-    urec["notes"] = []
-    urec["cases"] = []
-    _save_mod_data(mod_data)
+    def _mutate(urec):
+        urec["warns"] = []
+        urec["notes"] = []
+        urec["cases"] = []
+
+    def _verify(urec):
+        return (not urec.get("warns")
+                and not urec.get("notes")
+                and not urec.get("cases"))
+
+    _save_mod_record(guild_id, user_id, _mutate, _verify)
     _record_case_direct(
         guild_id, user_id, "wipe",
         "All data wiped via web dashboard (warns, notes, XP, watch, ban, timeout).",
     )
 
     # Remove watch entry
-    wc = _watch_cog()
-    if wc and hasattr(wc, "watch_remove"):
-        try:
-            result = wc.watch_remove(str(guild_id), str(user_id))
-            if hasattr(result, "__await__"):
-                run_coro_threadsafe(result).result(timeout=15)
-        except Exception:
-            pass
+    _watch_remove_entry(guild_id, user_id)
 
-    # Reset XP — best effort
+    # Reset XP — best effort, chunked to the bridge's +/-1000 clamp.
     try:
-        from cogs.Level_system import award_xp
-        guild, member = _get_member(guild_id, user_id)
         xp, _ = _xp_for(guild_id, user_id)
         if xp > 0 and guild:
-            display = member.display_name if member else str(user_id)
-            run_coro_threadsafe(
-                award_xp(guild, int(user_id), display, -xp, apply_event=False)
-            ).result(timeout=15)
+            display = (member.get("display_name") if member else None) or str(user_id)
+            _award_xp_chunked(guild_id, user_id, -xp, display)
     except Exception:
         pass
 

@@ -1,7 +1,10 @@
 from flask import Blueprint, jsonify, request
 
-from web.services.discord_state import discord_state
+import discord
+
+from web.services import bridge
 from web.services.event_store import event_store
+from web.services.member_service import MemberService
 from web.security.decorators import require_guild_manage, require_login, require_guild_moderator
 
 
@@ -16,23 +19,21 @@ explorer_api = Blueprint(
 # =========================================================
 
 def get_bot():
-
-    return discord_state.get_bot()
+    """Kept for call-site compat. Always None now -- there is no live
+    bot object in this process."""
+    return None
 
 
 def get_guild(guild_id):
 
-    bot = get_bot()
-
-    if bot is None:
+    if not bridge.bot_is_ready():
         return None, "Discord bot is not connected."
 
-    if not discord_state.ready:
-        return None, "Discord bot is not ready."
-
-    guild = bot.get_guild(
-        int(guild_id)
-    )
+    guild = None
+    try:
+        guild = bridge.get_guild(int(guild_id))
+    except Exception:
+        guild = None
 
     if guild is None:
         return None, "Discord server not found."
@@ -131,22 +132,22 @@ def server_search(guild_id):
         "members"
     ):
 
-        for member in guild.members:
+        for member in MemberService().get_members(guild_id):
 
             username = (
-                member.name or ""
+                member.get("username") or ""
             ).lower()
 
             display_name = (
-                member.display_name or ""
+                member.get("display_name") or ""
             ).lower()
 
             nickname = (
-                member.nick or ""
+                member.get("nickname") or ""
             ).lower()
 
             member_id = str(
-                member.id
+                member.get("id")
             )
 
             if (
@@ -159,26 +160,22 @@ def server_search(guild_id):
                 results["members"].append({
 
                     "id":
-                        str(member.id),
+                        str(member.get("id")),
 
                     "username":
-                        member.name,
+                        member.get("username"),
 
                     "display_name":
-                        member.display_name,
+                        member.get("display_name"),
 
                     "nickname":
-                        member.nick,
+                        member.get("nickname"),
 
                     "bot":
-                        member.bot,
+                        member.get("bot"),
 
                     "avatar":
-                        (
-                            str(member.display_avatar.url)
-                            if member.display_avatar
-                            else None
-                        )
+                        member.get("avatar")
                 })
 
 
@@ -191,14 +188,14 @@ def server_search(guild_id):
         "channels"
     ):
 
-        for channel in guild.channels:
+        for channel in (bridge.get_channels(int(guild_id)) or []):
 
             name = (
-                channel.name or ""
+                channel.get("name") or ""
             ).lower()
 
             channel_id = str(
-                channel.id
+                channel.get("id")
             )
 
             if (
@@ -209,34 +206,22 @@ def server_search(guild_id):
                 results["channels"].append({
 
                     "id":
-                        str(channel.id),
+                        str(channel.get("id")),
 
                     "name":
-                        channel.name,
+                        channel.get("name"),
 
                     "type":
-                        str(channel.type),
+                        str(channel.get("type")),
 
                     "position":
-                        getattr(
-                            channel,
-                            "position",
-                            None
-                        ),
+                        channel.get("position"),
 
                     "category":
-                        (
-                            channel.category.name
-                            if channel.category
-                            else None
-                        ),
+                        channel.get("category"),
 
                     "category_id":
-                        (
-                            str(channel.category.id)
-                            if channel.category
-                            else None
-                        )
+                        channel.get("category_id")
                 })
 
 
@@ -249,14 +234,14 @@ def server_search(guild_id):
         "roles"
     ):
 
-        for role in guild.roles:
+        for role in (bridge.get_roles(int(guild_id)) or []):
 
             name = (
-                role.name or ""
+                role.get("name") or ""
             ).lower()
 
             role_id = str(
-                role.id
+                role.get("id")
             )
 
             if (
@@ -267,25 +252,25 @@ def server_search(guild_id):
                 results["roles"].append({
 
                     "id":
-                        str(role.id),
+                        str(role.get("id")),
 
                     "name":
-                        role.name,
+                        role.get("name"),
 
                     "position":
-                        role.position,
+                        role.get("position"),
 
                     "color":
-                        str(role.color),
+                        role.get("color"),
 
                     "managed":
-                        role.managed,
+                        role.get("managed"),
 
                     "mentionable":
-                        role.mentionable,
+                        role.get("mentionable"),
 
                     "hoist":
-                        role.hoist
+                        role.get("hoist")
                 })
 
 
@@ -301,10 +286,10 @@ def server_search(guild_id):
         "success": True,
 
         "guild_id":
-            str(guild.id),
+            str(guild.get("id")),
 
         "guild_name":
-            guild.name,
+            guild.get("name"),
 
         "query":
             query,
@@ -367,18 +352,21 @@ def server_permissions(guild_id):
     ]
 
 
-    for role in guild.roles:
+    for role in (bridge.get_roles(int(guild_id)) or []):
 
-        if role.name == "@everyone":
+        if role.get("name") == "@everyone":
             continue
 
+        role_perms = discord.Permissions(
+            int(role.get("permissions") or 0)
+        )
 
         enabled = []
 
         for permission in dangerous_permissions:
 
             if getattr(
-                role.permissions,
+                role_perms,
                 permission,
                 False
             ):
@@ -388,21 +376,21 @@ def server_permissions(guild_id):
                 )
 
 
-        if role.permissions.administrator:
+        if role_perms.administrator:
 
             administrator_roles.append({
 
                 "id":
-                    str(role.id),
+                    str(role.get("id")),
 
                 "name":
-                    role.name,
+                    role.get("name"),
 
                 "position":
-                    role.position,
+                    role.get("position"),
 
                 "managed":
-                    role.managed
+                    role.get("managed")
             })
 
 
@@ -411,13 +399,13 @@ def server_permissions(guild_id):
             dangerous_roles.append({
 
                 "id":
-                    str(role.id),
+                    str(role.get("id")),
 
                 "name":
-                    role.name,
+                    role.get("name"),
 
                 "position":
-                    role.position,
+                    role.get("position"),
 
                 "permissions":
                     enabled
@@ -429,15 +417,15 @@ def server_permissions(guild_id):
         "success": True,
 
         "guild_id":
-            str(guild.id),
+            str(guild.get("id")),
 
         "guild_name":
-            guild.name,
+            guild.get("name"),
 
         "owner_id":
             (
-                str(guild.owner_id)
-                if guild.owner_id
+                str(guild.get("owner_id"))
+                if guild.get("owner_id")
                 else None
             ),
 
@@ -525,7 +513,7 @@ def server_activity(guild_id):
 
         limit=limit,
 
-        guild_id=guild.id,
+        guild_id=guild.get("id"),
 
         category=category,
 
@@ -542,10 +530,10 @@ def server_activity(guild_id):
         "success": True,
 
         "guild_id":
-            str(guild.id),
+            str(guild.get("id")),
 
         "guild_name":
-            guild.name,
+            guild.get("name"),
 
         "count":
             len(events),
@@ -618,12 +606,13 @@ def top_members(guild_id):
     )
 
 
+    # ISO timestamps sort chronologically as plain strings.
     members = sorted(
-        guild.members,
+        MemberService().get_members(guild_id),
         key=lambda member: (
-            member.joined_at
-            if member.joined_at
-            else member.created_at
+            member.get("joined_at")
+            or member.get("created_at")
+            or ""
         )
     )
 
@@ -639,33 +628,25 @@ def top_members(guild_id):
         result.append({
 
             "id":
-                str(member.id),
+                str(member.get("id")),
 
             "username":
-                member.name,
+                member.get("username"),
 
             "display_name":
-                member.display_name,
+                member.get("display_name"),
 
             "nickname":
-                member.nick,
+                member.get("nickname"),
 
             "bot":
-                member.bot,
+                member.get("bot"),
 
             "joined_at":
-                (
-                    member.joined_at.isoformat()
-                    if member.joined_at
-                    else None
-                ),
+                member.get("joined_at"),
 
             "avatar":
-                (
-                    str(member.display_avatar.url)
-                    if member.display_avatar
-                    else None
-                )
+                member.get("avatar")
         })
 
 
@@ -674,10 +655,10 @@ def top_members(guild_id):
         "success": True,
 
         "guild_id":
-            str(guild.id),
+            str(guild.get("id")),
 
         "guild_name":
-            guild.name,
+            guild.get("name"),
 
         "count":
             len(result),

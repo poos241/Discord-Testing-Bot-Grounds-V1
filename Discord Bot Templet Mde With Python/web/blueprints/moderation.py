@@ -1,15 +1,19 @@
 """Moderation API — the ONE moderation blueprint.
 
-All write operations go through ``run_coro_threadsafe`` from the
-discord_state shim, because Flask runs in a thread beside the bot's
-asyncio loop. Every route requires login + Manage Server on the guild.
+All write operations go through ``ModerationService`` (a bridge
+client) via ``run_coro_threadsafe`` on the website's local loop,
+because Flask runs in threads beside the bot's asyncio loop. Every
+route requires login + the matching guild permission. When the bot
+is unreachable the actions answer 503 (degraded), never 400.
 """
 
 from flask import Blueprint, request, jsonify, abort
 import secrets
 from web.blueprints.auth import get_csrf_token
 
-from web.services.discord_state import discord_state, run_coro_threadsafe
+from web.services import bridge
+from web.services.bridge import BridgeUnavailable
+from web.services.discord_state import run_coro_threadsafe
 from web.services.moderation_service import ModerationService, ModerationError
 from web.security.decorators import (
     require_guild_manage,
@@ -31,10 +35,84 @@ moderation_api = Blueprint(
 
 
 def _service():
-    bot = discord_state.get_bot()
-    if bot is None or not discord_state.ready:
+    # Bridge split: no live bot object in this process. ModerationService
+    # is a bridge client now (constructed with no bot arg); the 503
+    # behaviour when the bot is down is unchanged.
+    if not bridge.bot_is_ready():
         abort(503, "Discord bot is not connected.")
-    return ModerationService(bot)
+    return ModerationService()
+
+
+# ============================================================
+# MOD-CASE WRITE MITIGATION (cross-process last-writer-wins)
+#
+# mod_data.json lives in bot.db, which BOTH processes read and write
+# (the bot's slash commands/panels and this website). There is no
+# cross-process lock, so a bot-side save that loaded before ours can
+# silently overwrite our save. Cheap mitigation, per the bridge
+# contract section 8: after saving, re-read fresh and check the
+# change actually landed; if it did not, re-apply it on the fresh
+# load and save once more. One retry only.
+#
+# What remains unmitigated: two writers can still interleave on the
+# SECOND save (a bot save landing between our verify and our retry
+# still loses our change), and two appends of the SAME entry can both
+# land if the verify read races a bot save (duplicate warn/case).
+# A real fix needs a cross-process lock or a bot-owned mod-case
+# endpoint; this narrows the window from "any concurrent bot write"
+# to "a bot write inside our verify+retry window".
+# ============================================================
+
+def _save_mod_record(guild_id, user_id, mutate, verify):
+    """Load-mutate-save a mod_data user record with one re-read retry.
+
+    mutate(urec) applies the change; verify(urec) is True when the
+    change is visible in a fresh load. Returns the fresh urec, or
+    None when the mod-data helpers are unavailable or a save failed.
+    """
+    try:
+        from cogs.admin_cog import _mod_record, _save_mod_data
+    except Exception:
+        return None
+    try:
+        data, urec = _mod_record(str(guild_id), str(user_id))
+        mutate(urec)
+        _save_mod_data(data)
+    except Exception:
+        return None
+    try:
+        data2, fresh = _mod_record(str(guild_id), str(user_id))
+        if verify(fresh):
+            return fresh
+        mutate(fresh)
+        _save_mod_data(data2)
+        return fresh
+    except Exception:
+        return None
+
+
+def _save_tempban(guild_id, user_id, entry):
+    """Store a tempban expiry with the same re-read + one retry."""
+    try:
+        from cogs.admin_cog import _tempban_data, _save_mod_data
+    except Exception:
+        return False
+    until = entry.get("until")
+    try:
+        data, tempbans = _tempban_data(guild_id)
+        tempbans[str(user_id)] = dict(entry)
+        _save_mod_data(data)
+    except Exception:
+        return False
+    try:
+        data2, fresh = _tempban_data(guild_id)
+        if (fresh.get(str(user_id)) or {}).get("until") == until:
+            return True
+        fresh[str(user_id)] = dict(entry)
+        _save_mod_data(data2)
+        return True
+    except Exception:
+        return False
 
 
 def _ok(action, guild_id, user_id, **extra):
@@ -49,7 +127,15 @@ def _ok(action, guild_id, user_id, **extra):
 
 
 def _fail(e):
-    code = 400 if isinstance(e, ModerationError) else 500
+    # Bridge down on a moderation action is a 503 (degraded), not a
+    # 400: ModerationService re-raises BridgeUnavailable as-is for
+    # exactly this. Hierarchy/validation refusals stay 400.
+    if isinstance(e, BridgeUnavailable):
+        code = 503
+    elif isinstance(e, ModerationError):
+        code = 400
+    else:
+        code = 500
     return jsonify({"success": False, "error": str(e)}), code
 
 
@@ -75,14 +161,11 @@ def _moderator():
 def _record_web_case(guild_id, user_id, action, reason, extra=None):
     import datetime
     try:
-        from cogs.admin_cog import _mod_record, _save_mod_data
         label, uid, avatar_url = _moderator()
         # label is "Name (id)"; split for separate fields
         mod_name = label.rsplit(" (", 1)[0] if " (" in label else label
         ex = dict(extra or {})
-        mod_data, urec = _mod_record(str(guild_id), str(user_id))
-        cases = urec.setdefault("cases", [])
-        cases.append({
+        case = {
             "action": action,
             "reason": reason,
             "moderator": mod_name,
@@ -91,29 +174,45 @@ def _record_web_case(guild_id, user_id, action, reason, extra=None):
             "evidence": ex.get("evidence"),
             "dm_sent": ex.get("dm_sent", False),
             "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-        })
-        if len(cases) > 50:
-            cases[:] = cases[-50:]
-        _save_mod_data(mod_data)
+        }
+
+        def _mutate(urec):
+            cases = urec.setdefault("cases", [])
+            cases.append(case)
+            if len(cases) > 50:
+                cases[:] = cases[-50:]
+
+        def _verify(urec):
+            return case in (urec.get("cases") or [])
+
+        _save_mod_record(guild_id, user_id, _mutate, _verify)
     except Exception:
         pass
 
 
-def _dm_member(guild_id, user_id, text):
+def _guild_name(guild_id):
+    """Guild display name for DM text, via the bridge. Falls back to
+    'the server' when the bot is down or the guild is unknown."""
     try:
-        from cogs.admin_cog import _dm_target
-        bot = discord_state.bot
-        if not bot:
-            return False
-        guild = bot.get_guild(int(guild_id))
-        if not guild:
-            return False
-        member = guild.get_member(int(user_id))
-        if not member:
-            return False
-        return bool(
-            run_coro_threadsafe(_dm_target(member, text)).result(timeout=15)
-        )
+        guild = bridge.get_guild(int(guild_id))
+        if guild:
+            return guild.get("name") or "the server"
+    except Exception:
+        pass
+    return "the server"
+
+
+def _dm_member(guild_id, user_id, text):
+    """DM via the bridge (same _dm_target helper, bot-side). False
+    when DMs are closed or the bot is unreachable."""
+    try:
+        service = ModerationService()
+        result = run_coro_threadsafe(
+            service.send_dm(guild_id, user_id, text)
+        ).result(timeout=20)
+        if isinstance(result, dict):
+            return bool(result.get("sent"))
+        return bool(result)
     except Exception:
         return False
 
@@ -149,12 +248,9 @@ def timeout_member(guild_id, user_id):
     evidence = (data.get("evidence") or "").strip() or None
 
     if want_dm:
-        bot = discord_state.bot
-        guild = bot.get_guild(int(guild_id)) if bot else None
-        gname = guild.name if guild else "the server"
         dm_sent = _dm_member(
             guild_id, user_id,
-            f"⏱️ You've been timed out in **{gname}**\n**Reason:** {reason}",
+            f"⏱️ You've been timed out in **{_guild_name(guild_id)}**\n**Reason:** {reason}",
         )
     else:
         dm_sent = False
@@ -208,12 +304,9 @@ def kick_member(guild_id, user_id):
     evidence = (data.get("evidence") or "").strip() or None
 
     if want_dm:
-        bot = discord_state.bot
-        guild = bot.get_guild(int(guild_id)) if bot else None
-        gname = guild.name if guild else "the server"
         dm_sent = _dm_member(
             guild_id, user_id,
-            f"👢 You've been kicked from **{gname}**\n**Reason:** {reason}",
+            f"👢 You've been kicked from **{_guild_name(guild_id)}**\n**Reason:** {reason}",
         )
     else:
         dm_sent = False
@@ -251,12 +344,9 @@ def ban_member(guild_id, user_id):
     delete_days = max(0, min(delete_days, 7))
 
     if want_dm:
-        bot = discord_state.bot
-        guild = bot.get_guild(int(guild_id)) if bot else None
-        gname = guild.name if guild else "the server"
         dm_sent = _dm_member(
             guild_id, user_id,
-            f"🔨 You've been banned from **{gname}**\n**Reason:** {reason}",
+            f"🔨 You've been banned from **{_guild_name(guild_id)}**\n**Reason:** {reason}",
         )
     else:
         dm_sent = False

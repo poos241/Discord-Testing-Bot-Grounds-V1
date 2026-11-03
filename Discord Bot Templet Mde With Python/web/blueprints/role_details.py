@@ -1,6 +1,9 @@
 from flask import Blueprint, jsonify
 
-from web.services.discord_state import discord_state
+import discord
+
+from web.services import bridge
+from web.services.member_service import MemberService
 
 from web.blueprints.auth import (
     user_can_manage_guild
@@ -22,22 +25,11 @@ def role_details(
     role_id
 ):
 
-    bot = discord_state.get_bot()
-
-
-    if bot is None:
+    if not bridge.bot_is_ready():
 
         return jsonify({
             "success": False,
             "error": "Discord bot is not connected."
-        }), 503
-
-
-    if not discord_state.ready:
-
-        return jsonify({
-            "success": False,
-            "error": "Discord bot is not ready."
         }), 503
 
 
@@ -56,14 +48,22 @@ def role_details(
         }), 403
 
 
-    guild = bot.get_guild(
+    guild = bridge.get_guild(
         int(guild_id)
     )
 
+    if guild is None:
 
-    role = guild.get_role(
-        int(role_id)
-    )
+        return jsonify({
+            "success": False,
+            "error": "Discord server not found."
+        }), 404
+
+    role = None
+    for candidate in (bridge.get_roles(int(guild_id)) or []):
+        if str(candidate.get("id")) == str(role_id):
+            role = candidate
+            break
 
     if role is None:
 
@@ -73,38 +73,39 @@ def role_details(
         }), 404
 
 
-    permissions = []
+    role_perms = discord.Permissions(
+        int(role.get("permissions") or 0)
+    )
 
-
-    for permission, enabled in role.permissions:
-
-        if enabled:
-
-            permissions.append(
-                permission
-            )
+    permissions = [
+        name
+        for name, enabled in role_perms
+        if enabled
+    ]
 
 
     members = []
 
+    for member in MemberService().get_members(guild_id):
 
-    for member in guild.members:
-
-        if role in member.roles:
+        if any(
+            str(r.get("id")) == str(role_id)
+            for r in (member.get("roles") or [])
+        ):
 
             members.append({
 
                 "id":
-                    str(member.id),
+                    str(member.get("id")),
 
                 "username":
-                    member.name,
+                    member.get("username"),
 
                 "display_name":
-                    member.display_name,
+                    member.get("display_name"),
 
                 "bot":
-                    member.bot
+                    member.get("bot")
             })
 
 
@@ -113,33 +114,35 @@ def role_details(
         "success": True,
 
         "guild_id":
-            str(guild.id),
+            str(guild.get("id")),
 
         "role": {
 
             "id":
-                str(role.id),
+                str(role.get("id")),
 
             "name":
-                role.name,
+                role.get("name"),
 
             "position":
-                role.position,
+                role.get("position"),
 
             "color":
-                str(role.color),
+                role.get("color"),
 
             "hoist":
-                role.hoist,
+                role.get("hoist"),
 
             "managed":
-                role.managed,
+                role.get("managed"),
 
             "mentionable":
-                role.mentionable,
+                role.get("mentionable"),
 
             "created_at":
-                role.created_at.isoformat(),
+                discord.utils.snowflake_time(
+                    int(role.get("id"))
+                ).isoformat(),
 
             "permissions":
                 permissions,

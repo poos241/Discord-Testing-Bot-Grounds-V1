@@ -62,3 +62,21 @@ alone is not enough. The debug APIs (`/api/debug/*`) and the debug panel
 are staff-only (moderator tier on a bot guild, failing closed while the
 bot is down), and the clear-logs endpoint takes a `which` value
 (`web` / `bot` / `all`) instead of always wiping both logs.
+
+**Server Home is admin-only (November 2026).** The server-home page
+(`/server-home`) and its status API (`GET /api/server-home/status`)
+used to be login-only, so any logged-in Discord user could read host
+load, CPU temperature, RAM, disk, service up/down, bot guild/member
+counts, and AdGuard + Portainer numbers. Both routes now require the
+admin tier (the same `_require_admin()` helper as the restart route)
+and fail closed while the bot is down — if the bot is ever down, the
+page refuses even for an admin, by design.
+
+**Gates after the split (November 2026).** Since the website no longer
+shares a process with the bot, the staff/admin gates intersect the
+user's guild list with the bot's guilds via the bridge
+(`bridge.get_bot_guild_ids()`) instead of a live bot object. The
+behavior is unchanged — a moderator of an unrelated server still gets
+nothing, and every gate fails closed (403) when the bot or the bridge
+is unreachable — but the check now costs one bridge call, so a down
+bot means refused pages rather than a hang.

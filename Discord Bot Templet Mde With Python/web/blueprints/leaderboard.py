@@ -4,7 +4,9 @@
 
 from flask import Blueprint, jsonify
 
-from web.services.discord_state import discord_state, run_coro_threadsafe
+from web.services import bridge
+from web.services.discord_state import run_coro_threadsafe
+from web.services.member_service import MemberService
 from web.security.decorators import require_guild_moderator
 
 
@@ -18,14 +20,13 @@ leaderboard_api = Blueprint(
 @leaderboard_api.get("/servers/<int:guild_id>/leaderboard")
 @require_guild_moderator
 def get_leaderboard(guild_id):
-    bot = discord_state.bot
-    if bot is None or not discord_state.ready:
+    if not bridge.bot_is_ready():
         return jsonify({
             "success": False,
             "error": "Discord bot is not connected.",
         }), 503
 
-    guild = bot.get_guild(int(guild_id))
+    guild = bridge.get_guild(int(guild_id))
     if guild is None:
         return jsonify({
             "success": False,
@@ -44,21 +45,32 @@ def get_leaderboard(guild_id):
             "error": f"Could not load XP data: {e}",
         }), 500
 
+    # One member fetch for the whole guild (bridge pages it), then
+    # look users up in that map instead of one lookup per user.
+    try:
+        members = MemberService().get_members(guild_id)
+    except Exception:
+        members = []
+    by_id = {
+        str(m.get("id")): m
+        for m in members
+    }
+
     entries = []
     for user_id, udata in (db or {}).items():
-        try:
-            member = guild.get_member(int(user_id))
-        except Exception:
-            member = None
+        member = by_id.get(str(user_id))
 
         entries.append({
             "user_id": str(user_id),
             "xp": udata.get("xp", 0) or 0,
             "level": udata.get("level", 1) or 1,
-            "display_name": member.display_name if member else f"User {user_id}",
-            "username": member.name if member else "unknown",
-            "avatar": str(member.display_avatar.url) if member and member.display_avatar else None,
-            "bot": bool(member and getattr(member, "bot", False)),
+            "display_name": (
+                member.get("display_name") or member.get("username")
+                if member else f"User {user_id}"
+            ),
+            "username": member.get("username") if member else "unknown",
+            "avatar": member.get("avatar") if member else None,
+            "bot": bool(member and member.get("bot", False)),
         })
 
     # Sort by XP descending
@@ -71,7 +83,7 @@ def get_leaderboard(guild_id):
     return jsonify({
         "success": True,
         "guild_id": str(guild_id),
-        "guild_name": guild.name,
+        "guild_name": guild.get("name"),
         "count": len(entries),
         "leaderboard": entries[:100],  # top 100
     })
