@@ -71,11 +71,8 @@ class Backup(commands.Cog):
         description="Take a backup snapshot right now (mods only).",
     )
     async def backup_now(self, ctx):
-        if not is_mod(ctx):
-            await ctx.respond(
-                "You need Manage Messages or Administrator to take a backup.",
-                ephemeral=True,
-            )
+        from utils.permissions import check_slash_permission, _default_manage_messages_or_admin
+        if not await check_slash_permission(ctx, "backup_now", _default_manage_messages_or_admin):
             return
         await ctx.defer(ephemeral=True)
         try:
@@ -99,11 +96,8 @@ class Backup(commands.Cog):
         description="Show the latest backup snapshot (mods only).",
     )
     async def backup_status(self, ctx):
-        if not is_mod(ctx):
-            await ctx.respond(
-                "You need Manage Messages or Administrator to check backups.",
-                ephemeral=True,
-            )
+        from utils.permissions import check_slash_permission, _default_manage_messages_or_admin
+        if not await check_slash_permission(ctx, "backup_status", _default_manage_messages_or_admin):
             return
         snapshots = list_snapshots()
         if not snapshots:

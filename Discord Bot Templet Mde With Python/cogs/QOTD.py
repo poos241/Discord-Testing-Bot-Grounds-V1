@@ -426,8 +426,8 @@ class QOTD(commands.Cog):
 
     @qotd.command(name="post", description="Post today's question right now (mod only).")
     async def qotd_post(self, ctx):
-        if ctx.guild is None or not is_mod(ctx):
-            await ctx.respond("You need Manage Messages to use this command.", ephemeral=True)
+        from utils.permissions import check_slash_permission, _default_manage_messages_or_admin
+        if not await check_slash_permission(ctx, "qotd_post", _default_manage_messages_or_admin):
             return
         gid = str(ctx.guild.id)
         if gid in self._posting:
@@ -445,8 +445,8 @@ class QOTD(commands.Cog):
 
     @qotd.command(name="skip", description="Replace today's question with a fresh one (mod only).")
     async def qotd_skip(self, ctx):
-        if ctx.guild is None or not is_mod(ctx):
-            await ctx.respond("You need Manage Messages to use this command.", ephemeral=True)
+        from utils.permissions import check_slash_permission, _default_manage_messages_or_admin
+        if not await check_slash_permission(ctx, "qotd_skip", _default_manage_messages_or_admin):
             return
         gid = str(ctx.guild.id)
         cfg = await get_qotd_config(gid)
@@ -479,8 +479,8 @@ class QOTD(commands.Cog):
         timezone: discord.Option(str, "Timezone (start typing to pick, e.g. Europe/London)", required=False, default=None, autocomplete=qotd_timezone_autocomplete),
         enabled: discord.Option(bool, "Turn daily posting on or off", required=False, default=None),
     ):
-        if ctx.guild is None or not is_mod(ctx):
-            await ctx.respond("You need Manage Messages to use this command.", ephemeral=True)
+        from utils.permissions import check_slash_permission, _default_manage_messages_or_admin
+        if not await check_slash_permission(ctx, "qotd_config", _default_manage_messages_or_admin):
             return
         gid = str(ctx.guild.id)
         cfg = await get_qotd_config(gid)
@@ -519,8 +519,8 @@ class QOTD(commands.Cog):
 
     @qotd.command(name="pending", description="List submitted questions waiting for approval (mod only).")
     async def qotd_pending(self, ctx):
-        if ctx.guild is None or not is_mod(ctx):
-            await ctx.respond("You need Manage Messages to use this command.", ephemeral=True)
+        from utils.permissions import check_slash_permission, _default_manage_messages_or_admin
+        if not await check_slash_permission(ctx, "qotd_pending", _default_manage_messages_or_admin):
             return
         rows = await list_qotd_questions("pending")
         if not rows:
@@ -546,8 +546,8 @@ class QOTD(commands.Cog):
         ctx,
         question_id: discord.Option(int, "The pending question's #id from /qotd pending"),
     ):
-        if ctx.guild is None or not is_mod(ctx):
-            await ctx.respond("You need Manage Messages to use this command.", ephemeral=True)
+        from utils.permissions import check_slash_permission, _default_manage_messages_or_admin
+        if not await check_slash_permission(ctx, "qotd_approve", _default_manage_messages_or_admin):
             return
         row = await get_qotd_question(question_id)
         if not row:
@@ -565,8 +565,8 @@ class QOTD(commands.Cog):
         ctx,
         question_id: discord.Option(int, "The pending question's #id from /qotd pending"),
     ):
-        if ctx.guild is None or not is_mod(ctx):
-            await ctx.respond("You need Manage Messages to use this command.", ephemeral=True)
+        from utils.permissions import check_slash_permission, _default_manage_messages_or_admin
+        if not await check_slash_permission(ctx, "qotd_reject", _default_manage_messages_or_admin):
             return
         row = await get_qotd_question(question_id)
         if not row:
@@ -584,8 +584,8 @@ class QOTD(commands.Cog):
         ctx,
         question_id: discord.Option(int, "The question's #id (from history or a post)"),
     ):
-        if ctx.guild is None or not is_mod(ctx):
-            await ctx.respond("You need Manage Messages to use this command.", ephemeral=True)
+        from utils.permissions import check_slash_permission, _default_manage_messages_or_admin
+        if not await check_slash_permission(ctx, "qotd_remove", _default_manage_messages_or_admin):
             return
         row = await get_qotd_question(question_id)
         if not row:

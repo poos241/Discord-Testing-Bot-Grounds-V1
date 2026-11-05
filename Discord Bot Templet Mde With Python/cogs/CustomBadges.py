@@ -131,12 +131,14 @@ class CustomBadges(commands.Cog):
         name="create",
         description="Create a custom badge for this server.")
     @extra_help("Name: the badge's display name (becomes its slug, unique per server). Icon: emoji shown on the badge shelf (default medal). Description: tooltip text on the badge shelf. Only members with Manage Messages can create badges.")
-    @Manage_messages_required()
     async def badge_create(
             self, ctx,
             name: discord.Option(str, "Badge name (e.g. Community MVP)", required=True),
             icon: discord.Option(str, "Emoji for the badge shelf (default: medal)", required=False, default=""),
             description: discord.Option(str, "Tooltip text shown on the badge shelf", required=False, default="")):
+        from utils.permissions import check_slash_permission, _default_manage_messages_or_admin
+        if not await check_slash_permission(ctx, "badge_create", _default_manage_messages_or_admin):
+            return
         if ctx.guild is None:
             return await ctx.respond(
                 "The /badge commands only work in a server.",
@@ -181,11 +183,13 @@ class CustomBadges(commands.Cog):
         name="award",
         description="Award a custom badge to a member.")
     @extra_help("Badge: pick from this server's badges (or type its name/slug). Member: who receives the badge. Awarded badges appear on their profile badge shelf, and in their activity feed.")
-    @Manage_messages_required()
     async def badge_award(
             self, ctx,
             badge_ref: discord.Option(str, "Badge to award (start typing to pick)", required=True, autocomplete=_badge_autocomplete),
             member: discord.Option(discord.Member, "Member to award the badge to", required=True)):
+        from utils.permissions import check_slash_permission, _default_manage_messages_or_admin
+        if not await check_slash_permission(ctx, "badge_award", _default_manage_messages_or_admin):
+            return
         if ctx.guild is None:
             return await ctx.respond(
                 "The /badge commands only work in a server.",
@@ -215,11 +219,13 @@ class CustomBadges(commands.Cog):
         name="remove",
         description="Revoke a member's custom badge.")
     @extra_help("Badge: pick from this server's badges (or type its name/slug). Member: whose award is revoked. The badge definition stays and can be awarded again.")
-    @Manage_messages_required()
     async def badge_remove(
             self, ctx,
             badge_ref: discord.Option(str, "Badge to revoke (start typing to pick)", required=True, autocomplete=_badge_autocomplete),
             member: discord.Option(discord.Member, "Member to revoke the badge from", required=True)):
+        from utils.permissions import check_slash_permission, _default_manage_messages_or_admin
+        if not await check_slash_permission(ctx, "badge_remove", _default_manage_messages_or_admin):
+            return
         if ctx.guild is None:
             return await ctx.respond(
                 "The /badge commands only work in a server.",
@@ -241,10 +247,12 @@ class CustomBadges(commands.Cog):
         name="delete",
         description="Delete a custom badge and all of its awards.")
     @extra_help("Badge: pick from this server's badges (or type its name/slug). Deleting removes the badge from every member who held it; the reply says how many awards were removed. This cannot be undone.")
-    @Manage_messages_required()
     async def badge_delete(
             self, ctx,
             badge_ref: discord.Option(str, "Badge to delete (start typing to pick)", required=True, autocomplete=_badge_autocomplete)):
+        from utils.permissions import check_slash_permission, _default_manage_messages_or_admin
+        if not await check_slash_permission(ctx, "badge_delete", _default_manage_messages_or_admin):
+            return
         if ctx.guild is None:
             return await ctx.respond(
                 "The /badge commands only work in a server.",
@@ -262,8 +270,10 @@ class CustomBadges(commands.Cog):
         name="list",
         description="List this server's custom badges and award counts.")
     @extra_help("Lists every custom badge in this server with its slug and how many members hold it. Anyone with Manage Messages can view the list.")
-    @Manage_messages_required()
     async def badge_list(self, ctx):
+        from utils.permissions import check_slash_permission, _default_manage_messages_or_admin
+        if not await check_slash_permission(ctx, "badge_list", _default_manage_messages_or_admin):
+            return
         if ctx.guild is None:
             return await ctx.respond(
                 "The /badge commands only work in a server.",

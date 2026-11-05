@@ -33,6 +33,53 @@ documentation purposes:
 @extra_help("Starts a server-wide XP multiplier event (2-5x, up to 24h).")
 ```
 
+## Custom permissions system (bot side)
+
+`cogs/Permissions.py` + `utils/permissions.py` implement a per-command
+allow list that **replaces** the Discord check for grantable commands.
+An admin grants a *set* of commands to a role (e.g. Trial Moderator
+gets `/timeout` but not `/ban`), or grants one command to one user for
+training. The Little Haven 6-level ladder does not fit this — a role
+gets a set of commands, not a level.
+
+**Precedence** (first match wins): Discord Administrator → user DENY →
+user ALLOW → role DENY → role ALLOW → the command's normal Discord
+check (when no custom rules exist for it) → deny (when rules exist but
+nothing matches). Server admins always pass.
+
+**Storage.** Grants live in the `command_permissions` table
+(`guild_id`, `command`, `target_type` role/user, `target_id`,
+`allowed` 1/0). Helpers in `data/DB/Storage/storage.py`:
+`get_command_permissions`, `get_all_command_permissions`,
+`save_command_permission` (OR REPLACE upsert with retries on
+"database is locked"), `delete_command_permission`, plus
+`delete_command_permissions_for_target` / `_for_command` / `_all`.
+
+**Wiring.** A command becomes grantable by (1) adding it to
+`GRANTABLE_COMMANDS` in `utils/permissions.py` (plus its category in
+`GRANTABLE_CATEGORIES` and its bulk group in `BULK_COMMAND_GROUPS`),
+and (2) replacing its decorator gate with an in-body
+`check_slash_permission(ctx, "<name>", <default_check>)` call — the
+decorator runs before the body, so it must be removed, not stacked.
+`check_slash_permission` reads `ctx.author`; `check_interaction_permission`
+is the component-interaction version. `/userinfo` panel buttons are
+gated per-action and gray out (`_perm_disabled`) for viewers who lack
+the permission.
+
+**Display limits (Discord, verified).** The total characters across
+*all* embeds in one message is capped at 6000, not 6000 per embed —
+`/perm_overview` and `/perm_commands` send one embed per message.
+Mentions do not render in embed *field names*, only in field values.
+Chunking splits on line boundaries, never mid-line: a cut at exactly
+1024 characters can split a `` `command` `` span or a `<@&id>` mention
+and an unmatched backtick makes Discord render the rest as code.
+
+**Website.** Grants live in the shared `bot.db`, so the site can read
+them, but the site does not enforce them yet (bot side first). Enforcing
+while the bot is offline would need the `guilds.members.read` OAuth
+scope (everyone re-logs once) — the site's OAuth is currently
+`identify` + `guilds` only, so it cannot fetch role IDs.
+
 ## Web dashboard
 
 The dashboard has three tiers, resolved from the Discord permission

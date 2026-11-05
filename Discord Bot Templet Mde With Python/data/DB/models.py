@@ -516,9 +516,60 @@ ghlog_items = sqlalchemy.Table(
     sqlalchemy.Column("body", sqlalchemy.String, default=""),
     sqlalchemy.Column("status", sqlalchemy.String, default=""),
     sqlalchemy.Column("tags", sqlalchemy.String, default=""),
+    # Approval flow (built 2026-11-03): a new log posts with Status
+    # "Needs approval" and approval "Needs approval"; intended_status is
+    # the category the logger picked (where the log belongs once a second
+    # staff member approves it with /log_approve). ticket is the support
+    # ticket number for the log, if any. logged_by_id is the logger's
+    # Discord user id (the approver must be someone else). approval ""
+    # means a legacy row from before the approval flow (already final).
+    # invoke_at is when the /banlog command ran (not when the row was
+    # created on Post): the screenshot-collect flow only pulls
+    # screenshots sent after the log started, so old images already in
+    # the channel are never grabbed by mistake.
+    sqlalchemy.Column("intended_status", sqlalchemy.String, default=""),
+    sqlalchemy.Column("ticket", sqlalchemy.String, default=""),
+    sqlalchemy.Column("approval", sqlalchemy.String, default=""),
+    sqlalchemy.Column("logged_by_id", sqlalchemy.String, default=""),
+    sqlalchemy.Column("invoke_at", sqlalchemy.DateTime, nullable=True),
     sqlalchemy.Column("project_owner", sqlalchemy.String, default=""),
     sqlalchemy.Column("project_number", sqlalchemy.Integer, default=0),
     sqlalchemy.Column("logged_by", sqlalchemy.String, default=""),
+    sqlalchemy.Column("created_at", sqlalchemy.DateTime, server_default=func.now()),
+)
+
+# Ban-log settings (built 2026-11-04): one row per guild holding the
+# evidence channel -- the channel /banlog re-uploads attached
+# screenshots to so the board links are permanent. Set with
+# /ghlog_set_channel; /banlog's channel option overrides it for one
+# log, and without either the bot uses the channel the command ran
+# in. A new table, so create_all() makes it on the next bot boot.
+ghlog_settings = sqlalchemy.Table(
+    "ghlog_settings", metadata,
+    sqlalchemy.Column("guild_id", sqlalchemy.String, primary_key=True),
+    sqlalchemy.Column("evidence_channel_id", sqlalchemy.String, default=""),
+    sqlalchemy.Column("updated_by", sqlalchemy.String, default=""),
+    sqlalchemy.Column("updated_at", sqlalchemy.DateTime, server_default=func.now(), onupdate=func.now()),
+)
+
+# Custom per-command permissions (built 2026-11-05; see
+# utils/permissions.py and cogs/Permissions.py). One row per grant:
+# which server, which command/action, whether the target is a role or
+# a user, that target's id, and allow (1) or deny (0). A server admin
+# grants a role a SET of commands (e.g. Trial Moderator can timeout
+# but not ban); a per-user grant adds one command for one person
+# (training override) without changing the whole role. The table is
+# new, so metadata.create_all creates it on boot -- no migration
+# needed. The website reads this same table from the database file,
+# so it can enforce these rules even while the bot is offline.
+command_permissions = sqlalchemy.Table(
+    "command_permissions", metadata,
+    sqlalchemy.Column("guild_id", sqlalchemy.String, primary_key=True),
+    sqlalchemy.Column("command", sqlalchemy.String, primary_key=True),
+    sqlalchemy.Column("target_type", sqlalchemy.String, primary_key=True),
+    sqlalchemy.Column("target_id", sqlalchemy.String, primary_key=True),
+    sqlalchemy.Column("allowed", sqlalchemy.Integer, default=1),
+    sqlalchemy.Column("created_by", sqlalchemy.String, default=""),
     sqlalchemy.Column("created_at", sqlalchemy.DateTime, server_default=func.now()),
 )
 

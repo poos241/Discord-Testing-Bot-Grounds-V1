@@ -202,11 +202,18 @@ python run_web.py
 sudo systemctl start kushbot.service kushweb.service    # start both
 sudo systemctl stop kushbot.service kushweb.service     # stop both
 sudo systemctl restart kushbot.service kushweb.service  # restart both
+sudo systemctl restart kushweb.service                 # just the website
+sudo systemctl restart kushbot.service                 # just the bot
 sudo systemctl status kushbot.service kushweb.service   # are they running?
 ```
 
 **macOS / Linux without systemd** — same as Windows, in a terminal
 from the bot folder (`python3 bot.py`, `python3 run_web.py`).
+
+The dashboard also has Restart bot and Restart website buttons on
+the server-home page (admin-only), and Discord has `/restart_bot`
+and `/restart_web` (bot owner only) — same restarts, no terminal
+needed.
 
 ### Check they're running
 
@@ -310,6 +317,51 @@ computer on the same network (and what Uptime Kuma needs to check
 it). Leave it at `127.0.0.1` if the dashboard only ever runs on the
 same machine as your browser.
 
+## Uptime Kuma
+
+Uptime Kuma (running in Docker on the home server, web UI at
+http://127.0.0.1:3001 on that machine) watches both sides — but
+each side is watched a different way, because the bot and the
+website are separate processes:
+
+**Website — HTTP check (Kuma pulls).** Create a monitor of type
+HTTP(s), URL `http://100.89.143.6:5000/` (the server's Tailscale
+address — the website binds `0.0.0.0`, so Kuma in Docker can reach
+it). A 200 means the website is up.
+
+**Bot — Push check (the bot pushes).** The bot has no HTTP endpoint
+of its own (the bridge is localhost-only and the bot-status pages
+need a login), so it pushes its own heartbeat to Kuma:
+
+1. In Kuma, create a monitor of type **Push**. Set its **Heartbeat
+   Interval to 60s**.
+2. Kuma shows a push URL like
+   `http://127.0.0.1:3001/api/push/<key>`. Copy the key part — the
+   bot runs on the same machine as Kuma, so use the `127.0.0.1`
+   form even if Kuma displays a different host (Kuma's port is
+   only published on localhost, so any other host won't connect).
+3. Add one line to the bot's `.env` (same file as the token):
+
+   ```
+   KUMA_PUSH_URL=http://127.0.0.1:3001/api/push/<the key Kuma gave you>
+   ```
+
+   The push URL is a key: never commit it, never share it.
+4. Restart the bot (`/restart_bot` in Discord, or the dashboard
+   Restart bot button). The bot pushes every 30s; Kuma marks it
+   DOWN if no push arrives within its 60s interval.
+
+Optional: `KUMA_PUSH_INTERVAL_SECONDS=30` in `.env` changes how
+often the bot pushes (default 30). Keep the push interval at half
+Kuma's Heartbeat Interval or less, so normal jitter never flaps
+the monitor.
+
+If `KUMA_PUSH_URL` is not set, the heartbeat is off and the bot
+logs `[KUMA] Kuma push URL not set (KUMA_PUSH_URL) — heartbeat
+disabled` once at startup. A failed push logs `[KUMA] Push failed:
+...` and the bot keeps going — one failed push never stops the
+heartbeat.
+
 ---
 
 ## Project structure
@@ -391,8 +443,8 @@ Discord Bot Templet Mde With Python/
 ## 📖 Complete command reference
 
 Every slash command (and the one context-menu command) in the bot,
-built from the actual code — **127 slash commands + 1 user
-context-menu command = 128 commands**. If a command isn't listed
+built from the actual code — **143 slash commands + 1 user
+context-menu command = 144 commands**. If a command isn't listed
 here, it doesn't exist. Commands are guild-scoped to `GUILD_IDS` in
 `config.py` (currently the test server only) unless the Scope column
 says **Global** — global commands register in every server the bot
@@ -407,6 +459,8 @@ Manage Messages / Manage Channels = that Discord permission
 with `/ticket config` / `/appeal config`, falling back to
 Manage Messages / Administrator when no role is set. "No gate"
 means any member can run it.
+
+**Custom permissions:** admin commands below show their *default* gate (usually Administrator or a Discord permission). The custom permissions system (`/perm_allow`, `/perm_bulk`, etc. — see [Custom permissions system](#-custom-permissions-system)) can grant a specific command to a specific role or user, overriding that default; server admins always pass. See `/perm_overview` and `/perm_commands` in Discord for what is actually granted.
 
 **Worth knowing:** `/xp_event` is global while `/xp_event_end` is
 guild-scoped (looks unintentional — a one-line fix if it ever
@@ -430,6 +484,7 @@ Server permission" but the code also accepts Administrator.
 | `/reset_user_name` | Clears a user's nickname (removes the custom nickname). | `member` (Member, required) | Administrator | Global |
 | `/shutdown_bot` | Shuts the bot down (stays down until restarted). | none | Bot owner only | Global |
 | `/restart_bot` | Restarts the bot. | none | Bot owner only | Global |
+| `/restart_web` | Restarts the website (web dashboard). | none | Bot owner only | Global |
 
 ### fun_cog
 
@@ -459,6 +514,9 @@ Server permission" but the code also accepts Administrator.
 | `/remove_level_role` | Removes a level's role reward (members who already have it keep it). | `level` (int, required) | Administrator | Guild |
 | `/toggle_game_xp` | Toggles level XP earned by voting in Eat It or Yeet It (on by default). | none | Administrator | Guild |
 | `/toggle_no_xp` | Toggles message XP on/off for a channel. | `channel` (TextChannel, required) | Administrator | Guild |
+| `/toggle_levels` | Turns the whole level system on/off for this server (off by default — nothing earns XP while off). | none | Administrator | Guild |
+| `/toggle_level_messages` | Turns your own level-up messages on/off (you still earn XP when they are off). | none | No gate (everyone) | Guild |
+| `/no_xp_bulk` | Picks up to 25 channels at once, then disables XP in all of them (or turns XP back on). | none (channel picker) | Administrator | Guild |
 | `/xp_event` | Starts a server-wide bonus XP multiplier event (multiplier 2–5). | `minutes` (int, required); `multiplier` (int, optional, default 2) | Administrator | **Global** (no `guild_ids=` — the only Level command that is global) |
 | `/xp_event_end` | Ends a running XP event early. | none | Administrator | Guild |
 | `/daily` | Claims your daily XP bonus (once every 20h; consecutive-day streaks earn more). | none | No gate (everyone) | Guild |
@@ -600,8 +658,12 @@ Server permission" but the code also accepts Administrator.
 | Command | What it does | Options | Who can run it | Scope |
 |---|---|---|---|---|
 | `/testbanlog` | Posts a clearly-marked TEST draft item to the test GitHub project (proves the bot can reach GitHub Projects). | none | Administrator | Guild |
-| `/banlog` | Logs a ban or kick to the GitHub ban-log project (preview + confirm first; nothing posts until confirmed). | `action` (string, required; choices: `Ban`, `Kick`); `reason` (string, required); `member` (Member, optional — pick if still in server); `user_id` (string, optional — ID, mention, or username if they left); `status` (string, optional; choices: `Preds`, `Intolerance e.g. transphobia, racism etc`, `Trolls/Bullies`, `Advertisers/Scammers`, `Misc`); `tags` (string, optional; choices: `more info`, `Blacklist approved`); `evidence` (string, optional — links separated by spaces); `screenshot` (Attachment, optional) | Manage Server / Admin (in-callback) | Guild |
-| `/banlog_update` | Updates the most recent logged case for a user (Status and/or tags, and/or appends a dated note). | `member` (Member, optional); `user_id` (string, optional); `status` (string, optional; same choices as /banlog); `tags` (string, optional; same choices); `note` (string, optional) | Manage Server / Admin (in-callback) | Guild |
+| `/banlog` | Logs a ban or kick to the GitHub ban-log project (preview + confirm first; nothing posts until confirmed). | `action` (string, required; choices: `Ban`, `Kick`); `reason` (string, required); `member` (Member, optional — pick if still in server); `user_id` (string, optional — ID, mention, or username if they left); `status` (string, optional; choices: `Preds`, `Intolerance e.g. transphobia, racism etc`, `Trolls/Bullies`, `Advertisers/Scammers`, `Misc`); `tags` (string, optional; choices: `more info`, `Blacklist approved`); `ticket` (string, optional — support-ticket reference); `evidence` (string, optional — links separated by spaces); `screenshot`…`screenshot10` (Attachment, optional — up to 10 screenshots) | Manage Server / Admin (in-callback) | Guild |
+| `/log_approve` | Approves a logged case that is waiting for approval (the approver must be a different person than the logger). | `case` (int, required — the case number) | Manage Server / Admin (in-callback) | Guild |
+| `/banlog_collect` | Collects screenshots posted in this channel after the command ran and attaches them to the pending case. | none | Manage Server / Admin (in-callback) | Guild |
+| `/ghlog_set_channel` | Sets the channel screenshots are collected to for the ban log. | `channel` (TextChannel, required) | Manage Server / Admin (in-callback) | Guild |
+| `/ghlog_backfill_cases` | Numbers board items that are missing a case number and rewrites their titles. | none | Manage Server / Admin (in-callback) | Guild |
+| `/banlog_update` | Updates a logged case by case number (Status and/or tags and/or the Decision field, and/or appends a dated note). | `case` (int, required — the case number); `status` (string, optional; same choices as /banlog); `tags` (string, optional; same choices); `decision` (string, optional; choices: `Blacklist approved`, `more info`); `note` (string, optional) | Manage Server / Admin (in-callback) | Guild |
 | `/banlog_delete` | Deletes the most recent logged case for a user (type `DELETE` exactly to confirm; cannot be undone). | `member` (Member, optional); `user_id` (string, optional); `confirm` (string, optional in the form but enforced in code — anything other than `DELETE` refuses; kept optional because Discord rejects a command when a required option follows optional ones) | Manage Server / Admin (in-callback) | Guild |
 
 ### Introduction
@@ -637,6 +699,24 @@ Server permission" but the code also accepts Administrator.
 | `/log_toggle voice` | Toggles voice event logging. | `event` (string, required; choices: `voice_join`, `voice_leave`, `voice_move`, `voice_mute`); `enabled` (bool, required) | Administrator (in-callback) | Guild |
 | `/log_toggle server` | Toggles server event logging. | `event` (string, required; choices: `channel_create`, `channel_delete`, `channel_update`, `thread_create`, `thread_delete`, `emoji_create`, `emoji_delete`, `emoji_rename`, `role_create`, `role_delete`, `role_update`, `invite_create`, `invite_delete`); `enabled` (bool, required) | Administrator (in-callback) | Guild |
 | `/log_toggle moderation` | Toggles moderation event logging. | `event` (string, required; choices: `ban`, `unban`, `timeout`); `enabled` (bool, required) | Administrator (in-callback) | Guild |
+
+### Permissions
+
+| Command | What it does | Options | Who can run it | Scope |
+|---|---|---|---|---|
+| `/perm_allow` | Grants a command to a role or a single user (allow or explicit deny). | `command` (string, required, autocomplete); `role` (Role, optional); `user` (Member, optional); `rule` (string, optional; `allow` or `deny`, default allow) | Administrator | Guild |
+| `/perm_remove` | Removes a grant (role or user) for a command. | `command` (string, required, autocomplete); `role` (Role, optional); `user` (Member, optional) | Administrator | Guild |
+| `/perm_list` | Lists the grants for one command, or all grants. | `command` (string, optional, autocomplete) | Administrator | Guild |
+| `/perm_bulk` | Grants many commands to many roles at once (pick up to 25 roles, then pick commands). | none (role + command pickers) | Administrator | Guild |
+| `/perm_reset` | Removes grants — for one role, one user, one command, or everything (previews first, deletes only with confirm). | `role` (Role, optional); `user` (Member, optional); `command` (string, optional, autocomplete); `confirm` (bool, optional, default false) | Administrator | Guild |
+| `/perm_overview` | Shows what each role can do and what per-user grants exist. | none | Administrator | Guild |
+| `/perm_commands` | Shows, per command, which roles/users are granted it. | none | Administrator | Guild |
+
+### ServerSettings
+
+| Command | What it does | Options | Who can run it | Scope |
+|---|---|---|---|---|
+| `/bot_settings` | Shows every bot system's on/off state and key config in one place (levels, voice XP, automod, logger, lockdown, watchlist, tickets, QOTD, debug, introductions, appeals, ban log, timeout board, badges). Custom permissions are not shown here — see `/perm_overview`. | none | Administrator | Guild |
 
 ## Built-in commands (admin cog)
 
@@ -740,6 +820,26 @@ and tags are typed text with forgiving aliases ("trolls" →
 auto-logging of every ban/kick is deliberately not built yet — logging
 stays manual and previewed.
 
+**Approval flow.** A logged case starts on `Needs approval`. A second
+staff member approves it with `/log_approve` (the approver must be a
+different person than the logger), which moves it to its intended Status.
+`/banlog_update` can set the separate **Decision** field (`Blacklist
+approved` / `more info`) by case number. Set `GHLOG_ALLOW_SELF_APPROVE=1`
+in `.env` only while testing — it lets a logger approve their own log,
+and must be removed before go-live (the bot prints a warning at startup
+while it is set).
+
+**Evidence.** Up to 10 screenshots can be attached to `/banlog`
+(`screenshot`…`screenshot10`); Discord attachment links expire after
+24 hours, so the bot re-hosts them where it can. The **Collect
+screenshots** button (or `/banlog_collect`) gathers screenshots posted
+in the channel after the command ran and posts them to the stored
+evidence channel (`/ghlog_set_channel`), then deletes the originals.
+`/ghlog_backfill_cases` numbers board items that are missing a case
+number. The real board needs the Approval field, the `Needs approval`
+Status option, the tag options, and the Decision field before go-live
+(`ensure_approval_setup` adds them).
+
 ## Built-in commands (fun cog) — 🍽️ Eat It or Yeet It
 
 A party voting game: the bot serves up a random food, everyone votes
@@ -782,7 +882,20 @@ configured range (subject to a per-user cooldown). Level *n* requires
 *n* × 100 XP, and leftover XP rolls over into the next level. All XP data
 and settings are stored per server in the SQLite database.
 
-Full options and gates for all nineteen level-system commands: see the [Complete command reference](#-complete-command-reference) above.
+Full options and gates for all twenty-two level-system commands: see the [Complete command reference](#-complete-command-reference) above.
+
+**Off by default.** The level system is off in a server until an admin
+turns it on with `/toggle_levels`. While off, no XP is earned from
+messages, games, voice, or manual grants, and `/daily`, `/add_xp`, and
+the panel add-XP button refuse with a note to turn it on first.
+`/getxpsettings` shows the on/off state.
+
+**Level-up messages.** If a level-up channel is set, the announcement
+posts there. If none is set, the level-up message is sent to the user by
+DM instead of the public channel — closed DMs fail silently with no
+public fallback. Every level-up message names `/toggle_level_messages`,
+a per-user toggle (run it again to turn messages back on); users who opt
+out still earn XP and role rewards, they just don't get the announcement.
 
 Voting in Eat It or Yeet It also earns level XP: 10 XP per vote, plus
 10 × the game's majority points as a bonus (e.g. 20 XP for winning a
@@ -792,12 +905,49 @@ common round, 40 XP for a cursed one). Admins can turn this off with
 Extras: `/daily` gives a claimable XP bonus every 20 hours with streak
 bonuses, `/xp_event` runs server-wide multiplier events (great for event
 nights), and `/rank` generates a shareable rank card image. Channels like
-bot-spam can be excluded from XP with `/toggle_no_xp`.
+bot-spam can be excluded from XP with `/toggle_no_xp` (one channel) or
+`/no_xp_bulk` (pick up to 25 channels at once, then Disable XP or
+Enable XP).
 
 Level-ups post a confetti celebration card (with your `/cardcolor` accent
 if you set one) alongside the announcement text — admins can customize
 that text with `/set_levelup_message` using `{user}`, `{name}`, and
 `{level}` placeholders (it falls back to the default message if unset).
+
+## 🔐 Custom permissions system
+
+Lets an admin grant specific commands to specific roles or users
+without giving anyone Discord Administrator. For example, a Trial
+Moderator role can run `/timeout` but not `/ban`, and one user can be
+granted `/ban` for training while the rest of their role keeps the same
+perks. The Little Haven 6-level ladder does not fit this — a role gets
+a *set* of commands, not a level.
+
+**Precedence** (first match wins): Discord Administrator → user DENY →
+user ALLOW → role DENY → role ALLOW → the command's normal Discord
+check (when no custom rules exist for it) → deny (when rules exist but
+nothing matches). Server admins always pass, no matter what.
+
+**Commands** (all Administrator, guild-scoped): `/perm_allow`,
+`/perm_remove`, `/perm_list`, `/perm_bulk` (pick up to 25 roles, then
+pick commands — grant or deny them all at once), `/perm_reset`
+(previews first, deletes only with `confirm=True`), `/perm_overview`
+(what each role can do + per-user grants), `/perm_commands` (per
+command, who is granted it). Grants live in the `command_permissions`
+table in the shared `bot.db`, so the website can read them too (the
+site does not enforce them yet — bot side first). `/userinfo` panel
+buttons gray out for viewers who lack the permission for that action.
+
+## ⚙️ Bot settings overview
+
+`/bot_settings` (Administrator, guild-scoped, grantable) shows every
+bot system's on/off state and key config in one place — Levels & XP,
+Voice XP, Automod, Logger, Lockdown, WatchList, Tickets, QOTD, Debug,
+Introductions, Appeals, Ban log, Timeout board, and Badges. Each section
+reads its own live store; if one system can't be read it shows
+"couldn't read" instead of breaking the overview. Custom permissions
+are intentionally left out (they have `/perm_overview` and
+`/perm_commands`).
 
 ## 👋 Introduction tracking
 

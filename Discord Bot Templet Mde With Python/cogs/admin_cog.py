@@ -8,6 +8,7 @@ import os
 import sys
 import subprocess
 import asyncio
+import aiohttp
 from config import  GUILD_IDS, admin_required, is_owner, load_json, save_json, autocomplete_commands , extra_help
 import traceback
 
@@ -1076,7 +1077,15 @@ class XPModal(discord.ui.Modal):
         try:
             from data.DB.Storage.storage import get_levels, save_levels
             if self.adding:
-                from cogs.Level_system import award_xp
+                from cogs.Level_system import award_xp, levels_enabled
+                if not await levels_enabled(guild.id):
+                    await interaction.response.send_message(
+                        "The level system is off in this server. "
+                        "Turn it on with /toggle_levels first.",
+                        ephemeral=True,
+                    )
+                    await panel._refresh_panel()
+                    return
                 gained = await award_xp(guild, target.id, display, amount, apply_event=False)
                 db = await get_levels(gid)
                 ud = db.get(uid, {})
@@ -1290,6 +1299,8 @@ class ModConfirmView(discord.ui.View):
         if self.done:
             return
         self.done = True
+        if not await self.panel._check_action(interaction, self.action):
+            return
         await interaction.response.defer(ephemeral=True)
         try:
             result = await self.panel._apply_mod_action(
@@ -1525,7 +1536,7 @@ class UserinfoModView(discord.ui.View):
 
     def __init__(self, guild, target, is_member, test_mode=False, is_banned=False,
                  is_timed_out=False, watch_cog=None, is_watched=False,
-                 requester_name=""):
+                 requester_name="", viewer=None):
         super().__init__(timeout=1800)
         self.guild = guild
         self.target = target
@@ -1536,6 +1547,11 @@ class UserinfoModView(discord.ui.View):
         self.watch_cog = watch_cog
         self.is_watched = is_watched
         self.requester_name = requester_name
+        self.viewer = viewer
+        # Buttons the viewer may not use (by permission). Stored by
+        # attribute name; _sync_buttons ORs these in with the
+        # state-based disabling so a refresh never re-enables them.
+        self._perm_disabled: set[str] = set()
         self.last_gh_action = None
         self.last_gh_reason = None
         self.message = None
@@ -1544,6 +1560,54 @@ class UserinfoModView(discord.ui.View):
             "is_banned": is_banned,
             "is_timed_out": is_timed_out,
             "is_watched": is_watched,
+        })
+
+    async def _apply_viewer_permissions(self, member):
+        """Gray out every panel button the viewing member may not use.
+        Grantable actions (warn/timeout/kick/ban/clear/banlog) use the
+        custom permission check; the rest need Manage Server or
+        Administrator. Buttons the viewer lacks stay disabled through
+        refreshes (see _sync_buttons)."""
+        from utils.permissions import (
+            has_command_permission,
+            _default_manage_or_admin,
+        )
+
+        self.viewer = member
+        perms = getattr(member, "guild_permissions", None)
+        is_admin = bool(perms and (perms.manage_guild or perms.administrator))
+        # (button attribute, grantable action or None for admin-only)
+        mapping = [
+            ("warn_button", "warn"),
+            ("timeout_button", "timeout"),
+            ("kick_button", "kick"),
+            ("ban_button", "ban"),
+            ("clear_button", "clear_user"),
+            ("ghlog_button", "banlog"),
+            ("notes_button", None),
+            ("watch_button", None),
+            ("add_xp_button", None),
+            ("remove_xp_button", None),
+            ("wipe_button", None),
+            ("history_button", None),
+            ("rename_button", None),
+            ("strip_button", None),
+        ]
+        self._perm_disabled = set()
+        for attr, action in mapping:
+            if action is not None:
+                allowed = await has_command_permission(
+                    self.guild, member, action, _default_manage_or_admin
+                )
+            else:
+                allowed = is_admin
+            if not allowed:
+                self._perm_disabled.add(attr)
+        self._sync_buttons({
+            "is_member": self.guild.get_member(self.target_id) is not None,
+            "is_banned": self.is_banned,
+            "is_timed_out": self.is_timed_out,
+            "is_watched": self.is_watched,
         })
 
     def _sync_buttons(self, state):
@@ -1581,6 +1645,17 @@ class UserinfoModView(discord.ui.View):
                 self.watch_button.label = "Watch"
                 self.watch_button.emoji = "\u2795"
                 self.watch_button.style = discord.ButtonStyle.secondary
+        # Permission gating: a button the viewer may not use stays
+        # grayed out even when the moderation state would enable it.
+        for attr in (
+            "warn_button", "timeout_button", "kick_button", "ban_button",
+            "clear_button", "notes_button", "watch_button",
+            "add_xp_button", "remove_xp_button", "ghlog_button",
+            "wipe_button", "history_button", "rename_button",
+            "strip_button",
+        ):
+            if attr in self._perm_disabled:
+                getattr(self, attr).disabled = True
 
     async def _refresh_panel(self, force=None):
         """Rebuild the card embed and button states from live data."""
@@ -1650,6 +1725,14 @@ class UserinfoModView(discord.ui.View):
             )
 
         if action == "kick":
+            try:
+                await member.kick(reason=audit)
+            except discord.Forbidden:
+                return "\u274c I can't kick that user \u2014 is my role above theirs?"
+            except Exception as e:
+                return f"\u274c Kick failed: `{e}`"
+            # Only DM after the kick actually went through, so a failed
+            # kick never tells the user they were kicked.
             note = ""
             if dm_enabled:
                 ok = await _dm_target(
@@ -1657,12 +1740,6 @@ class UserinfoModView(discord.ui.View):
                     f"\U0001f462 You've been kicked from **{guild.name}**\n**Reason:** {reason}",
                 )
                 note = f"\n{dm_note(ok)}"
-            try:
-                await member.kick(reason=audit)
-            except discord.Forbidden:
-                return "\u274c I can't kick that user \u2014 is my role above theirs?"
-            except Exception as e:
-                return f"\u274c Kick failed: `{e}`"
             _record_case(guild.id, member.id, "kick", reason, moderator)
             return f"\U0001f462 Kicked {member.mention}\n**Reason:** {reason}{note}"
 
@@ -1670,6 +1747,19 @@ class UserinfoModView(discord.ui.View):
             days = params["delete_days"]
             duration = params.get("duration")
             dur_desc = params.get("duration_desc", "permanent")
+            # pycord 2.x renamed Guild.ban()'s delete_message_days to
+            # delete_message_seconds (0-604800). days is 0-7 here.
+            delete_seconds = max(0, min(int(days or 0) * 86400, 604800))
+            try:
+                await guild.ban(
+                    target, reason=audit, delete_message_seconds=delete_seconds
+                )
+            except discord.Forbidden:
+                return "\u274c I can't ban that user \u2014 is my role above theirs?"
+            except Exception as e:
+                return f"\u274c Ban failed: `{e}`"
+            # Only DM after the ban actually went through, so a failed
+            # ban never tells the user they were banned.
             note = ""
             if dm_enabled:
                 dur_text = f" for {dur_desc}" if duration else " permanently"
@@ -1678,17 +1768,13 @@ class UserinfoModView(discord.ui.View):
                     f"\U0001f528 You've been banned from **{guild.name}**{dur_text}\n**Reason:** {reason}\n\nTo appeal this, DM me the word `appeal`.",
                 )
                 note = f"\n{dm_note(ok)}"
-            try:
-                await guild.ban(target, reason=audit, delete_message_days=days)
-            except discord.Forbidden:
-                return "\u274c I can't ban that user \u2014 is my role above theirs?"
-            except Exception as e:
-                return f"\u274c Ban failed: `{e}`"
             label = f"tempban ({dur_desc})" if duration else "ban"
             if duration:
                 tb_data, tb = _tempban_data(guild.id)
                 tb[str(target.id)] = {
-                    "unban_at": time.time() + duration,
+                    # duration is a timedelta (from parse_mod_duration);
+                    # unban_at is epoch seconds, like the timeout path.
+                    "unban_at": time.time() + duration.total_seconds(),
                     "reason": reason,
                     "mod_id": moderator.id,
                     "mod_name": str(moderator),
@@ -1710,15 +1796,30 @@ class UserinfoModView(discord.ui.View):
         )
         return False
 
+    async def _check_action(self, interaction: discord.Interaction, action: str):
+        """Gate one moderation action (ban/kick/timeout/warn/clear_user/
+        banlog) on the custom per-command permissions. Server admins
+        always pass; a custom rule for the action replaces the
+        Manage Server / Administrator default; with no custom rules
+        the default applies. See utils/permissions.py."""
+        from utils.permissions import (
+            check_interaction_permission,
+            _default_manage_or_admin,
+        )
+
+        return await check_interaction_permission(
+            interaction, action, _default_manage_or_admin
+        )
+
     @discord.ui.button(label="Warn", emoji="\u26a0\ufe0f", style=discord.ButtonStyle.secondary, row=0)
     async def warn_button(self, button: discord.ui.Button, interaction: discord.Interaction):
-        if not await self._check_admin(interaction):
+        if not await self._check_action(interaction, "warn"):
             return
         await interaction.response.send_modal(WarnModal(self))
 
     @discord.ui.button(label="Timeout", emoji="\u23f1\ufe0f", style=discord.ButtonStyle.primary, row=0)
     async def timeout_button(self, button: discord.ui.Button, interaction: discord.Interaction):
-        if not await self._check_admin(interaction):
+        if not await self._check_action(interaction, "timeout"):
             return
         member = self.guild.get_member(self.target_id)
         if member is None:
@@ -1770,7 +1871,7 @@ class UserinfoModView(discord.ui.View):
 
     @discord.ui.button(label="Kick", emoji="\U0001f462", style=discord.ButtonStyle.danger, row=0)
     async def kick_button(self, button: discord.ui.Button, interaction: discord.Interaction):
-        if not await self._check_admin(interaction):
+        if not await self._check_action(interaction, "kick"):
             return
         member = self.guild.get_member(self.target_id)
         if member is None:
@@ -1782,7 +1883,7 @@ class UserinfoModView(discord.ui.View):
 
     @discord.ui.button(label="Ban", emoji="\U0001f528", style=discord.ButtonStyle.danger, row=0)
     async def ban_button(self, button: discord.ui.Button, interaction: discord.Interaction):
-        if not await self._check_admin(interaction):
+        if not await self._check_action(interaction, "ban"):
             return
         if self.is_banned:
             if self.test_mode:
@@ -1823,7 +1924,7 @@ class UserinfoModView(discord.ui.View):
 
     @discord.ui.button(label="Clear", emoji="\U0001f9f9", style=discord.ButtonStyle.secondary, row=0)
     async def clear_button(self, button: discord.ui.Button, interaction: discord.Interaction):
-        if not await self._check_admin(interaction):
+        if not await self._check_action(interaction, "clear_user"):
             return
         await interaction.response.send_message(
             f"Clear {self.target.mention}'s messages \u2014 pick a channel:",
@@ -1888,7 +1989,7 @@ class UserinfoModView(discord.ui.View):
 
     @discord.ui.button(label="Log to GitHub", emoji="\U0001f4cb", style=discord.ButtonStyle.secondary, row=2)
     async def ghlog_button(self, button: discord.ui.Button, interaction: discord.Interaction):
-        if not await self._check_admin(interaction):
+        if not await self._check_action(interaction, "banlog"):
             return
         from cogs.GHLog import GHLogModal
         await interaction.response.send_modal(GHLogModal(self))
@@ -2224,8 +2325,8 @@ class AdminCog(commands.Cog):
         if interaction.guild is None:
             await interaction.response.send_message("\u274c Use this in a server.", ephemeral=True)
             return
-        if not self._is_manager(interaction):
-            await interaction.response.send_message("\u274c You need **Manage Server** or **Administrator** to time people out.", ephemeral=True)
+        from utils.permissions import check_slash_permission, _default_manage_or_admin
+        if not await check_slash_permission(interaction, "timeout", _default_manage_or_admin):
             return
         duration_td, label = _resolve_timeout_duration(preset, duration)
         if duration_td is None:
@@ -2274,8 +2375,8 @@ class AdminCog(commands.Cog):
         if interaction.guild is None:
             await interaction.response.send_message("\u274c Use this in a server.", ephemeral=True)
             return
-        if not self._is_manager(interaction):
-            await interaction.response.send_message("\u274c You need **Manage Server** or **Administrator** to manage the timeout board.", ephemeral=True)
+        from utils.permissions import check_slash_permission, _default_manage_or_admin
+        if not await check_slash_permission(interaction, "timeout_board", _default_manage_or_admin):
             return
         guild = interaction.guild
         if remove:
@@ -2330,7 +2431,6 @@ class AdminCog(commands.Cog):
 
     @discord.slash_command(name="clear_user", description="Clear messages from a user across one or all channels.")
     @extra_help("Clears messages from a specific user in one or all channels. You can specify a user by selecting them or by providing their ID. You can also choose a specific channel to clear messages from.")
-    @admin_required()
     async def clear_user(
             self,
             interaction: discord.ApplicationContext,
@@ -2340,6 +2440,9 @@ class AdminCog(commands.Cog):
             amount: discord.Option (int, "set the amount of messages to clear from a user default 100",  default= 100, required=False) # type: ignore
         ):
             """Clear messages from a user in one or all channels."""
+            from utils.permissions import check_slash_permission, _default_admin_only
+            if not await check_slash_permission(interaction, "clear_user", _default_admin_only):
+                return
             resolved_user_id = None
             user_display = None
 
@@ -2393,7 +2496,6 @@ class AdminCog(commands.Cog):
     # User Info Command
     @discord.slash_command(name = "userinfo", description="View detailed info about a user.", guild_ids=GUILD_IDS)
     @extra_help("Mini admin panel: user card (account, server profile, XP/level, ban status, watch-list status, warns, notes) with Warn/Timeout/Kick/Ban/Clear/Notes/Watch/Add-XP/Remove-XP buttons. Ban/Timeout/Watch flip to Unban/Remove-timeout/Unwatch when active. Warn/Timeout/Kick/Ban ask for a reason, then a confirm step with a DM on/off toggle. The card refreshes itself after every action. Set test_mode to simulate actions, private to keep the card to yourself. Pick a member, or type a user ID, mention, or username. If no user is specified, it shows your own information.")
-    @admin_required()
     async def userinfo(
         self,
         interaction: discord.ApplicationContext,
@@ -2403,6 +2505,9 @@ class AdminCog(commands.Cog):
         test_mode: discord.Option(bool, "simulate mod actions instead of applying them", default=False), # type: ignore
         ):
         """View information about a user in the server."""
+        from utils.permissions import check_slash_permission, _default_admin_only
+        if not await check_slash_permission(interaction, "userinfo", _default_admin_only):
+            return
         await interaction.response.defer(ephemeral=private)
         try:
             await self._userinfo_body(interaction, member, user, private, test_mode)
@@ -2503,7 +2608,12 @@ class AdminCog(commands.Cog):
         view = UserinfoModView(guild, target, is_member, test_mode=test_mode,
                                 is_banned=is_banned, is_timed_out=is_timed_out,
                                 watch_cog=watch_cog, is_watched=watched,
-                                requester_name=interaction.author.display_name)
+                                requester_name=interaction.author.display_name,
+                                viewer=interaction.author)
+        # Gray out buttons the requester may not use (custom perms for
+        # warn/timeout/kick/ban/clear/banlog; Manage Server/Admin for
+        # the rest) so they only see what they can actually do.
+        await view._apply_viewer_permissions(interaction.author)
         view.message = await interaction.followup.send(
             embed=info_embed, view=view, ephemeral=private, wait=True
         )
@@ -2511,7 +2621,6 @@ class AdminCog(commands.Cog):
 
     @discord.slash_command(name='remove_user_role', description="use this to remove a users role")
     @extra_help("Remove a role from a user in the server. You can specify a user by selecting them or by providing their ID. You can also choose a specific role to remove.")
-    @admin_required() 
     async def remove_user_role(
         self,
         interaction: discord.ApplicationContext,
@@ -2519,6 +2628,9 @@ class AdminCog(commands.Cog):
         role: discord.Option(discord.Role, "pick the role to remove from the user"), # type: ignore
         ):
         """Remove a role from a user in the server."""
+        from utils.permissions import check_slash_permission, _default_admin_only
+        if not await check_slash_permission(interaction, "remove_user_role", _default_admin_only):
+            return
         if role is None: # This check might not be needed because if a role cannot be resolved, the command might not be triggered.
             await interaction.respond(f"Role not found.", ephemeral=True)
             return
@@ -2538,7 +2650,6 @@ class AdminCog(commands.Cog):
 
     @discord.slash_command(name="add_user_role", description="use this to give a role to a user in the server")
     @extra_help("Add a role to a user in the server. You can specify a user by selecting them or by providing their ID. You can also choose a specific role to add.")
-    @admin_required()  
     async def add_user_role(
         self, 
         interaction: discord.ApplicationContext,
@@ -2546,6 +2657,9 @@ class AdminCog(commands.Cog):
         role: discord.Option(discord.Role,"this is is used to pick the role to set for the user"), # type: ignore
         ):
         """Add a role to a user in the server.""" 
+        from utils.permissions import check_slash_permission, _default_admin_only
+        if not await check_slash_permission(interaction, "add_user_role", _default_admin_only):
+            return
         if role is None:
             await interaction.response.send_message(f"Role not found.", ephemeral=True) # Changed from respond to response.send_message
             return
@@ -2572,13 +2686,15 @@ class AdminCog(commands.Cog):
     
     @discord.slash_command(name="rename_bot", description="used by the admins to change the name of the bot in there discord server")
     @extra_help("Rename the bot in your server. You can set a new nickname for the bot, but ensure it doesn't violate Discord's naming policies.")
-    @admin_required()
     async def rename_bot(
         self,
         interaction: discord.ApplicationContext,
         new_nick: str = discord.Option(str, description="set the name of the bot") # Corrected Option usage
         ):
         """Rename the bot in the server."""
+        from utils.permissions import check_slash_permission, _default_admin_only
+        if not await check_slash_permission(interaction, "rename_bot", _default_admin_only):
+            return
         await interaction.response.defer()
         user_id = interaction.author.id
         guild_id = interaction.guild.id
@@ -2614,13 +2730,15 @@ class AdminCog(commands.Cog):
 
     @discord.slash_command(name="rename_user", description="used by the admins to change the name a user in there discord server")
     @extra_help("Rename a user in your server. You can set a new nickname for the user, but ensure it doesn't violate Discord's naming policies.")
-    @admin_required()
     async def rename_user(
         self, interaction: discord.ApplicationContext, 
         member: discord.Option(discord.Member, "pick the name of the user you want to change"), # type: ignore 
         new_nick: discord.Option(str, "set the name of the user ") # type: ignore
         ):
         """Rename a user in the server."""
+        from utils.permissions import check_slash_permission, _default_admin_only
+        if not await check_slash_permission(interaction, "rename_user", _default_admin_only):
+            return
         COOLDOWN_SECONDS_Rename_User = 5
         await interaction.response.defer()
         user_id = interaction.author.id
@@ -2654,13 +2772,15 @@ class AdminCog(commands.Cog):
 
     @discord.slash_command(name="reset_user_name", description="used by the admins to reset the useers name")
     @extra_help("Reset a user's nickname in your server. This will remove any custom nickname they have set.")
-    @admin_required()
     async def reset_user_name(
         self, 
         interaction: discord.ApplicationContext,
         member: discord.Option(discord.Member, "Pick the user to reset there name ") # type: ignore
         ):
         """Reset a user's nickname in the server."""
+        from utils.permissions import check_slash_permission, _default_admin_only
+        if not await check_slash_permission(interaction, "reset_user_name", _default_admin_only):
+            return
         try:
             await member.edit(nick=None)
             await interaction.respond(f"{member.mention}'s nickname was reset in **{interaction.guild.name}**.")
@@ -2704,6 +2824,57 @@ class AdminCog(commands.Cog):
     
 
         
+
+    @discord.slash_command(name="restart_web", description="Restarts the website.")
+    @extra_help("Restarts the website (web dashboard). Use this command with caution as it will stop the website and start it again.")
+    @is_owner()
+    async def restart_web(self, ctx: discord.ApplicationContext):
+        """Restarts the website (web dashboard)."""
+        secret = os.getenv("BRIDGE_SECRET")
+        if not secret:
+            embed = discord.Embed(
+                description="I can't restart the website: BRIDGE_SECRET is not set in the bot's .env.",
+                color=0xBEBEFE,
+            )
+            await ctx.respond(embed=embed, ephemeral=True)
+            return
+        embed = discord.Embed(description="Restarting the website... Be right back! 🔁", color=0xBEBEFE)
+        await ctx.respond(embed=embed)
+        base = os.getenv("WEB_BASE_URL", "http://127.0.0.1:5000").rstrip("/")
+        url = base + "/api/internal/website/restart"
+        try:
+            timeout = aiohttp.ClientTimeout(total=10)
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.post(url, headers={"X-Bridge-Secret": secret}) as resp:
+                    status = resp.status
+        except (aiohttp.ClientError, asyncio.TimeoutError):
+            embed = discord.Embed(
+                description="I couldn't reach the website (it may already be down) — restart it by hand: `sudo systemctl restart kushweb.service` on the server, or close and re-run `run_web.bat` on Windows.",
+                color=0xBEBEFE,
+            )
+            await ctx.edit(embed=embed)
+            return
+        if status == 200:
+            embed = discord.Embed(
+                description="Website is restarting — it'll be back in a few seconds.",
+                color=0xBEBEFE,
+            )
+        elif status == 401:
+            embed = discord.Embed(
+                description="The website refused the restart (bridge secret mismatch) — check BRIDGE_SECRET matches on both sides.",
+                color=0xBEBEFE,
+            )
+        elif status == 503:
+            embed = discord.Embed(
+                description="The website refused the restart: BRIDGE_SECRET is not set on the website side.",
+                color=0xBEBEFE,
+            )
+        else:
+            embed = discord.Embed(
+                description="The website answered with an unexpected status (%s) — check the website log." % status,
+                color=0xBEBEFE,
+            )
+        await ctx.edit(embed=embed)
 
 def setup(client):
     client.add_cog(AdminCog(client))

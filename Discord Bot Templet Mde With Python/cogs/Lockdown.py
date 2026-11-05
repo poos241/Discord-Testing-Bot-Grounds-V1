@@ -198,9 +198,11 @@ class Lockdown(commands.Cog):
 
     @lockdown.command(name="lock", description="Lock a channel so @everyone cannot send messages.")
     @extra_help("Locks one channel (default: the channel you run it in). A duration in minutes sets a timed lock that auto-unlocks on its own, even across a bot restart. Unlocking restores the channel's previous @everyone permission, it does not just re-allow sending.")
-    @Manage_channels_required()
     async def lockdown_lock(self, ctx, channel: discord.TextChannel = None,
                             duration: int = None, reason: str = None):
+        from utils.permissions import check_slash_permission, _default_manage_channels_or_admin
+        if not await check_slash_permission(ctx, "lockdown_lock", _default_manage_channels_or_admin):
+            return
         if ctx.guild is None:
             return await ctx.respond("Lockdown commands only work in a server.",
                                      ephemeral=True)
@@ -244,8 +246,10 @@ class Lockdown(commands.Cog):
 
     @lockdown.command(name="unlock", description="Unlock a channel, restoring its previous @everyone permission.")
     @extra_help("Unlocks one channel (default: the channel you run it in). Restores whatever @everyone send_messages was before the lock. Also clears a manual lock (one set by hand in channel settings) by resetting the overwrite to unset.")
-    @Manage_channels_required()
     async def lockdown_unlock(self, ctx, channel: discord.TextChannel = None):
+        from utils.permissions import check_slash_permission, _default_manage_channels_or_admin
+        if not await check_slash_permission(ctx, "lockdown_unlock", _default_manage_channels_or_admin):
+            return
         if ctx.guild is None:
             return await ctx.respond("Lockdown commands only work in a server.",
                                      ephemeral=True)
@@ -290,9 +294,11 @@ class Lockdown(commands.Cog):
 
     @lockdown.command(name="lockall", description="Lock every text channel in the server.")
     @extra_help("Server-wide raid/spam switch: denies @everyone send_messages in every text channel. Channels already locked by the bot are left alone (their timers are not touched). A duration sets a timed server lock that auto-unlocks channel by channel. Forum channels are not locked -- lock those individually if needed.")
-    @Manage_channels_required()
     async def lockdown_lockall(self, ctx, duration: int = None,
                                reason: str = None):
+        from utils.permissions import check_slash_permission, _default_manage_channels_or_admin
+        if not await check_slash_permission(ctx, "lockdown_lockall", _default_manage_channels_or_admin):
+            return
         if ctx.guild is None:
             return await ctx.respond("Lockdown commands only work in a server.",
                                      ephemeral=True)
@@ -334,8 +340,10 @@ class Lockdown(commands.Cog):
 
     @lockdown.command(name="unlockall", description="Unlock every channel the bot has locked in this server.")
     @extra_help("Reverses /lockdown lockall and any individual bot locks in one go, restoring each channel's previous @everyone permission. Channels locked by hand are not touched -- unlock those with /lockdown unlock.")
-    @Manage_channels_required()
     async def lockdown_unlockall(self, ctx):
+        from utils.permissions import check_slash_permission, _default_manage_channels_or_admin
+        if not await check_slash_permission(ctx, "lockdown_unlockall", _default_manage_channels_or_admin):
+            return
         if ctx.guild is None:
             return await ctx.respond("Lockdown commands only work in a server.",
                                      ephemeral=True)
@@ -362,10 +370,12 @@ class Lockdown(commands.Cog):
 
     @lockdown.command(name="slowmode", description="Set slowmode on a channel (0 turns it off).")
     @extra_help("Seconds between messages per user, 0-21600 (6 hours). Default channel is the one you run it in. Slowmode does not stop mods or anyone with Manage Messages from chatting, it only slows regular members.")
-    @Manage_channels_required()
     async def lockdown_slowmode(self, ctx, seconds: int,
                                 channel: discord.TextChannel = None,
                                 reason: str = None):
+        from utils.permissions import check_slash_permission, _default_manage_channels_or_admin
+        if not await check_slash_permission(ctx, "lockdown_slowmode", _default_manage_channels_or_admin):
+            return
         if ctx.guild is None:
             return await ctx.respond("Lockdown commands only work in a server.",
                                      ephemeral=True)
@@ -394,8 +404,10 @@ class Lockdown(commands.Cog):
 
     @lockdown.command(name="status", description="Show every channel the bot currently has locked, and pending auto-unlocks.")
     @extra_help("Lists bot-locked channels with who locked them, the reason, and when a timed lock auto-unlocks. Channels locked by hand do not appear here -- only locks the bot is tracking.")
-    @Manage_channels_required()
     async def lockdown_status(self, ctx):
+        from utils.permissions import check_slash_permission, _default_manage_channels_or_admin
+        if not await check_slash_permission(ctx, "lockdown_status", _default_manage_channels_or_admin):
+            return
         if ctx.guild is None:
             return await ctx.respond("Lockdown commands only work in a server.",
                                      ephemeral=True)

@@ -1,6 +1,8 @@
 # Commands
 
-Every slash command (and the one context-menu command) in the bot, built from the actual code — **127 slash commands + 1 user context-menu command = 128 commands**. See the README's [Complete command reference](https://github.com/poos241/Discord-Testing-Bot-Grounds-V1#-complete-command-reference) for the same list with full options. Commands are guild-scoped to `GUILD_IDS` in `config.py` unless the Scope column says **Global**.
+Every slash command (and the one context-menu command) in the bot, built from the actual code — **143 slash commands + 1 user context-menu command = 144 commands**. See the README's [Complete command reference](https://github.com/poos241/Discord-Testing-Bot-Grounds-V1#-complete-command-reference) for the same list with full options. Commands are guild-scoped to `GUILD_IDS` in `config.py` unless the Scope column says **Global**.
+
+**Custom permissions:** admin commands below show their *default* gate (usually Administrator or a Discord permission). The custom permissions system (`/perm_allow`, `/perm_bulk`, etc.) can grant a specific command to a specific role or user, overriding that default; server admins always pass. See `/perm_overview` and `/perm_commands` in Discord for what is actually granted.
 
 ## admin_cog
 
@@ -17,6 +19,7 @@ Every slash command (and the one context-menu command) in the bot, built from th
 | `/reset_user_name` | Clears a user's nickname (removes the custom nickname). | `member` (Member, required) | Administrator | Global |
 | `/shutdown_bot` | Shuts the bot down (stays down until restarted). | none | Bot owner only | Global |
 | `/restart_bot` | Restarts the bot. | none | Bot owner only | Global |
+| `/restart_web` | Restarts the website (web dashboard). | none | Bot owner only | Global |
 
 ## fun_cog
 
@@ -46,6 +49,9 @@ Every slash command (and the one context-menu command) in the bot, built from th
 | `/remove_level_role` | Removes a level's role reward (members who already have it keep it). | `level` (int, required) | Administrator | Guild |
 | `/toggle_game_xp` | Toggles level XP earned by voting in Eat It or Yeet It (on by default). | none | Administrator | Guild |
 | `/toggle_no_xp` | Toggles message XP on/off for a channel. | `channel` (TextChannel, required) | Administrator | Guild |
+| `/toggle_levels` | Turns the whole level system on/off for this server (off by default — nothing earns XP while off). | none | Administrator | Guild |
+| `/toggle_level_messages` | Turns your own level-up messages on/off (you still earn XP when they are off). | none | No gate (everyone) | Guild |
+| `/no_xp_bulk` | Picks up to 25 channels at once, then disables XP in all of them (or turns XP back on). | none (channel picker) | Administrator | Guild |
 | `/xp_event` | Starts a server-wide bonus XP multiplier event (multiplier 2–5). | `minutes` (int, required); `multiplier` (int, optional, default 2) | Administrator | **Global** (no `guild_ids=` — the only Level command that is global) |
 | `/xp_event_end` | Ends a running XP event early. | none | Administrator | Guild |
 | `/daily` | Claims your daily XP bonus (once every 20h; consecutive-day streaks earn more). | none | No gate (everyone) | Guild |
@@ -187,8 +193,12 @@ Every slash command (and the one context-menu command) in the bot, built from th
 | Command | What it does | Options | Who can run it | Scope |
 |---|---|---|---|---|
 | `/testbanlog` | Posts a clearly-marked TEST draft item to the test GitHub project (proves the bot can reach GitHub Projects). | none | Administrator | Guild |
-| `/banlog` | Logs a ban or kick to the GitHub ban-log project (preview + confirm first; nothing posts until confirmed). | `action` (string, required; choices: `Ban`, `Kick`); `reason` (string, required); `member` (Member, optional — pick if still in server); `user_id` (string, optional — ID, mention, or username if they left); `status` (string, optional; choices: `Preds`, `Intolerance e.g. transphobia, racism etc`, `Trolls/Bullies`, `Advertisers/Scammers`, `Misc`); `tags` (string, optional; choices: `more info`, `Blacklist approved`); `evidence` (string, optional — links separated by spaces); `screenshot` (Attachment, optional) | Manage Server / Admin (in-callback) | Guild |
-| `/banlog_update` | Updates the most recent logged case for a user (Status and/or tags, and/or appends a dated note). | `member` (Member, optional); `user_id` (string, optional); `status` (string, optional; same choices as /banlog); `tags` (string, optional; same choices); `note` (string, optional) | Manage Server / Admin (in-callback) | Guild |
+| `/banlog` | Logs a ban or kick to the GitHub ban-log project (preview + confirm first; nothing posts until confirmed). | `action` (string, required; choices: `Ban`, `Kick`); `reason` (string, required); `member` (Member, optional — pick if still in server); `user_id` (string, optional — ID, mention, or username if they left); `status` (string, optional; choices: `Preds`, `Intolerance e.g. transphobia, racism etc`, `Trolls/Bullies`, `Advertisers/Scammers`, `Misc`); `tags` (string, optional; choices: `more info`, `Blacklist approved`); `ticket` (string, optional — support-ticket reference); `evidence` (string, optional — links separated by spaces); `screenshot`…`screenshot10` (Attachment, optional — up to 10 screenshots) | Manage Server / Admin (in-callback) | Guild |
+| `/log_approve` | Approves a logged case that is waiting for approval (the approver must be a different person than the logger). | `case` (int, required — the case number) | Manage Server / Admin (in-callback) | Guild |
+| `/banlog_collect` | Collects screenshots posted in this channel after the command ran and attaches them to the pending case. | none | Manage Server / Admin (in-callback) | Guild |
+| `/ghlog_set_channel` | Sets the channel screenshots are collected to for the ban log. | `channel` (TextChannel, required) | Manage Server / Admin (in-callback) | Guild |
+| `/ghlog_backfill_cases` | Numbers board items that are missing a case number and rewrites their titles. | none | Manage Server / Admin (in-callback) | Guild |
+| `/banlog_update` | Updates a logged case by case number (Status and/or tags and/or the Decision field, and/or appends a dated note). | `case` (int, required — the case number); `status` (string, optional; same choices as /banlog); `tags` (string, optional; same choices); `decision` (string, optional; choices: `Blacklist approved`, `more info`); `note` (string, optional) | Manage Server / Admin (in-callback) | Guild |
 | `/banlog_delete` | Deletes the most recent logged case for a user (type `DELETE` exactly to confirm; cannot be undone). | `member` (Member, optional); `user_id` (string, optional); `confirm` (string, optional in the form but enforced in code — anything other than `DELETE` refuses; kept optional because Discord rejects a command when a required option follows optional ones) | Manage Server / Admin (in-callback) | Guild |
 
 ## Introduction
@@ -224,3 +234,21 @@ Every slash command (and the one context-menu command) in the bot, built from th
 | `/log_toggle voice` | Toggles voice event logging. | `event` (string, required; choices: `voice_join`, `voice_leave`, `voice_move`, `voice_mute`); `enabled` (bool, required) | Administrator (in-callback) | Guild |
 | `/log_toggle server` | Toggles server event logging. | `event` (string, required; choices: `channel_create`, `channel_delete`, `channel_update`, `thread_create`, `thread_delete`, `emoji_create`, `emoji_delete`, `emoji_rename`, `role_create`, `role_delete`, `role_update`, `invite_create`, `invite_delete`); `enabled` (bool, required) | Administrator (in-callback) | Guild |
 | `/log_toggle moderation` | Toggles moderation event logging. | `event` (string, required; choices: `ban`, `unban`, `timeout`); `enabled` (bool, required) | Administrator (in-callback) | Guild |
+
+## Permissions
+
+| Command | What it does | Options | Who can run it | Scope |
+|---|---|---|---|---|
+| `/perm_allow` | Grants a command to a role or a single user (allow or explicit deny). | `command` (string, required, autocomplete); `role` (Role, optional); `user` (Member, optional); `rule` (string, optional; `allow` or `deny`, default allow) | Administrator | Guild |
+| `/perm_remove` | Removes a grant (role or user) for a command. | `command` (string, required, autocomplete); `role` (Role, optional); `user` (Member, optional) | Administrator | Guild |
+| `/perm_list` | Lists the grants for one command, or all grants. | `command` (string, optional, autocomplete) | Administrator | Guild |
+| `/perm_bulk` | Grants many commands to many roles at once (pick up to 25 roles, then pick commands). | none (role + command pickers) | Administrator | Guild |
+| `/perm_reset` | Removes grants — for one role, one user, one command, or everything (previews first, deletes only with confirm). | `role` (Role, optional); `user` (Member, optional); `command` (string, optional, autocomplete); `confirm` (bool, optional, default false) | Administrator | Guild |
+| `/perm_overview` | Shows what each role can do and what per-user grants exist. | none | Administrator | Guild |
+| `/perm_commands` | Shows, per command, which roles/users are granted it. | none | Administrator | Guild |
+
+## ServerSettings
+
+| Command | What it does | Options | Who can run it | Scope |
+|---|---|---|---|---|
+| `/bot_settings` | Shows every bot system's on/off state and key config in one place (levels, voice XP, automod, logger, lockdown, watchlist, tickets, QOTD, debug, introductions, appeals, ban log, timeout board, badges). Custom permissions are not shown here — see `/perm_overview`. | none | Administrator | Guild |

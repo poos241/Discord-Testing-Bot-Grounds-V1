@@ -305,8 +305,10 @@ class VoiceXP(commands.Cog):
 
     @voicexp.command(name="config", description="Show the server's voice XP settings (admins).")
     @extra_help("Shows enabled state, XP rate, daily cap, and how many members are opted in.")
-    @admin_required()
     async def voicexp_config(self, ctx):
+        from utils.permissions import check_slash_permission, _default_admin_only
+        if not await check_slash_permission(ctx, "voicexp_config", _default_admin_only):
+            return
         if ctx.guild is None:
             return await ctx.respond("Voice XP commands only work in a server.", ephemeral=True)
         gid = str(ctx.guild.id)
@@ -323,8 +325,10 @@ class VoiceXP(commands.Cog):
 
     @voicexp.command(name="setrate", description="Set XP earned per minute of voice time (admins).")
     @extra_help("1-10 XP per qualifying minute. Default 1.")
-    @admin_required()
     async def voicexp_setrate(self, ctx, rate: int):
+        from utils.permissions import check_slash_permission, _default_admin_only
+        if not await check_slash_permission(ctx, "voicexp_setrate", _default_admin_only):
+            return
         if ctx.guild is None:
             return await ctx.respond("Voice XP commands only work in a server.", ephemeral=True)
         if rate < 1 or rate > 10:
@@ -335,8 +339,10 @@ class VoiceXP(commands.Cog):
 
     @voicexp.command(name="setcap", description="Set the daily voice XP cap per user, 0 for no cap (admins).")
     @extra_help("0 means unlimited. Default 100 XP per UTC day.")
-    @admin_required()
     async def voicexp_setcap(self, ctx, cap: int):
+        from utils.permissions import check_slash_permission, _default_admin_only
+        if not await check_slash_permission(ctx, "voicexp_setcap", _default_admin_only):
+            return
         if ctx.guild is None:
             return await ctx.respond("Voice XP commands only work in a server.", ephemeral=True)
         if cap < 0 or cap > 1000:
@@ -346,8 +352,10 @@ class VoiceXP(commands.Cog):
         await ctx.respond(f"Daily voice XP cap set to **{_cap_text(cap)}**.", ephemeral=True)
 
     @voicexp.command(name="enable", description="Enable voice XP for this server (admins).")
-    @admin_required()
     async def voicexp_enable(self, ctx):
+        from utils.permissions import check_slash_permission, _default_admin_only
+        if not await check_slash_permission(ctx, "voicexp_enable", _default_admin_only):
+            return
         if ctx.guild is None:
             return await ctx.respond("Voice XP commands only work in a server.", ephemeral=True)
         await save_voice_xp_config(str(ctx.guild.id), {"enabled": True})
@@ -355,8 +363,10 @@ class VoiceXP(commands.Cog):
 
     @voicexp.command(name="disable", description="Disable voice XP for this server (admins).")
     @extra_help("Stops all accrual immediately; banked totals and opt-ins are kept.")
-    @admin_required()
     async def voicexp_disable(self, ctx):
+        from utils.permissions import check_slash_permission, _default_admin_only
+        if not await check_slash_permission(ctx, "voicexp_disable", _default_admin_only):
+            return
         if ctx.guild is None:
             return await ctx.respond("Voice XP commands only work in a server.", ephemeral=True)
         await save_voice_xp_config(str(ctx.guild.id), {"enabled": False})

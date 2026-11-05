@@ -117,6 +117,15 @@ server): `sudo systemctl start|stop|restart|status kushbot.service
 kushweb.service`. macOS / plain Linux: `python3 bot.py` /
 `python3 run_web.py` in a terminal.
 
+The server-home page has Restart bot and Restart website buttons
+(admin-only); Discord has `/restart_bot` and `/restart_web` (bot
+owner only). Restarting just one side:
+
+```bash
+sudo systemctl restart kushweb.service   # just the website
+sudo systemctl restart kushbot.service   # just the bot
+```
+
 ### Check they're running
 
 ```bash
@@ -145,3 +154,20 @@ git log --oneline -3     # what version is running?
 
 Restart the changed side after a pull (dashboard-only changes
 need only the website restarted).
+
+### Uptime Kuma
+
+Kuma (Docker on the home server, UI at http://127.0.0.1:3001 on
+that machine) watches the website with an HTTP check on
+http://100.89.143.6:5000/. The bot is watched with a Push monitor
+instead — it has no HTTP endpoint of its own, so it pushes its own
+heartbeat (`cogs/KumaHeartbeat.py`): create a Push monitor in Kuma
+with Heartbeat Interval 60s, put the push URL Kuma gives you in
+`.env` as `KUMA_PUSH_URL=http://127.0.0.1:3001/api/push/<key>`
+(the 127.0.0.1 form — the bot runs on the same machine as Kuma),
+then restart the bot. The bot pushes every 30s
+(`KUMA_PUSH_INTERVAL_SECONDS`, default 30); keep the push interval
+at half Kuma's Heartbeat Interval or less. The push URL is a key:
+never commit it, never share it. Without `KUMA_PUSH_URL` the
+heartbeat is off and the bot logs one `[KUMA] ... disabled` line
+at startup.

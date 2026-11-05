@@ -5,7 +5,12 @@ Source: `cogs/Level_system.py`.
 ## Earning XP
 
 `on_message` rolls `random.randint(xp_min, xp_max)` per message, subject
-to the per-user cooldown and the `no_xp_channels` list.
+to the per-user cooldown and the `no_xp_channels` list. **The level
+system is off by default** (`settings["levels_enabled"]`, default
+`False`): `on_message` returns early and `award_xp()` returns `[]`
+immediately while off, so nothing earns XP from any source until an
+admin runs `/toggle_levels`. `/daily`, `/add_xp`, and the panel add-XP
+button refuse while off.
 
 ## `award_xp()` — the single funnel
 
@@ -61,12 +66,28 @@ write your own math.
 
 ## Level-up announcements
 
-Announcements go to the configured channel, or fall back to the channel
-where the XP was earned. The text is the custom template if an admin set
-one (`/set_levelup_message`, with `{user}` / `{name}` / `{level}`
+Announcements go to the configured channel. If no level-up channel is
+set, the announcement is sent to the user by DM instead of the public
+channel where they leveled up — closed DMs fail silently with no
+public fallback. The text is the custom template if an admin set one
+(`/set_levelup_message`, with `{user}` / `{name}` / `{level}`
 placeholders) — otherwise the default message. A confetti card image is
 attached when Pillow is installed; without Pillow it's text-only. Nothing
 crashes either way.
+
+**Per-user opt-out.** `user_data["level_messages"]` (default `True`)
+controls whether that user gets announcements at all. `/toggle_level_messages`
+flips it (open to everyone, ephemeral reply); opted-out users still earn
+XP and role rewards, only the announcement is skipped. Every level-up
+message names `/toggle_level_messages` so users can opt out.
+
+## No-XP channels
+
+`settings["no_xp_channels"]` is a list of channel ID strings.
+`on_message` skips any channel in it. `/toggle_no_xp` flips one channel;
+`/no_xp_bulk` opens a picker (up to 25 text channels at once) with
+**Disable XP** / **Enable XP** buttons that add or remove all picked
+channels in one batch. Only the admin who opened the picker can use it.
 
 ## Cards
 

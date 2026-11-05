@@ -837,11 +837,8 @@ class Modlogs(commands.Cog):
             default=None,
         ),
     ):
-        if not _is_manager(ctx):
-            await ctx.respond(
-                "You need Manage Server to browse modlogs.",
-                ephemeral=True,
-            )
+        from utils.permissions import check_slash_permission, _default_manage_or_admin
+        if not await check_slash_permission(ctx, "modlogs", _default_manage_or_admin):
             return
         target_id = None
         if member is not None:
@@ -924,11 +921,8 @@ class Modlogs(commands.Cog):
             default=None,
         ),
     ):
-        if not _is_manager(ctx):
-            await ctx.respond(
-                "You need Manage Server to view mod recaps.",
-                ephemeral=True,
-            )
+        from utils.permissions import check_slash_permission, _default_manage_or_admin
+        if not await check_slash_permission(ctx, "modlogs_recap", _default_manage_or_admin):
             return
         target_id, target_member, err = self._resolve_target(ctx, member, user_id)
         if err:
@@ -1031,11 +1025,8 @@ class Modlogs(commands.Cog):
             default=None,
         ),
     ):
-        if not _is_manager(ctx):
-            await ctx.respond(
-                "You need Manage Server to edit mod cases.",
-                ephemeral=True,
-            )
+        from utils.permissions import check_slash_permission, _default_manage_or_admin
+        if not await check_slash_permission(ctx, "modlogs_edit", _default_manage_or_admin):
             return
         target_id, target_member, err = self._resolve_target(ctx, member, user_id)
         if err:
@@ -1090,11 +1081,8 @@ class Modlogs(commands.Cog):
             required=True,
         ),
     ):
-        if not _is_manager(ctx):
-            await ctx.respond(
-                "You need Manage Server to view moderator actions.",
-                ephemeral=True,
-            )
+        from utils.permissions import check_slash_permission, _default_manage_or_admin
+        if not await check_slash_permission(ctx, "mod_actions", _default_manage_or_admin):
             return
         await ctx.defer(ephemeral=True)
         try:

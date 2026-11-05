@@ -451,8 +451,11 @@ class Appeals(commands.Cog):
             return
         await ensure_db()
         cfg = await get_appeal_guild_config(str(ctx.guild.id))
-        if not is_appeal_staff(ctx.author, cfg):
-            await ctx.respond("You need to be staff to list appeals.", ephemeral=True)
+        from utils.permissions import check_slash_permission
+        if not await check_slash_permission(
+            ctx, "appeal_list",
+            lambda member: is_appeal_staff(member, cfg),
+        ):
             return
         rows = await list_appeals(str(ctx.guild.id), None if status == "all" else status)
         if not rows:
@@ -483,8 +486,11 @@ class Appeals(commands.Cog):
             return
         await ensure_db()
         cfg = await get_appeal_guild_config(str(ctx.guild.id))
-        if not is_appeal_staff(ctx.author, cfg):
-            await ctx.respond("You need to be staff to review appeals.", ephemeral=True)
+        from utils.permissions import check_slash_permission
+        if not await check_slash_permission(
+            ctx, "appeal_review",
+            lambda member: is_appeal_staff(member, cfg),
+        ):
             return
         appeal = await get_appeal(int(appeal_id))
         if appeal is None or str(appeal["guild_id"]) != str(ctx.guild.id):
@@ -510,11 +516,8 @@ class Appeals(commands.Cog):
         channel: discord.Option(discord.TextChannel, "Channel new appeals get posted to", required=False, default=None),
         staff_role: discord.Option(discord.Role, "Role that counts as appeal staff", required=False, default=None),
     ):
-        if ctx.guild is None or not is_admin(ctx.author):
-            await ctx.respond(
-                "You need Manage Server or Administrator to change appeal settings.",
-                ephemeral=True,
-            )
+        from utils.permissions import check_slash_permission, _default_manage_or_admin
+        if not await check_slash_permission(ctx, "appeal_config", _default_manage_or_admin):
             return
         await ensure_db()
         payload = {}
@@ -658,11 +661,8 @@ class Appeals(commands.Cog):
         keyword: discord.Option(str, "Word or phrase to search for"),
         user: discord.Option(discord.Member, "Only search this member's records", required=False, default=None),
     ):
-        if ctx.guild is None or not is_mod(ctx.author):
-            await ctx.respond(
-                "You need Manage Messages or Administrator to search mod notes.",
-                ephemeral=True,
-            )
+        from utils.permissions import check_slash_permission, _default_manage_or_admin
+        if not await check_slash_permission(ctx, "modnotes_search", _default_manage_or_admin):
             return
         needle = (keyword or "").strip().lower()
         if not needle:

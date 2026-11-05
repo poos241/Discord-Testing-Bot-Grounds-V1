@@ -42,8 +42,11 @@ COGS = [
     "cogs.TimeCmd",
     "cogs.CustomBadges",
     "cogs.GHLog",
+    "cogs.Permissions",
     "cogs.Introduction",
     "cogs.Modlogs",
+    "cogs.KumaHeartbeat",
+    "cogs.ServerSettings",
 ]
 
 for cog in COGS:

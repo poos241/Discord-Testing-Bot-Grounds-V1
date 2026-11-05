@@ -373,10 +373,12 @@ class WatchList(commands.Cog):
 
     @discord.slash_command(name="watch_add", description="Add a user to the watch list.")
     @extra_help("Add a user to the watch list. Their messages will be logged to the watch-list channel. Admins only (Manage Server or Administrator).")
-    @watch_admin()
     async def watch_add(self, ctx: discord.ApplicationContext,
                         user: discord.Option(discord.Member, "User to watch")):  # type: ignore
         """Add a user via Discord's native member picker."""
+        from utils.permissions import check_slash_permission, _default_manage_or_admin
+        if not await check_slash_permission(ctx, "watch_add", _default_manage_or_admin):
+            return
         guild_data = self._guild_data(ctx.guild.id)
         if str(user.id) in guild_data["users"]:
             await ctx.respond(f"⚠️ {user.mention} is already on the watch list.",
@@ -392,10 +394,12 @@ class WatchList(commands.Cog):
 
     @discord.slash_command(name="watch_remove", description="Remove a user from the watch list.")
     @extra_help("Remove a user from the watch list. Their messages stop being logged. Admins only.")
-    @watch_admin()
     async def watch_remove(self, ctx: discord.ApplicationContext,
                            user: discord.Option(discord.Member, "User to remove")):  # type: ignore
         """Remove a user via the member picker."""
+        from utils.permissions import check_slash_permission, _default_manage_or_admin
+        if not await check_slash_permission(ctx, "watch_remove", _default_manage_or_admin):
+            return
         guild_data = self._guild_data(ctx.guild.id)
         if str(user.id) not in guild_data["users"]:
             await ctx.respond(f"❌ {user.mention} is not on the watch list.",
@@ -412,10 +416,12 @@ class WatchList(commands.Cog):
 
     @discord.slash_command(name="watch_add_id", description="Add a user to the watch list by ID.")
     @extra_help("Add a user to the watch list using their Discord ID (or mention). Useful when they aren't easy to find in the member picker. Admins only.")
-    @watch_admin()
     async def watch_add_id(self, ctx: discord.ApplicationContext,
                            user_id: discord.Option(str, "Discord user ID")):  # type: ignore
         """Add a user by raw ID."""
+        from utils.permissions import check_slash_permission, _default_manage_or_admin
+        if not await check_slash_permission(ctx, "watch_add_id", _default_manage_or_admin):
+            return
         numeric_id = self._parse_user_id(user_id)
         if numeric_id is None:
             await ctx.respond("❌ That doesn't look like a valid Discord user ID.",
@@ -440,10 +446,12 @@ class WatchList(commands.Cog):
 
     @discord.slash_command(name="watch_remove_id", description="Remove a user from the watch list by ID.")
     @extra_help("Remove a user from the watch list using their Discord ID. Admins only.")
-    @watch_admin()
     async def watch_remove_id(self, ctx: discord.ApplicationContext,
                               user_id: discord.Option(str, "Discord user ID")):  # type: ignore
         """Remove a user by raw ID."""
+        from utils.permissions import check_slash_permission, _default_manage_or_admin
+        if not await check_slash_permission(ctx, "watch_remove_id", _default_manage_or_admin):
+            return
         numeric_id = self._parse_user_id(user_id)
         if numeric_id is None:
             await ctx.respond("❌ That doesn't look like a valid Discord user ID.",
@@ -467,9 +475,11 @@ class WatchList(commands.Cog):
 
     @discord.slash_command(name="watch_list", description="Show everyone on the watch list.")
     @extra_help("Show everyone currently on the watch list, with the log channel status. Admins only.")
-    @watch_admin()
     async def watch_list(self, ctx: discord.ApplicationContext):
         """Show the current watch list."""
+        from utils.permissions import check_slash_permission, _default_manage_or_admin
+        if not await check_slash_permission(ctx, "watch_list", _default_manage_or_admin):
+            return
         guild_data = self._guild_data(ctx.guild.id)
         users = guild_data.get("users", {})
         if not users:
@@ -497,9 +507,11 @@ class WatchList(commands.Cog):
 
     @discord.slash_command(name="watch_status", description="Show the watch-list system status.")
     @extra_help("Show watch-list status: user count, log channel, and logging state. Admins only.")
-    @watch_admin()
     async def watch_status(self, ctx: discord.ApplicationContext):
         """Show system status."""
+        from utils.permissions import check_slash_permission, _default_manage_or_admin
+        if not await check_slash_permission(ctx, "watch_status", _default_manage_or_admin):
+            return
         guild_data = self._guild_data(ctx.guild.id)
         users = guild_data.get("users", {})
         log_channel = self._get_log_channel(ctx.guild)
@@ -536,10 +548,12 @@ class WatchList(commands.Cog):
 
     @discord.slash_command(name="watch_info", description="Show information about a watched user.")
     @extra_help("Show details about one watched user: who added them and when. Admins only.")
-    @watch_admin()
     async def watch_info(self, ctx: discord.ApplicationContext,
                          user: discord.Option(discord.Member, "User to inspect")):  # type: ignore
         """Show information about one watched user."""
+        from utils.permissions import check_slash_permission, _default_manage_or_admin
+        if not await check_slash_permission(ctx, "watch_info", _default_manage_or_admin):
+            return
         data = self._get_watched_user(ctx.guild.id, user.id)
         if data is None:
             await ctx.respond(f"❌ {user.mention} is not on the watch list.",
@@ -576,10 +590,12 @@ class WatchList(commands.Cog):
     @discord.slash_command(name="watch_set_channel",
                            description="Set the watch-list log channel.")
     @extra_help("Set the channel where watched users' messages are logged. Admins only.")
-    @watch_admin()
     async def watch_set_channel(self, ctx: discord.ApplicationContext,
                                 channel: discord.Option(discord.TextChannel, "Channel for watch-list logs")):  # type: ignore
         """Set the logging channel."""
+        from utils.permissions import check_slash_permission, _default_manage_or_admin
+        if not await check_slash_permission(ctx, "watch_set_channel", _default_manage_or_admin):
+            return
         self._guild_data(ctx.guild.id)["log_channel_id"] = str(channel.id)
         if not self._save_db():
             await ctx.respond("⚠️ The watch list could not be saved "
@@ -596,9 +612,11 @@ class WatchList(commands.Cog):
 
     @discord.slash_command(name="watch_clear", description="Remove everyone from the watch list.")
     @extra_help("Remove every user from the watch list (with confirmation). Already-sent logs are kept. Admins only.")
-    @watch_admin()
     async def watch_clear(self, ctx: discord.ApplicationContext):
         """Clear the entire watch list after confirmation."""
+        from utils.permissions import check_slash_permission, _default_manage_or_admin
+        if not await check_slash_permission(ctx, "watch_clear", _default_manage_or_admin):
+            return
         guild_data = self._guild_data(ctx.guild.id)
         users = guild_data.get("users", {})
         if not users:

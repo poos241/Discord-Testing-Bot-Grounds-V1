@@ -34,6 +34,16 @@ async def game_xp_enabled(guild_id):
     return db.get("settings", {}).get("game_xp", GAME_XP_DEFAULT)
 
 
+async def levels_enabled(guild_id):
+    """Whether the level system is on for this server (default OFF).
+
+    The system starts off; an admin turns it on with /toggle_levels.
+    When off, no XP is earned from messages, games, voice, or manual
+    grants, and no level-up messages are sent."""
+    db = await get_levels(str(guild_id))
+    return bool(db.get("settings", {}).get("levels_enabled", False))
+
+
 async def apply_level_rewards(guild, user_id, level, settings):
     """Grant level-role rewards the member has earned (cumulative)."""
     rewards = settings.get("level_roles", {})
@@ -55,7 +65,15 @@ async def apply_level_rewards(guild, user_id, level, settings):
 
 async def announce_level_up(guild, user_id, display_name, level, settings,
                           fallback_channel=None, accent=(88, 101, 242)):
-    """Post a level-up message (custom template or default) with a celebration card."""
+    """Post a level-up message (custom template or default) with a celebration card.
+
+    If a level-up channel is set, the message goes there. If no level
+    channel is set, the message is sent to the user by DM instead, so
+    it is only visible to them -- it never falls back to the public
+    channel where they leveled up. The message names the command that
+    turns level-up messages off for that user. The fallback_channel
+    parameter is kept for callers but is no longer used for announcements.
+    """
     channel = None
     channel_id = settings.get("levelup_channel_id")
     if channel_id:
@@ -63,11 +81,17 @@ async def announce_level_up(guild, user_id, display_name, level, settings,
             channel = guild.get_channel(int(channel_id))
         except (ValueError, TypeError):
             channel = None
-    if channel is None:
-        channel = fallback_channel
-    if channel is None:
-        return
     text = render_levelup_message(settings, user_id, display_name, level)
+    text += ("\n\nDon't want level-up messages? Run /toggle_level_messages "
+             "to turn them off -- you'll still earn XP.")
+    dest = channel
+    if dest is None:
+        # No level channel: DM the user (private) instead of posting
+        # in the channel where they leveled up.
+        member = guild.get_member(int(user_id))
+        if member is None:
+            return
+        dest = member
     if _PIL_OK:
         try:
             member = guild.get_member(int(user_id))
@@ -75,13 +99,15 @@ async def announce_level_up(guild, user_id, display_name, level, settings,
             avatar_bytes = await _fetch_avatar_bytes(url) if url else None
             card = await asyncio.to_thread(
                 build_levelup_card, avatar_bytes, display_name, level, accent)
-            await channel.send(content=text, file=discord.File(card, filename="levelup.png"))
+            await dest.send(content=text, file=discord.File(card, filename="levelup.png"))
             return
         except Exception:
             pass
     try:
-        await channel.send(text)
-    except discord.HTTPException:
+        await dest.send(text)
+    except (discord.Forbidden, discord.HTTPException):
+        # DMs closed, or the channel is gone. Never fall back to a
+        # public channel -- the user just doesn't get the message.
         pass
 
 
@@ -133,6 +159,8 @@ async def award_xp(guild, user_id, display_name, amount, fallback_channel=None,
     gid, uid = str(guild.id), str(user_id)
     db = await get_levels(gid)
     settings = db.setdefault("settings", {})
+    if not settings.get("levels_enabled", False):
+        return []  # level system is off in this server -- no XP at all
     if apply_event:
         until = settings.get("xp_event_until", 0)
         if until and time.time() < until:
@@ -150,9 +178,12 @@ async def award_xp(guild, user_id, display_name, amount, fallback_channel=None,
         for new_level in gained:
             await log_activity(uid, gid, "level_up", {"level": new_level})
         await apply_level_rewards(guild, user_id, user_data["level"], settings)
-        accent = _hex_to_rgb(user_data.get("card_color", "#5865F2"))
-        await announce_level_up(guild, user_id, display_name, user_data["level"],
-                                settings, fallback_channel, accent)
+        # A user who opted out still earns XP (and role rewards) but
+        # gets no level-up announcement, anywhere.
+        if user_data.get("level_messages", True):
+            accent = _hex_to_rgb(user_data.get("card_color", "#5865F2"))
+            await announce_level_up(guild, user_id, display_name, user_data["level"],
+                                    settings, fallback_channel, accent)
     return gained
 
 
@@ -282,6 +313,109 @@ def build_levelup_card(avatar_bytes, username, level, accent=(88, 101, 242)):
     out.seek(0)
     return out
 
+
+class NoXpBulkView(discord.ui.View):
+    """Pick many channels at once and turn XP off (or back on) in all of them.
+
+    Only the admin who opened it can use it. The channel picker holds
+    the selection; Disable XP adds every picked channel to the server's
+    no_xp_channels list, Enable XP removes them. One batch per opening.
+    """
+
+    def __init__(self, author_id, guild_id):
+        super().__init__(timeout=300)
+        self.author_id = author_id
+        self.guild_id = guild_id
+        self.picked_ids = []
+
+        channel_select = discord.ui.ChannelSelect(
+            placeholder="Pick channels (up to 25)",
+            min_values=1,
+            max_values=25,
+            channel_types=[discord.ChannelType.text],
+        )
+        channel_select.callback = self._on_channels
+        self.channel_select = channel_select
+        self.add_item(channel_select)
+
+        disable_button = discord.ui.Button(
+            label="Disable XP", style=discord.ButtonStyle.danger)
+        disable_button.callback = self._on_disable
+        self.add_item(disable_button)
+
+        enable_button = discord.ui.Button(
+            label="Enable XP", style=discord.ButtonStyle.success)
+        enable_button.callback = self._on_enable
+        self.add_item(enable_button)
+
+        cancel_button = discord.ui.Button(
+            label="Cancel", style=discord.ButtonStyle.grey)
+        cancel_button.callback = self._on_cancel
+        self.add_item(cancel_button)
+
+    async def _check_author(self, interaction):
+        if interaction.user.id != self.author_id:
+            await interaction.response.send_message(
+                "Only the admin who opened this can use it.", ephemeral=True)
+            return False
+        return True
+
+    async def _on_channels(self, interaction):
+        if not await self._check_author(interaction):
+            return
+        self.picked_ids = [str(c.id) for c in self.channel_select.values]
+        await interaction.response.defer(ephemeral=True)
+
+    async def _on_disable(self, interaction):
+        await self._apply(interaction, enable=False)
+
+    async def _on_enable(self, interaction):
+        await self._apply(interaction, enable=True)
+
+    async def _on_cancel(self, interaction):
+        if not await self._check_author(interaction):
+            return
+        for item in self.children:
+            item.disabled = True
+        await interaction.response.edit_message(
+            content="Cancelled -- no channels changed.", view=self)
+
+    async def _apply(self, interaction, enable):
+        if not await self._check_author(interaction):
+            return
+        if not self.picked_ids:
+            await interaction.response.send_message(
+                "Pick at least one channel first.", ephemeral=True)
+            return
+        await interaction.response.defer(ephemeral=True)
+        db = await get_levels(str(self.guild_id))
+        lst = db.setdefault("settings", {}).setdefault("no_xp_channels", [])
+        mentions = []
+        for cid in self.picked_ids:
+            channel = (interaction.guild.get_channel(int(cid))
+                       if interaction.guild else None)
+            mentions.append(channel.mention if channel else "<#%s>" % cid)
+        if enable:
+            removed = [cid for cid in self.picked_ids if cid in lst]
+            for cid in removed:
+                lst.remove(cid)
+            kept = len(self.picked_ids) - len(removed)
+            summary = ("Enabled XP in %s (%d removed from no-XP%s)."
+                       % (", ".join(mentions), len(removed),
+                          "; %d weren't disabled" % kept if kept else ""))
+        else:
+            added = [cid for cid in self.picked_ids if cid not in lst]
+            lst.extend(added)
+            already = len(self.picked_ids) - len(added)
+            summary = ("Disabled XP in %s (%d added to no-XP%s)."
+                       % (", ".join(mentions), len(added),
+                          "; %d were already disabled" % already if already else ""))
+        await save_levels(str(self.guild_id), db)
+        for item in self.children:
+            item.disabled = True
+        await interaction.edit_original_response(content=summary, view=self)
+
+
 class LevelSystem(commands.Cog):
     HelpCategory = "Level System"
 
@@ -308,6 +442,8 @@ class LevelSystem(commands.Cog):
 
         db = await get_levels(gid)
         settings = db.get("settings", {})
+        if not settings.get("levels_enabled", False):
+            return  # level system is off in this server
         if str(message.channel.id) in settings.get("no_xp_channels", []):
             return  # this channel is opted out of XP
         cooldown = settings.get("cooldown", 0)
@@ -330,8 +466,10 @@ class LevelSystem(commands.Cog):
 
     @commands.slash_command(name="set_xp_rate", description="Set XP gain range per message", guild_ids=GUILD_IDS)
     @extra_help("Set the minimum and maximum XP that can be gained per message.")
-    @admin_required()
     async def set_xp_rate(self, interaction, minimum: int, maximum: int):
+        from utils.permissions import check_slash_permission, _default_admin_only
+        if not await check_slash_permission(interaction, "set_xp_rate", _default_admin_only):
+            return
         if minimum < 0 or maximum < 0:
             return await interaction.respond("XP values can't be negative.", ephemeral=True)
         if minimum > maximum:
@@ -345,8 +483,10 @@ class LevelSystem(commands.Cog):
 
     @commands.slash_command(name="set_cooldown", description="Set XP gain cooldown (sec)", guild_ids=GUILD_IDS)
     @extra_help("Set the cooldown in seconds between XP gains per user. Set to 0 for no cooldown.")
-    @admin_required()
     async def set_cooldown(self, interaction, seconds: int):
+        from utils.permissions import check_slash_permission, _default_admin_only
+        if not await check_slash_permission(interaction, "set_cooldown", _default_admin_only):
+            return
         gid = str(interaction.guild.id)
         db = await get_levels(gid)
         db.setdefault("settings", {})["cooldown"] = seconds
@@ -355,8 +495,10 @@ class LevelSystem(commands.Cog):
 
     @commands.slash_command(name="set_level_channel", description="Set level-up message channel", guild_ids=GUILD_IDS)
     @extra_help("Set the channel where level-up messages will be posted.")
-    @admin_required()
     async def set_level_channel(self, interaction, channel: discord.TextChannel):
+        from utils.permissions import check_slash_permission, _default_admin_only
+        if not await check_slash_permission(interaction, "set_level_channel", _default_admin_only):
+            return
         gid = str(interaction.guild.id)
         db = await get_levels(gid)
         db.setdefault("settings", {})["levelup_channel_id"] = str(channel.id)
@@ -458,11 +600,17 @@ class LevelSystem(commands.Cog):
 
     @commands.slash_command(name="add_xp", description="Add XP to a user", guild_ids=GUILD_IDS)
     @extra_help("Add XP to a user. Admins only. Level-ups are announced like normal.")
-    @admin_required()
     async def add_xp(self, interaction, member: discord.Member, amount: int):
+        from utils.permissions import check_slash_permission, _default_admin_only
+        if not await check_slash_permission(interaction, "add_xp", _default_admin_only):
+            return
         if amount <= 0:
             return await interaction.respond(
                 "Amount must be positive \u2014 use /resetxp to wipe someone's progress.",
+                ephemeral=True)
+        if not await levels_enabled(interaction.guild.id):
+            return await interaction.respond(
+                "The level system is off in this server. Turn it on with /toggle_levels first.",
                 ephemeral=True)
         gained = await award_xp(interaction.guild, member.id, member.display_name,
                                 amount, fallback_channel=interaction.channel,
@@ -484,8 +632,10 @@ class LevelSystem(commands.Cog):
 
     @commands.slash_command(name="resetxp", description="Reset XP and level for a user", guild_ids=GUILD_IDS)
     @extra_help("Reset a user's XP and level to 0 and 1 respectively. Admins only.")
-    @admin_required()
     async def resetxp(self, interaction, member: discord.Member):
+        from utils.permissions import check_slash_permission, _default_admin_only
+        if not await check_slash_permission(interaction, "resetxp", _default_admin_only):
+            return
         gid, uid = str(interaction.guild.id), str(member.id)
         db = await get_levels(gid)
 
@@ -498,8 +648,10 @@ class LevelSystem(commands.Cog):
 
     @commands.slash_command(name="cleardata", description="Clear all level data for this server", guild_ids=GUILD_IDS)
     @extra_help("Clear all level data for this server. Admins only.")
-    @admin_required()
     async def cleardata(self, interaction):
+        from utils.permissions import check_slash_permission, _default_admin_only
+        if not await check_slash_permission(interaction, "cleardata", _default_admin_only):
+            return
         await save_levels(str(interaction.guild.id), {})
         await interaction.respond("⚠️ All data cleared for this server.")
 
@@ -511,11 +663,16 @@ class LevelSystem(commands.Cog):
         settings = db.get("settings", {})
 
         embed = discord.Embed(title="📊 XP Settings", color=discord.Color.blue())
+        embed.add_field(name="📊 Level System",
+                        value=("ON" if settings.get("levels_enabled", False)
+                               else "OFF — turn it on with /toggle_levels"),
+                        inline=False)
         embed.add_field(name="⏳ Cooldown", value=f"{settings.get('cooldown', 0)}s", inline=False)
         embed.add_field(name="📈 XP Gain", value=f"{settings.get('xp_min', 1)} - {settings.get('xp_max', 5)}", inline=False)
         channel_id = settings.get("levelup_channel_id")
         embed.add_field(name="📢 Level-up Channel",
-                        value=f"<#{channel_id}>" if channel_id else "Not set (uses current channel)",
+                        value=(f"<#{channel_id}>" if channel_id
+                               else "Not set (level-ups are sent by DM)"),
                         inline=False)
         rewards = settings.get("level_roles", {})
         if rewards:
@@ -547,8 +704,10 @@ class LevelSystem(commands.Cog):
 
     @commands.slash_command(name="set_level_role", description="Set a role reward for reaching a level", guild_ids=GUILD_IDS)
     @extra_help("Members automatically receive the role when they reach the level. Rewards are cumulative.")
-    @admin_required()
     async def set_level_role(self, interaction, level: int, role: discord.Role):
+        from utils.permissions import check_slash_permission, _default_admin_only
+        if not await check_slash_permission(interaction, "set_level_role", _default_admin_only):
+            return
         if level < 2:
             return await interaction.respond("Level must be at least 2.", ephemeral=True)
         gid = str(interaction.guild.id)
@@ -560,8 +719,10 @@ class LevelSystem(commands.Cog):
 
     @commands.slash_command(name="remove_level_role", description="Remove a level role reward", guild_ids=GUILD_IDS)
     @extra_help("Stops awarding a role at the given level (members who already have it keep it).")
-    @admin_required()
     async def remove_level_role(self, interaction, level: int):
+        from utils.permissions import check_slash_permission, _default_admin_only
+        if not await check_slash_permission(interaction, "remove_level_role", _default_admin_only):
+            return
         gid = str(interaction.guild.id)
         db = await get_levels(gid)
         rewards = db.setdefault("settings", {}).setdefault("level_roles", {})
@@ -574,8 +735,10 @@ class LevelSystem(commands.Cog):
 
     @commands.slash_command(name="toggle_game_xp", description="Toggle XP for Eat It or Yeet It votes", guild_ids=GUILD_IDS)
     @extra_help("Turns on/off level XP earned by voting in Eat It or Yeet It. On by default.")
-    @admin_required()
     async def toggle_game_xp(self, interaction):
+        from utils.permissions import check_slash_permission, _default_admin_only
+        if not await check_slash_permission(interaction, "toggle_game_xp", _default_admin_only):
+            return
         gid = str(interaction.guild.id)
         db = await get_levels(gid)
         settings = db.setdefault("settings", {})
@@ -586,10 +749,49 @@ class LevelSystem(commands.Cog):
         detail = "voting now earns level XP" if new_val else "voting no longer earns level XP"
         await interaction.respond(f"🎮 Game XP is now **{state}** — {detail}.")
 
+    @commands.slash_command(name="toggle_levels", description="Turn the level system on/off for this server", guild_ids=GUILD_IDS)
+    @extra_help("Turns the whole level system on or off for this server. Off by default -- turn it on to start earning XP from messages, games, and voice.")
+    async def toggle_levels(self, interaction):
+        from utils.permissions import check_slash_permission, _default_admin_only
+        if not await check_slash_permission(interaction, "toggle_levels", _default_admin_only):
+            return
+        gid = str(interaction.guild.id)
+        db = await get_levels(gid)
+        settings = db.setdefault("settings", {})
+        new_val = not settings.get("levels_enabled", False)
+        settings["levels_enabled"] = new_val
+        await save_levels(gid, db)
+        state = "ON" if new_val else "OFF"
+        detail = ("members will now earn XP from messages, games, and voice"
+                  if new_val else
+                  "members will no longer earn XP, and level-ups stop")
+        await interaction.respond(f"📊 Level system is now **{state}** — {detail}.")
+
+    @commands.slash_command(name="toggle_level_messages", description="Turn your level-up messages on/off", guild_ids=GUILD_IDS)
+    @extra_help("Turns your own level-up messages on or off. You still earn XP when they're off -- you just won't get the announcements.")
+    async def toggle_level_messages(self, interaction):
+        gid, uid = str(interaction.guild.id), str(interaction.user.id)
+        db = await get_levels(gid)
+        user = db.setdefault(uid, {"xp": 0, "level": 1,
+                                   "username": interaction.user.display_name})
+        new_val = not user.get("level_messages", True)
+        user["level_messages"] = new_val
+        await save_levels(gid, db)
+        if new_val:
+            await interaction.respond(
+                "🔔 Level-up messages are now **ON** for you.", ephemeral=True)
+        else:
+            await interaction.respond(
+                "🔕 Level-up messages are now **OFF** for you. You'll still earn XP, "
+                "you just won't get the announcements.",
+                ephemeral=True)
+
     @commands.slash_command(name="toggle_no_xp", description="Toggle XP gains in a channel", guild_ids=GUILD_IDS)
     @extra_help("Turns message XP on/off for a channel. Useful for bot-spam channels.")
-    @admin_required()
     async def toggle_no_xp(self, interaction, channel: discord.TextChannel):
+        from utils.permissions import check_slash_permission, _default_admin_only
+        if not await check_slash_permission(interaction, "toggle_no_xp", _default_admin_only):
+            return
         gid = str(interaction.guild.id)
         db = await get_levels(gid)
         lst = db.setdefault("settings", {}).setdefault("no_xp_channels", [])
@@ -602,11 +804,35 @@ class LevelSystem(commands.Cog):
             await interaction.respond(f"🔇 {channel.mention} will no longer earn XP.")
         await save_levels(gid, db)
 
+    @commands.slash_command(name="no_xp_bulk", description="Turn XP off/on in many channels at once", guild_ids=GUILD_IDS)
+    @extra_help("Pick up to 25 channels at once, then disable XP in all of them (or turn XP back on). Useful for mod channels and bot-spam channels.")
+    async def no_xp_bulk(self, interaction):
+        from utils.permissions import check_slash_permission, _default_admin_only
+        if not await check_slash_permission(interaction, "no_xp_bulk", _default_admin_only):
+            return
+        gid = str(interaction.guild.id)
+        db = await get_levels(gid)
+        no_xp = db.get("settings", {}).get("no_xp_channels", [])
+        if no_xp:
+            current = ", ".join("<#%s>" % cid for cid in no_xp)
+            current_text = "\n\nCurrently no-XP: %s" % current
+        else:
+            current_text = "\n\nNo channels are currently set to no-XP."
+        view = NoXpBulkView(interaction.user.id, interaction.guild.id)
+        await interaction.respond(
+            content=("Pick channels below, then hit **Disable XP** to stop XP in all of them, "
+                     "or **Enable XP** to turn XP back on in them." + current_text),
+            view=view,
+            ephemeral=True,
+        )
+
     @commands.slash_command(name="xp_event", description="Start a bonus XP event")
     @extra_help("Starts a server-wide XP multiplier event for the given minutes (multiplier 2-5).")
-    @admin_required()
     async def xp_event(self, interaction, minutes: int,
                        multiplier: discord.Option(int, "XP multiplier (2-5)", default=2)):  # type: ignore
+        from utils.permissions import check_slash_permission, _default_admin_only
+        if not await check_slash_permission(interaction, "xp_event", _default_admin_only):
+            return
         if minutes < 1 or minutes > 1440:
             return await interaction.respond("Minutes must be between 1 and 1440.", ephemeral=True)
         if multiplier < 2 or multiplier > 5:
@@ -622,8 +848,10 @@ class LevelSystem(commands.Cog):
 
     @commands.slash_command(name="xp_event_end", description="End the bonus XP event early", guild_ids=GUILD_IDS)
     @extra_help("Ends a running XP event immediately.")
-    @admin_required()
     async def xp_event_end(self, interaction):
+        from utils.permissions import check_slash_permission, _default_admin_only
+        if not await check_slash_permission(interaction, "xp_event_end", _default_admin_only):
+            return
         gid = str(interaction.guild.id)
         db = await get_levels(gid)
         settings = db.setdefault("settings", {})
@@ -638,6 +866,10 @@ class LevelSystem(commands.Cog):
     @extra_help("Claim XP once every 20 hours. Claiming on consecutive days builds a streak for bonus XP.")
     async def daily(self, interaction):
         gid, uid = str(interaction.guild.id), str(interaction.user.id)
+        if not await levels_enabled(interaction.guild.id):
+            return await interaction.respond(
+                "The level system is off in this server. An admin can turn it on with /toggle_levels.",
+                ephemeral=True)
         target = interaction.user
         db = await get_levels(gid)
         user = db.setdefault(uid, {"xp": 0, "level": 1, "username": target.display_name})
@@ -690,8 +922,10 @@ class LevelSystem(commands.Cog):
 
     @commands.slash_command(name="set_levelup_message", description="Set a custom level-up message", guild_ids=GUILD_IDS)
     @extra_help("Set the level-up announcement text. Use {user} for a ping, {name} for the display name, {level} for the new level. Run with no text to reset to the default.")
-    @admin_required()
     async def set_levelup_message(self, interaction, message: str = None):
+        from utils.permissions import check_slash_permission, _default_admin_only
+        if not await check_slash_permission(interaction, "set_levelup_message", _default_admin_only):
+            return
         gid = str(interaction.guild.id)
         db = await get_levels(gid)
         settings = db.setdefault("settings", {})

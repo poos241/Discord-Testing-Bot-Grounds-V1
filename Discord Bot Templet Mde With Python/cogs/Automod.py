@@ -229,8 +229,10 @@ class Automod(commands.Cog):
 
     @automod.command(name="status", description="Show the automod rules and spam settings for this server.")
     @extra_help("Lists all four automod rules with on/off state, plus the spam burst threshold and window. Read-only; mods use /automod toggle and /automod config to change things.")
-    @Manage_messages_required()
     async def automod_status(self, ctx):
+        from utils.permissions import check_slash_permission, _default_manage_messages_or_admin
+        if not await check_slash_permission(ctx, "automod_status", _default_manage_messages_or_admin):
+            return
         if ctx.guild is None:
             return await ctx.respond("Automod commands only work in a server.",
                                      ephemeral=True)
@@ -254,10 +256,12 @@ class Automod(commands.Cog):
 
     @automod.command(name="toggle", description="Turn one automod rule on or off (leave enabled blank to flip it).")
     @extra_help("Rule names: spam, invites, external_links, caps. With no enabled value the rule flips to its opposite state. Changes apply immediately and are also reflected on the web Logger settings page, since both read the same automod_config row.")
-    @Manage_messages_required()
     async def automod_toggle(self, ctx,
                              rule: discord.Option(str, "Rule to change: spam, invites, external_links, or caps"),
                              enabled: discord.Option(bool, "True = on, False = off (blank flips the current state)", required=False, default=None)):
+        from utils.permissions import check_slash_permission, _default_manage_messages_or_admin
+        if not await check_slash_permission(ctx, "automod_toggle", _default_manage_messages_or_admin):
+            return
         if ctx.guild is None:
             return await ctx.respond("Automod commands only work in a server.",
                                      ephemeral=True)
@@ -277,10 +281,12 @@ class Automod(commands.Cog):
 
     @automod.command(name="config", description="Set the spam burst threshold and window.")
     @extra_help("Threshold: how many messages from one member inside the window trips the spam rule (1-50). Window: the window in seconds (5-300). Other rules have no numeric settings: caps is fixed at 10+ letters and 80%+ uppercase.")
-    @Manage_messages_required()
     async def automod_config_cmd(self, ctx,
                                  threshold: discord.Option(int, "Messages from one member that trip the spam rule (1-50)", required=False, default=None),
                                  window: discord.Option(int, "Window in seconds the messages must fall inside (5-300)", required=False, default=None)):
+        from utils.permissions import check_slash_permission, _default_manage_messages_or_admin
+        if not await check_slash_permission(ctx, "automod_config", _default_manage_messages_or_admin):
+            return
         if ctx.guild is None:
             return await ctx.respond("Automod commands only work in a server.",
                                      ephemeral=True)

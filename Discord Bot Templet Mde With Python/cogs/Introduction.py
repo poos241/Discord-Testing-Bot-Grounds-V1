@@ -298,11 +298,8 @@ class Introduction(commands.Cog):
             default=None,
         ),
     ):
-        if not _is_manager(ctx):
-            await ctx.respond(
-                "You need Manage Server to set up introduction tracking.",
-                ephemeral=True,
-            )
+        from utils.permissions import check_slash_permission, _default_manage_or_admin
+        if not await check_slash_permission(ctx, "intro_set_channel", _default_manage_or_admin):
             return
         fields = {"channel_id": str(channel.id)}
         if log_channel is not None:
@@ -331,11 +328,8 @@ class Introduction(commands.Cog):
             required=True,
         ),
     ):
-        if not _is_manager(ctx):
-            await ctx.respond(
-                "You need Manage Server to set up introduction tracking.",
-                ephemeral=True,
-            )
+        from utils.permissions import check_slash_permission, _default_manage_or_admin
+        if not await check_slash_permission(ctx, "intro_set_role", _default_manage_or_admin):
             return
         if role.is_default():
             await ctx.respond(
@@ -381,11 +375,8 @@ class Introduction(commands.Cog):
         guild_ids=GUILD_IDS,
     )
     async def intro_settings(self, ctx):
-        if not _is_manager(ctx):
-            await ctx.respond(
-                "You need Manage Server to view introduction settings.",
-                ephemeral=True,
-            )
+        from utils.permissions import check_slash_permission, _default_manage_or_admin
+        if not await check_slash_permission(ctx, "intro_settings", _default_manage_or_admin):
             return
         cfg = await self.get_cfg(ctx.guild.id)
         try:
@@ -459,11 +450,8 @@ class Introduction(commands.Cog):
             default=None,
         ),
     ):
-        if not _is_manager(ctx):
-            await ctx.respond(
-                "You need Manage Server to change introduction settings.",
-                ephemeral=True,
-            )
+        from utils.permissions import check_slash_permission, _default_manage_or_admin
+        if not await check_slash_permission(ctx, "intro_toggle", _default_manage_or_admin):
             return
         cfg = await self.get_cfg(ctx.guild.id)
         new_value = (not cfg.get(setting, True)) if value is None else bool(value)
@@ -502,11 +490,8 @@ class Introduction(commands.Cog):
             default=True,
         ),
     ):
-        if not _is_mod(ctx):
-            await ctx.respond(
-                "You need Manage Messages to scan introductions.",
-                ephemeral=True,
-            )
+        from utils.permissions import check_slash_permission, _default_manage_messages_or_admin
+        if not await check_slash_permission(ctx, "intro_scan", _default_manage_messages_or_admin):
             return
         await ctx.defer(ephemeral=True)
         cfg = await self.get_cfg(ctx.guild.id)
@@ -607,11 +592,8 @@ class Introduction(commands.Cog):
             default=None,
         ),
     ):
-        if not _is_mod(ctx):
-            await ctx.respond(
-                "You need Manage Messages to check introductions.",
-                ephemeral=True,
-            )
+        from utils.permissions import check_slash_permission, _default_manage_messages_or_admin
+        if not await check_slash_permission(ctx, "intro_check", _default_manage_messages_or_admin):
             return
         target_member = member
         target_id = None
@@ -642,11 +624,8 @@ class Introduction(commands.Cog):
 
     @discord.user_command(name="Check Introduction", guild_ids=GUILD_IDS)
     async def check_introduction_ctx(self, ctx, member: discord.Member):
-        if not _is_mod(ctx):
-            await ctx.respond(
-                "You need Manage Messages to check introductions.",
-                ephemeral=True,
-            )
+        from utils.permissions import check_slash_permission, _default_manage_messages_or_admin
+        if not await check_slash_permission(ctx, "intro_check_ctx", _default_manage_messages_or_admin):
             return
         await ctx.defer(ephemeral=True)
         cfg = await self.get_cfg(ctx.guild.id)

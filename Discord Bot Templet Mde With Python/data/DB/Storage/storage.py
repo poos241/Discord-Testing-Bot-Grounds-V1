@@ -1,5 +1,6 @@
 from data.DB.db import database
-from data.DB.models import welcome_data, main_vc_map, xp_timestamps, threads_settings, levels, ticket_config, active_tickets, ticket_records, profiles, profile_activity, qotd_questions, qotd_config, qotd_history, qotd_guild_exclusions, ticket_guild_config, support_tickets, appeal_guild_config, appeals, friendships, friend_settings, voice_xp_config, voice_xp_users, lockdown_channels, automod_config, auto_thread_channels, custom_badges, custom_badge_awards, ghlog_items, introduction_status, introduction_config, timeout_board_config
+import asyncio
+from data.DB.models import welcome_data, main_vc_map, xp_timestamps, threads_settings, levels, ticket_config, active_tickets, ticket_records, profiles, profile_activity, qotd_questions, qotd_config, qotd_history, qotd_guild_exclusions, ticket_guild_config, support_tickets, appeal_guild_config, appeals, friendships, friend_settings, voice_xp_config, voice_xp_users, lockdown_channels, automod_config, auto_thread_channels, custom_badges, custom_badge_awards, ghlog_items, ghlog_settings, command_permissions, introduction_status, introduction_config, timeout_board_config
 from datetime import datetime
 import time
 
@@ -986,6 +987,43 @@ async def list_custom_badge_awards_for_user(user_id):
 # and /banlog_update / /banlog_delete can find the item again. Rows also
 # record which board they live on, so an update never fires at the wrong
 # board after the target is switched from test to real.
+async def get_ghlog_item(row_id: int):
+    """Fetch one tracked board item by its case/log number (row id)."""
+    row = await database.fetch_one(
+        ghlog_items.select().where(ghlog_items.c.id == int(row_id))
+    )
+    return dict(row) if row else None
+
+
+async def get_ghlog_item_by_item_id(item_id: str):
+    """Fetch a tracked board item by its GitHub project item id.
+
+    Used by the case-number backfill: a board item made before the
+    case-number flow (or by hand) may already have a row, so it keeps
+    its original case number instead of getting a new one.
+    """
+    row = await database.fetch_one(
+        ghlog_items.select().where(ghlog_items.c.item_id == str(item_id))
+    )
+    return dict(row) if row else None
+
+
+async def get_ghlog_max_id():
+    """Highest ghlog_items row id (0 when the table is empty).
+
+    Used by the case-number backfill to pick the next case number
+    without colliding with an existing row or a case number already
+    on the board.
+    """
+    row = await database.fetch_one(
+        ghlog_items.select().with_only_columns(
+            _sa.func.max(ghlog_items.c.id)
+        )
+    )
+    value = list(row.values())[0] if row else None
+    return int(value) if value is not None else 0
+
+
 async def save_ghlog_item(payload: dict):
     row_id = await database.execute(ghlog_items.insert().values(**payload))
     return row_id
@@ -1010,6 +1048,143 @@ async def delete_ghlog_item(row_id: int):
     await database.execute(
         ghlog_items.delete().where(ghlog_items.c.id == int(row_id))
     )
+
+
+# Ban-log settings (built 2026-11-04): one row per guild holding the
+# evidence channel -- the channel /banlog re-uploads attached
+# screenshots to. Set with /ghlog_set_channel; an empty
+# evidence_channel_id means "not set" (fall back to the channel the
+# command ran in). Upserts use OR REPLACE like the other config
+# helpers in this file.
+async def get_ghlog_settings(guild_id: str):
+    row = await database.fetch_one(
+        ghlog_settings.select().where(ghlog_settings.c.guild_id == str(guild_id))
+    )
+    return dict(row) if row else {}
+
+
+async def save_ghlog_settings(guild_id: str, payload: dict):
+    await database.execute(
+        ghlog_settings.insert()
+        .values(guild_id=str(guild_id), **payload)
+        .prefix_with("OR REPLACE")
+    )
+
+
+# Custom per-command permissions (built 2026-11-05; see
+# utils/permissions.py and cogs/Permissions.py). One row per grant.
+# Upserts use OR REPLACE like the other config helpers in this file.
+async def get_command_permissions(guild_id: str, command: str):
+    """All grants for one command in one guild. Returns a list of
+    dicts with target_type, target_id, allowed, created_by."""
+    rows = await database.fetch_all(
+        command_permissions.select().where(
+            (command_permissions.c.guild_id == str(guild_id))
+            & (command_permissions.c.command == command)
+        )
+    )
+    return [dict(row) for row in rows]
+
+
+async def get_all_command_permissions(guild_id: str):
+    """Every grant in one guild, ordered by command then target."""
+    rows = await database.fetch_all(
+        command_permissions.select()
+        .where(command_permissions.c.guild_id == str(guild_id))
+        .order_by(
+            command_permissions.c.command,
+            command_permissions.c.target_type,
+            command_permissions.c.target_id,
+        )
+    )
+    return [dict(row) for row in rows]
+
+
+async def save_command_permission(
+    guild_id: str, command: str, target_type: str, target_id: str,
+    allowed: bool, created_by: str = "",
+):
+    """Grant (or deny) one command to one role or user. Replaces any
+    existing grant for the same guild/command/target. Retries briefly
+    when SQLite reports the database is locked (another process or
+    task is writing at the same moment) instead of failing the grant."""
+    last_error = None
+    for attempt in range(5):
+        try:
+            await database.execute(
+                command_permissions.insert()
+                .values(
+                    guild_id=str(guild_id),
+                    command=command,
+                    target_type=target_type,
+                    target_id=str(target_id),
+                    allowed=1 if allowed else 0,
+                    created_by=str(created_by or ""),
+                )
+                .prefix_with("OR REPLACE")
+            )
+            return
+        except Exception as e:
+            last_error = e
+            if "database is locked" not in str(e).lower():
+                raise
+            await asyncio.sleep(0.2 * (attempt + 1))
+    raise last_error
+
+
+async def delete_command_permission(
+    guild_id: str, command: str, target_type: str, target_id: str,
+):
+    """Remove one grant. Returns True when a row was deleted."""
+    result = await database.execute(
+        command_permissions.delete().where(
+            (command_permissions.c.guild_id == str(guild_id))
+            & (command_permissions.c.command == command)
+            & (command_permissions.c.target_type == target_type)
+            & (command_permissions.c.target_id == str(target_id))
+        )
+    )
+    return bool(result)
+
+
+async def delete_command_permissions_for_target(
+    guild_id: str, target_type: str, target_id: str,
+):
+    """Remove every grant for one role or user in one guild.
+    Returns how many rows were deleted."""
+    result = await database.execute(
+        command_permissions.delete().where(
+            (command_permissions.c.guild_id == str(guild_id))
+            & (command_permissions.c.target_type == target_type)
+            & (command_permissions.c.target_id == str(target_id))
+        )
+    )
+    return int(result or 0)
+
+
+async def delete_command_permissions_for_command(
+    guild_id: str, command: str,
+):
+    """Remove every grant for one command in one guild.
+    Returns how many rows were deleted."""
+    result = await database.execute(
+        command_permissions.delete().where(
+            (command_permissions.c.guild_id == str(guild_id))
+            & (command_permissions.c.command == command)
+        )
+    )
+    return int(result or 0)
+
+
+async def delete_all_command_permissions(guild_id: str):
+    """Remove every custom permission grant in one guild.
+    Returns how many rows were deleted."""
+    result = await database.execute(
+        command_permissions.delete().where(
+            command_permissions.c.guild_id == str(guild_id)
+        )
+    )
+    return int(result or 0)
 
 
 # Introduction tracking (built 2026-11-02; see cogs/Introduction.py).

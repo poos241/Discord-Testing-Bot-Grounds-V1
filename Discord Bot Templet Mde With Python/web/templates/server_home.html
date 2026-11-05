@@ -48,19 +48,25 @@
 
     {% if can_any("admin") %}
     <div style="background: #1e1f24; border: 1px solid #333; border-radius: 12px; padding: 18px; margin: 20px 0;">
-        <h2 style="margin: 0 0 8px; font-size: 1.25rem;">Bot controls</h2>
+        <h2 style="margin: 0 0 8px; font-size: 1.25rem;">Restart controls</h2>
         <p style="color: #aaa; margin: 0 0 14px;">
-            Restart only, for now. The dashboard runs inside the bot, so
-            stopping it would turn off this page too — restart brings
-            everything back in about 30 seconds and this page reloads
-            itself. A real Stop button needs a separate control service
-            first.
+            Restart only, for now. The bot and the website are separate
+            processes, so restarting one does not stop the other — the
+            bot restarts in about 30 seconds while this page stays up,
+            and the website restarts in a few seconds and this page
+            reloads itself when it is back. A real Stop button needs a
+            separate control service first.
         </p>
         <button id="bot-restart-btn" type="button"
                 style="padding: 10px 20px; font-size: 1rem; background: #2e7d52; color: #fff; border: none; border-radius: 8px; cursor: pointer;">
             Restart bot
         </button>
+        <button id="website-restart-btn" type="button"
+                style="padding: 10px 20px; font-size: 1rem; background: #2e7d52; color: #fff; border: none; border-radius: 8px; cursor: pointer; margin-left: 10px;">
+            Restart website
+        </button>
         <p id="bot-restart-status" style="margin: 12px 0 0; color: #888;"></p>
+        <p id="website-restart-status" style="margin: 12px 0 0; color: #888;"></p>
     </div>
     {% endif %}
 
@@ -178,7 +184,7 @@
     if (restartBtn) {
         restartBtn.addEventListener("click", function () {
             var statusEl = document.getElementById("bot-restart-status");
-            if (!window.confirm("Restart the bot? The dashboard will go down for about 30 seconds and this page will reload itself.")) return;
+            if (!window.confirm("Restart the bot? The dashboard stays up — the bot will be back in about 30 seconds and this page will reload itself.")) return;
             restartBtn.disabled = true;
             statusEl.textContent = "Restarting…";
             fetch("/api/server-home/bot/restart", {
@@ -198,8 +204,9 @@
                     return;
                 }
                 statusEl.textContent = res.d.message;
-                // The dashboard dies with the bot and comes back in
-                // ~30s. Poll until it answers again, then reload.
+                // The website stays up while the bot restarts, so
+                // this answers at once and the page reloads; the bot
+                // stats catch up on the next refresh.
                 var tries = 0;
                 var poll = setInterval(function () {
                     tries += 1;
@@ -216,6 +223,52 @@
             .catch(function (e) {
                 statusEl.textContent = "Restart request failed: " + e;
                 restartBtn.disabled = false;
+            });
+        });
+    }
+
+    var webRestartBtn = document.getElementById("website-restart-btn");
+    if (webRestartBtn) {
+        webRestartBtn.addEventListener("click", function () {
+            var statusEl = document.getElementById("website-restart-status");
+            if (!window.confirm("Restart the website? This page will go down for a few seconds and reload itself when the website is back.")) return;
+            webRestartBtn.disabled = true;
+            statusEl.textContent = "Restarting…";
+            fetch("/api/server-home/website/restart", {
+                method: "POST",
+                credentials: "same-origin",
+                headers: {
+                    "Content-Type": "application/json",
+                    "X-CSRF-Token": "{{ csrf_token() }}"
+                },
+                body: "{}"
+            })
+            .then(function (r) { return r.json().then(function (d) { return {ok: r.ok, d: d}; }); })
+            .then(function (res) {
+                if (!res.ok || !res.d.success) {
+                    statusEl.textContent = "Restart failed: " + (res.d.error || ("HTTP " + res.ok));
+                    webRestartBtn.disabled = false;
+                    return;
+                }
+                statusEl.textContent = res.d.message;
+                // This page goes down with the website. Poll until the
+                // site answers again, then reload.
+                var tries = 0;
+                var poll = setInterval(function () {
+                    tries += 1;
+                    fetch("/", {credentials: "same-origin"})
+                        .then(function (r) { if (r.ok) { clearInterval(poll); window.location.reload(); } })
+                        .catch(function () { /* still down, keep waiting */ });
+                    if (tries > 30) {
+                        clearInterval(poll);
+                        statusEl.textContent = "Still not back after a while — check the website with systemctl status kushweb, or try reloading this page.";
+                        webRestartBtn.disabled = false;
+                    }
+                }, 2000);
+            })
+            .catch(function (e) {
+                statusEl.textContent = "Restart request failed: " + e;
+                webRestartBtn.disabled = false;
             });
         });
     }

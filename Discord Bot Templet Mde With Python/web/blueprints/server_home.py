@@ -449,6 +449,28 @@ def server_home_status():
     })
 
 
+def _schedule_website_restart(delay=1.0):
+    """Exit this process with code 42 after a short delay.
+
+    The delay lets the HTTP response leave first. Exit 42 is the
+    restart code on both supervisors: the Windows watchdog relaunches
+    on exit 42, and systemd Restart=on-failure relaunches on any
+    non-zero exit. Exit 0 must never be used here (it stays stopped).
+    os._exit, not sys.exit: a SystemExit raised inside a request
+    handler would not stop the process. If the website was started
+    plain (python run_web.py in a terminal, no watchdog/systemd),
+    exit 42 just stops it — start it again by hand.
+    """
+
+    def _exit():
+        print("[WEB] Restarting the website (exit 42).", flush=True)
+        os._exit(42)
+
+    timer = threading.Timer(delay, _exit)
+    timer.daemon = True
+    timer.start()
+
+
 @server_home_api.post("/api/server-home/bot/restart")
 @require_login
 def bot_restart():
@@ -480,6 +502,54 @@ def bot_restart():
         "message": "Restarting the bot — it will be back in about "
                    "30 seconds and this page will reload itself.",
     })
+
+
+@server_home_api.post("/api/server-home/website/restart")
+@require_login
+def website_restart():
+    """Restart the website process. Admin-only, CSRF-checked.
+
+    The website exits 42 after the response goes out; the watchdog
+    (Windows) or systemd (server, Restart=on-failure) brings it back
+    in a few seconds, and the page polls until it answers again. If
+    the website was started plain with no supervisor, exit 42 just
+    stops it — start it again by hand.
+    """
+    _require_admin()
+    csrf_error = _check_csrf()
+    if csrf_error:
+        return jsonify({"success": False, "error": csrf_error}), 403
+    _schedule_website_restart()
+    return jsonify({
+        "success": True,
+        "message": "Restarting the website — it will be back in a few seconds.",
+    })
+
+
+@server_home_api.post("/api/internal/website/restart")
+def website_restart_internal():
+    """Restart the website, called by the bot's /restart_web.
+
+    Machine-to-machine: authenticated by the X-Bridge-Secret header
+    against BRIDGE_SECRET from .env (the same secret the bridge uses,
+    reversed direction). No session gate, no CSRF check — the secret
+    header is the auth. Fails closed: missing/wrong secret -> 401,
+    BRIDGE_SECRET unset -> 503, never restart.
+    """
+    secret = os.environ.get("BRIDGE_SECRET") or ""
+    if not secret:
+        return jsonify({
+            "success": False,
+            "error": "BRIDGE_SECRET is not configured.",
+        }), 503
+    supplied = request.headers.get("X-Bridge-Secret") or ""
+    if not supplied or not secrets.compare_digest(supplied, secret):
+        return jsonify({
+            "success": False,
+            "error": "Missing or invalid bridge secret.",
+        }), 401
+    _schedule_website_restart()
+    return jsonify({"success": True})
 
 
 def _host_info():

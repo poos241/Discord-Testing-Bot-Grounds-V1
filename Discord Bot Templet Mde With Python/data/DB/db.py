@@ -83,4 +83,46 @@ def _ensure_profile_columns(_engine):
         traceback.print_exc()
 
 
+# Same self-healing pattern for the ban-log tracking table: when the
+# approval flow ships, an existing bot.db would reject saves with
+# "Unconsumed column names" until these columns exist.
+_GHLOG_COLUMNS = {
+    "intended_status": "VARCHAR DEFAULT ''",
+    "ticket": "VARCHAR DEFAULT ''",
+    "approval": "VARCHAR DEFAULT ''",
+    "logged_by_id": "VARCHAR DEFAULT ''",
+    "invoke_at": "DATETIME",
+}
+
+GHLOG_MIGRATION_ERROR = None
+
+
+def _ensure_ghlog_columns(_engine):
+    """Add any missing ghlog_items columns so old databases heal on boot."""
+    global GHLOG_MIGRATION_ERROR
+    GHLOG_MIGRATION_ERROR = None
+    try:
+        with _engine.begin() as _conn:
+            _existing = {
+                row[1]
+                for row in _conn.exec_driver_sql("PRAGMA table_info(ghlog_items)")
+            }
+            for _name, _ddl in _GHLOG_COLUMNS.items():
+                if _name not in _existing:
+                    _conn.exec_driver_sql(
+                        f"ALTER TABLE ghlog_items ADD COLUMN {_name} {_ddl}"
+                    )
+                    print(f"[DB] Added missing column ghlog_items.{_name}")
+    except Exception as _exc:
+        GHLOG_MIGRATION_ERROR = repr(_exc)
+        print("[DB] ERROR: ghlog_items column migration FAILED; the ban-log "
+              "tracking table is stale and new logs will fail to save. See "
+              "/api/debug/bot-status.")
+        print(f"[DB] Migration error: {_exc!r}")
+        traceback.print_exc()
+
+
+_ensure_ghlog_columns(engine)
+
+
 _ensure_profile_columns(engine)

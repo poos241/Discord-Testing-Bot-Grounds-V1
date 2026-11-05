@@ -511,8 +511,8 @@ class Tickets(commands.Cog):
 
     @ticket.command(name="panel", description="Post the ticket panel in this channel (mod only).")
     async def ticket_panel(self, ctx):
-        if ctx.guild is None or not is_mod(ctx):
-            await ctx.respond("You need Manage Messages to use this command.", ephemeral=True)
+        from utils.permissions import check_slash_permission, _default_manage_messages_or_admin
+        if not await check_slash_permission(ctx, "ticket_panel", _default_manage_messages_or_admin):
             return
         await ensure_db()
         embed = discord.Embed(
@@ -543,8 +543,8 @@ class Tickets(commands.Cog):
         log_channel: discord.Option(discord.TextChannel, "Channel ticket opens/closes get logged to", required=False, default=None),
         panel_channel: discord.Option(discord.TextChannel, "Channel the ticket panel lives in", required=False, default=None),
     ):
-        if ctx.guild is None or not is_mod(ctx):
-            await ctx.respond("You need Manage Messages to use this command.", ephemeral=True)
+        from utils.permissions import check_slash_permission, _default_manage_messages_or_admin
+        if not await check_slash_permission(ctx, "ticket_config", _default_manage_messages_or_admin):
             return
         await ensure_db()
         payload = {}
@@ -570,8 +570,8 @@ class Tickets(commands.Cog):
 
     @ticket.command(name="show", description="Show the ticket settings for this server (mod only).")
     async def ticket_show(self, ctx):
-        if ctx.guild is None or not is_mod(ctx):
-            await ctx.respond("You need Manage Messages to use this command.", ephemeral=True)
+        from utils.permissions import check_slash_permission, _default_manage_messages_or_admin
+        if not await check_slash_permission(ctx, "ticket_show", _default_manage_messages_or_admin):
             return
         await ensure_db()
         cfg = await get_ticket_guild_config(str(ctx.guild.id))
@@ -725,8 +725,8 @@ class Tickets(commands.Cog):
 
     @ticket.command(name="list", description="List this server's open tickets (mod only).")
     async def ticket_list(self, ctx):
-        if ctx.guild is None or not is_mod(ctx):
-            await ctx.respond("You need Manage Messages to use this command.", ephemeral=True)
+        from utils.permissions import check_slash_permission, _default_manage_messages_or_admin
+        if not await check_slash_permission(ctx, "ticket_list", _default_manage_messages_or_admin):
             return
         await ensure_db()
         rows = await list_open_tickets(str(ctx.guild.id))

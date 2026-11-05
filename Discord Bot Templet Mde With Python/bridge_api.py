@@ -427,7 +427,9 @@ async def _bans(request):
     _require_ready()
     guild = _get_guild(request.match_info["gid"])
     try:
-        entries = await guild.bans()
+        # Guild.bans() returns an async iterator (BanIterator), not a
+        # coroutine -- await on it raises TypeError. Collect it instead.
+        entries = [entry async for entry in guild.bans()]
     except discord.Forbidden:
         raise _BridgeError(
             403, "The bot cannot list bans in this guild."
@@ -525,10 +527,12 @@ async def _ban(request):
     before = _member_dict(member) if member else None
     if member is not None:
         _moderation().can_moderate(guild, member)
+    # pycord 2.x renamed Guild.ban()'s delete_message_days to
+    # delete_message_seconds (0-604800). delete_days is 0-7 here.
     await guild.ban(
         discord.Object(id=uid),
         reason=body.get("reason"),
-        delete_message_days=delete_days,
+        delete_message_seconds=delete_days * 86400,
     )
     return _ok({"member": before})
 

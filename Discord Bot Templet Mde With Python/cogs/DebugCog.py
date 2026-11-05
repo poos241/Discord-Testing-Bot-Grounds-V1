@@ -131,8 +131,8 @@ class DebugCog(commands.Cog):
 
     @debug.command(name="on", description="Enable debug logging")
     async def debug_on(self, ctx):
-        if not _is_admin(ctx):
-            await ctx.respond("You need Manage Server permission.", ephemeral=True)
+        from utils.permissions import check_slash_permission, _default_manage_or_admin
+        if not await check_slash_permission(ctx, "debug_on", _default_manage_or_admin):
             return
         _set_debug(True)
         # Force a log line so the user can see it working immediately
@@ -142,16 +142,16 @@ class DebugCog(commands.Cog):
 
     @debug.command(name="off", description="Disable debug logging")
     async def debug_off(self, ctx):
-        if not _is_admin(ctx):
-            await ctx.respond("You need Manage Server permission.", ephemeral=True)
+        from utils.permissions import check_slash_permission, _default_manage_or_admin
+        if not await check_slash_permission(ctx, "debug_off", _default_manage_or_admin):
             return
         _set_debug(False)
         await ctx.respond("🐛 Debug mode **disabled**.", ephemeral=True)
 
     @debug.command(name="status", description="Show debug status")
     async def debug_status(self, ctx):
-        if not _is_admin(ctx):
-            await ctx.respond("You need Manage Server permission.", ephemeral=True)
+        from utils.permissions import check_slash_permission, _default_manage_or_admin
+        if not await check_slash_permission(ctx, "debug_status", _default_manage_or_admin):
             return
         on = _debug_enabled()
         await ctx.respond(
@@ -161,8 +161,8 @@ class DebugCog(commands.Cog):
 
     @debug.command(name="test", description="Print a test debug line to the console")
     async def debug_test(self, ctx):
-        if not _is_admin(ctx):
-            await ctx.respond("You need Manage Server permission.", ephemeral=True)
+        from utils.permissions import check_slash_permission, _default_manage_or_admin
+        if not await check_slash_permission(ctx, "debug_test", _default_manage_or_admin):
             return
         ts = time.strftime("%H:%M:%S")
         # Print regardless of toggle so we can verify console output works
