@@ -10,8 +10,9 @@ profile APIs append them via get_custom_badges() in
 web/blueprints/profiles.py, so no template change was needed for
 the shelf itself.
 
-Commands (guild-scoped, all gated on Manage Messages -- the same
-mod gate Automod uses):
+Commands (guild-scoped, gated on Manage Messages -- the same
+mod gate Automod uses -- except /badge delete, which needs Manage
+Server or Administrator and asks for confirmation first):
 
   - /badge create <name> [icon] [description] -- create a badge
     for this server. The name becomes a URL-safe slug (lowercase,
@@ -26,6 +27,9 @@ mod gate Automod uses):
   - /badge remove <badge> <member> -- revoke one member's award.
   - /badge delete <badge> -- delete the badge definition and all
     of its awards (the reply says how many awards were removed).
+    Needs Manage Server or Administrator, and asks for confirmation
+    first: deleting removes the badge from every member who held it
+    and cannot be undone.
   - /badge list -- list this server's badges with award counts.
 
 Privacy: awards never carry guild info onto the web. The profile
@@ -88,6 +92,81 @@ async def _badge_autocomplete(ctx: discord.AutocompleteContext):
         return choices[:25]
     except Exception:
         return []
+
+
+class BadgeDeleteConfirmView(discord.ui.View):
+    """Confirm /badge delete before anything is removed.
+
+    Deleting a badge removes the definition and every member's award
+    of it, server-wide, and cannot be undone, so a single tap must
+    not fire it. Both buttons re-check the badge_delete gate at click
+    time, so someone who lost the grant (or never had it) cannot fire
+    -- or dismiss -- another mod's confirmation. A denied click
+    leaves the view open so another admin can still confirm.
+    """
+
+    def __init__(self, guild_id, badge):
+        super().__init__(timeout=180)
+        self.guild_id = str(guild_id)
+        self.badge = badge
+        self.done = False
+
+    @discord.ui.button(label="Yes, delete this badge",
+                       style=discord.ButtonStyle.danger)
+    async def confirm(self, button, interaction):
+        if self.done:
+            await interaction.response.send_message(
+                "This confirmation was already handled.", ephemeral=True)
+            return
+        self.done = True
+        from utils.permissions import check_interaction_permission, _default_manage_or_admin
+        if not await check_interaction_permission(
+                interaction, "badge_delete", _default_manage_or_admin):
+            self.done = False
+            return
+        for child in self.children:
+            child.disabled = True
+        try:
+            removed = await delete_custom_badge(
+                self.guild_id, self.badge["slug"])
+        except Exception as exc:
+            await interaction.response.edit_message(
+                content=("Could not delete badge **%s** (database error: %s) "
+                         "-- nothing was changed. Try again in a moment."
+                         % (self.badge["name"], exc)),
+                view=self)
+            self.stop()
+            return
+        if removed is None:
+            await interaction.response.edit_message(
+                content=("Badge **%s** is already gone -- nothing was "
+                         "deleted." % self.badge["name"]),
+                view=self)
+            self.stop()
+            return
+        await interaction.response.edit_message(
+            content=("Deleted badge **%s** and removed it from "
+                     "%d member(s)." % (self.badge["name"], removed)),
+            view=self)
+        self.stop()
+
+    @discord.ui.button(label="Cancel", style=discord.ButtonStyle.secondary)
+    async def cancel(self, button, interaction):
+        if self.done:
+            await interaction.response.send_message(
+                "This confirmation was already handled.", ephemeral=True)
+            return
+        self.done = True
+        from utils.permissions import check_interaction_permission, _default_manage_or_admin
+        if not await check_interaction_permission(
+                interaction, "badge_delete", _default_manage_or_admin):
+            self.done = False
+            return
+        for child in self.children:
+            child.disabled = True
+        await interaction.response.edit_message(
+            content="Cancelled -- nothing was deleted.", view=self)
+        self.stop()
 
 
 class CustomBadges(commands.Cog):
@@ -246,12 +325,12 @@ class CustomBadges(commands.Cog):
     @badge.command(
         name="delete",
         description="Delete a custom badge and all of its awards.")
-    @extra_help("Badge: pick from this server's badges (or type its name/slug). Deleting removes the badge from every member who held it; the reply says how many awards were removed. This cannot be undone.")
+    @extra_help("Badge: pick from this server's badges (or type its name/slug). Needs Manage Server or Administrator, and asks for confirmation first: deleting removes the badge from every member who held it; the reply says how many awards were removed. This cannot be undone.")
     async def badge_delete(
             self, ctx,
             badge_ref: discord.Option(str, "Badge to delete (start typing to pick)", required=True, autocomplete=_badge_autocomplete)):
-        from utils.permissions import check_slash_permission, _default_manage_messages_or_admin
-        if not await check_slash_permission(ctx, "badge_delete", _default_manage_messages_or_admin):
+        from utils.permissions import check_slash_permission, _default_manage_or_admin
+        if not await check_slash_permission(ctx, "badge_delete", _default_manage_or_admin):
             return
         if ctx.guild is None:
             return await ctx.respond(
@@ -260,10 +339,12 @@ class CustomBadges(commands.Cog):
         badge = await self._resolve_badge(ctx, badge_ref)
         if badge is None:
             return
-        removed = await delete_custom_badge(str(ctx.guild.id), badge["slug"])
+        count = await count_custom_badge_awards(badge["id"])
         await ctx.respond(
-            f"Deleted badge **{badge['name']}** and removed it from "
-            f"{removed} member(s).",
+            "Delete badge **%s** (`%s`)? This removes the badge from "
+            "%d member(s) and cannot be undone."
+            % (badge["name"], badge["slug"], count),
+            view=BadgeDeleteConfirmView(str(ctx.guild.id), badge),
             ephemeral=True)
 
     @badge.command(

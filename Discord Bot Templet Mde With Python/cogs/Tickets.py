@@ -144,8 +144,21 @@ def _ticket_creation_lock(guild_id):
 
 async def create_ticket_channel(guild, opener, cfg, topic):
     """Create the private ticket channel + DB row. Returns
-    (channel, ticket_dict). Caller handles the user-facing reply."""
+    (channel, ticket_dict). Caller handles the user-facing reply.
+
+    The one-open-ticket-per-user check lives INSIDE the creation lock
+    (P3-41): it used to run in the two callers before the lock, so two
+    simultaneous opens by the same user both passed it and created two
+    tickets. When the opener already has an open ticket this returns
+    (None, existing_ticket_dict) instead of creating anything, and no
+    ticket number is claimed."""
     async with _ticket_creation_lock(str(guild.id)):
+        # Authoritative duplicate check, inside the lock: a concurrent
+        # open by the same user cannot slip past it (P3-41). Checked
+        # BEFORE claiming a number, so a duplicate attempt burns none.
+        existing = await get_open_ticket_for_user(str(guild.id), str(opener.id))
+        if existing:
+            return None, existing
         # Re-read inside the lock: cfg was loaded before the lock, so a
         # concurrent open may already have claimed its number.
         fresh = await get_ticket_guild_config(str(guild.id))
@@ -209,6 +222,25 @@ async def post_ticket_intro(channel, opener, number, topic):
     )
 
 
+async def _post_ticket_intro_safe(channel, opener, number, topic):
+    """Post the ticket intro, never raising. Returns True on success.
+
+    On failure logs the error and returns False so the caller can
+    still hand the user the channel link — by the time the intro is
+    posted the channel and the DB row already exist, so a failed
+    send must not turn the whole open into an "interaction failed"
+    (P2-28). The Close/Claim buttons live on the intro message, so
+    a failed intro also means no buttons until staff re-post them
+    or use /ticket close; the reply says so."""
+    try:
+        await post_ticket_intro(channel, opener, number, topic)
+        return True
+    except Exception as e:
+        print(f"[TICKETS] Ticket intro send failed for #{number:04d} "
+              f"in channel {channel.id}: {e!r}")
+        return False
+
+
 class TopicModal(discord.ui.Modal):
     """Topic prompt shown after clicking 'Open a ticket' on the panel."""
 
@@ -230,15 +262,6 @@ class TopicModal(discord.ui.Modal):
                 "Tickets only work in a server.", ephemeral=True)
             return
         topic = (self.children[0].value or "").strip() or "No topic given"
-        existing = await get_open_ticket_for_user(str(guild.id), str(interaction.user.id))
-        if existing:
-            channel = guild.get_channel(int(existing["channel_id"]))
-            where = channel.mention if channel is not None else "your open ticket"
-            await interaction.response.send_message(
-                f"You already have an open ticket: {where}. Please use that one "
-                "instead of opening a second ticket.",
-                ephemeral=True)
-            return
         cfg = await get_ticket_guild_config(str(guild.id))
         try:
             channel, ticket = await create_ticket_channel(
@@ -256,14 +279,35 @@ class TopicModal(discord.ui.Modal):
                 "or ask a mod for help.",
                 ephemeral=True)
             return
-        await post_ticket_intro(channel, interaction.user, ticket["number"], topic)
+        if channel is None:
+            # Already had an open ticket — checked inside the creation
+            # lock (P3-41), so a simultaneous second open lands here
+            # instead of creating a duplicate channel.
+            existing_channel = guild.get_channel(int(ticket["channel_id"]))
+            where = (existing_channel.mention if existing_channel is not None
+                     else "your open ticket")
+            await interaction.response.send_message(
+                f"You already have an open ticket: {where}. Please use that one "
+                "instead of opening a second ticket.",
+                ephemeral=True)
+            return
+        intro_ok = await _post_ticket_intro_safe(
+            channel, interaction.user, ticket["number"], topic)
         await log_to_staff_channel(guild, cfg, discord.Embed(
             title=f"Ticket #{ticket['number']:04d} opened",
             description=f"{interaction.user.mention} opened a ticket: {topic}",
             color=EMBED_COLOR,
         ))
-        await interaction.response.send_message(
-            f"Your ticket is ready: {channel.mention}", ephemeral=True)
+        if intro_ok:
+            await interaction.response.send_message(
+                f"Your ticket is ready: {channel.mention}", ephemeral=True)
+        else:
+            await interaction.response.send_message(
+                f"Your ticket is ready: {channel.mention}\n"
+                "Note: the welcome message couldn't be posted in the "
+                "channel, so the Close/Claim buttons aren't there — staff "
+                "can still help you in the channel.",
+                ephemeral=True)
 
 
 class TicketPanelView(discord.ui.View):
@@ -349,27 +393,65 @@ async def close_ticket_flow(interaction, reason=None):
             ephemeral=True)
         return
     channel = interaction.channel
-    await update_support_ticket(ticket["id"], {
-        "status": "closed",
-        "closed_by": str(member.id),
-        "close_reason": reason or "",
-    })
+    # Discord FIRST, database second (P1-16): the old order saved the
+    # ticket as closed and then edited the channel in a print-only try,
+    # so a failed edit left the record saying "closed" (and the close
+    # embed posted) while the opener could still send and the channel
+    # name was unchanged. Now a failed edit leaves the ticket open and
+    # reports the failure, and the record is only written once the
+    # channel is actually closed.
+    opener = interaction.guild.get_member(int(ticket["user_id"]))
+    if opener is not None:
+        closed_overwrites = {
+            **channel.overwrites,
+            opener: discord.PermissionOverwrite(
+                read_messages=True, send_messages=False,
+                read_message_history=True),
+        }
+    else:
+        closed_overwrites = channel.overwrites
     try:
         await channel.edit(
             name=ticket_channel_name(ticket["number"], closed=True),
-            overwrites={
-                **channel.overwrites,
-                interaction.guild.get_member(int(ticket["user_id"])): discord.PermissionOverwrite(
-                    read_messages=True, send_messages=False,
-                    read_message_history=True),
-            } if interaction.guild.get_member(int(ticket["user_id"])) else channel.overwrites,
+            overwrites=closed_overwrites,
         )
     except Exception as e:
-        print(f"[TICKETS] Ticket close channel edit failed: {e!r}")
+        print(f"[TICKETS] ERROR: Ticket #{ticket['number']:04d} close "
+              f"channel edit failed ({e!r}); ticket left open, "
+              "no record written")
+        await interaction.response.send_message(
+            f"Couldn't close ticket #{ticket['number']:04d} — the channel "
+            f"edit failed ({e}). The ticket is still open; nothing was "
+            "changed. Please try again or check the bot's channel "
+            "permissions.",
+            ephemeral=True)
+        return
+    record_failed = False
+    try:
+        await update_support_ticket(ticket["id"], {
+            "status": "closed",
+            "closed_by": str(member.id),
+            "close_reason": reason or "",
+        })
+    except Exception as e:
+        # The channel IS closed in Discord; only the record failed.
+        # Report the mismatch loudly instead of pretending all is
+        # well: the record still says "open", so Reopen/Delete would
+        # refuse until the close is run again to heal the record.
+        record_failed = True
+        print(f"[TICKETS] ERROR: Ticket #{ticket['number']:04d} closed in "
+              f"Discord but the record could not be saved ({e!r}); "
+              "run /ticket close again to fix the record")
+    warning = ""
+    if record_failed:
+        warning = ("\n\n:warning: The channel was closed, but the ticket "
+                   "record could not be saved — run `/ticket close` again "
+                   "to fix the record.")
     embed = discord.Embed(
         title=f"Ticket #{ticket['number']:04d} closed",
         description=f"Closed by {member.mention}"
-                    + (f"\n\n**Reason:** {reason}" if reason else ""),
+                    + (f"\n\n**Reason:** {reason}" if reason else "")
+                    + warning,
         color=EMBED_COLOR,
     )
     await interaction.response.send_message(embed=embed)
@@ -380,7 +462,10 @@ async def close_ticket_flow(interaction, reason=None):
     await log_to_staff_channel(interaction.guild, cfg, discord.Embed(
         title=f"Ticket #{ticket['number']:04d} closed",
         description=f"Closed by {member.mention}"
-                    + (f"\nReason: {reason}" if reason else ""),
+                    + (f"\nReason: {reason}" if reason else "")
+                    + (("\n\n:warning: Ticket record could not be saved — "
+                        "run `/ticket close` again to fix the record.")
+                       if record_failed else ""),
         color=EMBED_COLOR,
     ))
 
@@ -431,30 +516,69 @@ async def reopen_ticket_flow(interaction):
             ephemeral=True)
         return
     channel = interaction.channel
-    await update_support_ticket(ticket["id"], {
-        "status": "open", "closed_by": "", "close_reason": "",
-    })
+    # Discord FIRST, database second (P1-16): the old order saved the
+    # ticket as open and then edited the channel in a print-only try,
+    # so a failed edit left the record saying "open" while the channel
+    # was still renamed closed and locked down. Now a failed edit
+    # leaves the ticket closed and reports the failure, and the record
+    # is only written once the channel is actually reopened.
     opener = interaction.guild.get_member(int(ticket["user_id"]))
+    overwrites = dict(channel.overwrites)
+    if opener is not None:
+        overwrites[opener] = discord.PermissionOverwrite(
+            read_messages=True, send_messages=True,
+            attach_files=True, embed_links=True, read_message_history=True)
     try:
-        overwrites = dict(channel.overwrites)
-        if opener is not None:
-            overwrites[opener] = discord.PermissionOverwrite(
-                read_messages=True, send_messages=True,
-                attach_files=True, embed_links=True, read_message_history=True)
         await channel.edit(
             name=ticket_channel_name(ticket["number"]),
             overwrites=overwrites,
         )
     except Exception as e:
-        print(f"[TICKETS] Ticket reopen channel edit failed: {e!r}")
+        print(f"[TICKETS] ERROR: Ticket #{ticket['number']:04d} reopen "
+              f"channel edit failed ({e!r}); ticket left closed, "
+              "no record written")
+        await interaction.response.send_message(
+            f"Couldn't reopen ticket #{ticket['number']:04d} — the channel "
+            f"edit failed ({e}). The ticket is still closed; nothing was "
+            "changed. Please try again or check the bot's channel "
+            "permissions.",
+            ephemeral=True)
+        return
+    record_failed = False
+    try:
+        await update_support_ticket(ticket["id"], {
+            "status": "open", "closed_by": "", "close_reason": "",
+        })
+    except Exception as e:
+        # The channel IS open in Discord; only the record failed.
+        # Report the mismatch loudly instead of pretending all is
+        # well: the record still says "closed", so run /ticket reopen
+        # again to heal it.
+        record_failed = True
+        print(f"[TICKETS] ERROR: Ticket #{ticket['number']:04d} reopened "
+              f"in Discord but the record could not be saved ({e!r}); "
+              "run /ticket reopen again to fix the record")
+    warning = ""
+    if record_failed:
+        warning = ("\n\n:warning: The channel was reopened, but the ticket "
+                   "record could not be saved — run `/ticket reopen` again "
+                   "to fix the record.")
     await interaction.response.send_message(
         embed=discord.Embed(
             title=f"Ticket #{ticket['number']:04d} reopened",
-            description=f"Reopened by {member.mention}",
+            description=f"Reopened by {member.mention}" + warning,
             color=EMBED_COLOR,
         ),
         view=TicketChannelView(),
     )
+    if record_failed:
+        await log_to_staff_channel(interaction.guild, cfg, discord.Embed(
+            title=f"Ticket #{ticket['number']:04d} reopened",
+            description=(f"Reopened by {member.mention}\n\n:warning: "
+                         "Ticket record could not be saved — run "
+                         "`/ticket reopen` again to fix the record."),
+            color=EMBED_COLOR,
+        ))
 
 
 async def delete_ticket_flow(interaction):
@@ -609,14 +733,6 @@ class Tickets(commands.Cog):
             return
         await ensure_db()
         topic = (topic or "").strip() or "No topic given"
-        existing = await get_open_ticket_for_user(str(ctx.guild.id), str(ctx.author.id))
-        if existing:
-            channel = ctx.guild.get_channel(int(existing["channel_id"]))
-            where = channel.mention if channel is not None else "your open ticket"
-            await ctx.respond(
-                f"You already have an open ticket: {where}.",
-                ephemeral=True)
-            return
         cfg = await get_ticket_guild_config(str(ctx.guild.id))
         try:
             channel, ticket = await create_ticket_channel(
@@ -634,13 +750,33 @@ class Tickets(commands.Cog):
                 "or ask a mod for help.",
                 ephemeral=True)
             return
-        await post_ticket_intro(channel, ctx.author, ticket["number"], topic)
+        if channel is None:
+            # Already had an open ticket — checked inside the creation
+            # lock (P3-41), so a simultaneous second open lands here
+            # instead of creating a duplicate channel.
+            existing_channel = ctx.guild.get_channel(int(ticket["channel_id"]))
+            where = (existing_channel.mention if existing_channel is not None
+                     else "your open ticket")
+            await ctx.respond(
+                f"You already have an open ticket: {where}.",
+                ephemeral=True)
+            return
+        intro_ok = await _post_ticket_intro_safe(
+            channel, ctx.author, ticket["number"], topic)
         await log_to_staff_channel(ctx.guild, cfg, discord.Embed(
             title=f"Ticket #{ticket['number']:04d} opened",
             description=f"{ctx.author.mention} opened a ticket: {topic}",
             color=EMBED_COLOR,
         ))
-        await ctx.respond(f"Your ticket is ready: {channel.mention}", ephemeral=True)
+        if intro_ok:
+            await ctx.respond(f"Your ticket is ready: {channel.mention}", ephemeral=True)
+        else:
+            await ctx.respond(
+                f"Your ticket is ready: {channel.mention}\n"
+                "Note: the welcome message couldn't be posted in the "
+                "channel, so the Close/Claim buttons aren't there — staff "
+                "can still help you in the channel.",
+                ephemeral=True)
 
     # ---------- in-ticket commands ----------
 

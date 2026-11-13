@@ -47,12 +47,22 @@ user ALLOW → role DENY → role ALLOW → the command's normal Discord
 check (when no custom rules exist for it) → deny (when rules exist but
 nothing matches). Server admins always pass.
 
-**Storage.** Grants live in the `command_permissions` table
-(`guild_id`, `command`, `target_type` role/user, `target_id`,
-`allowed` 1/0). Helpers in `data/DB/Storage/storage.py`:
+**Where it runs.** The whole `/perm` group lives on **Havenly Helper**
+(the worker bot), not the main bot. That works because grants live in
+the shared Postgres database (see Storage below) and the permission
+check is in shared `utils/permissions.py` — a grant written by the
+Helper is visible to the main bot immediately, with no restart. This
+was verified with a cross-bot write/read test during the 2026-11-13
+command split: the worker wrote a test grant and the main bot read it
+back at once; the test grant was deleted afterwards, leaving only
+Emily's pre-existing grant.
+
+**Storage.** Grants live in the `command_permissions` table in the
+shared **Postgres** database (`havenly`) — not in SQLite any more.
+Columns: `guild_id`, `command`, `target_type` (role/user), `target_id`,
+`allowed`. Helpers in `data/DB/Storage/storage.py`:
 `get_command_permissions`, `get_all_command_permissions`,
-`save_command_permission` (OR REPLACE upsert with retries on
-"database is locked"), `delete_command_permission`, plus
+`save_command_permission` (upsert), `delete_command_permission`, plus
 `delete_command_permissions_for_target` / `_for_command` / `_all`.
 
 **Wiring.** A command becomes grantable by (1) adding it to
@@ -68,16 +78,16 @@ the permission.
 
 **Display limits (Discord, verified).** The total characters across
 *all* embeds in one message is capped at 6000, not 6000 per embed —
-`/perm_overview` and `/perm_commands` send one embed per message.
+`/perm overview` and `/perm commands` send one embed per message.
 Mentions do not render in embed *field names*, only in field values.
 Chunking splits on line boundaries, never mid-line: a cut at exactly
 1024 characters can split a `` `command` `` span or a `<@&id>` mention
 and an unmatched backtick makes Discord render the rest as code.
 
-**Website.** Grants live in the shared `bot.db`, so the site can read
-them, but the site does not enforce them yet (bot side first). Enforcing
-while the bot is offline would need the `guilds.members.read` OAuth
-scope (everyone re-logs once) — the site's OAuth is currently
+**Website.** Grants live in the shared Postgres database, so the site
+can read them, but the site does not enforce them yet (bot side first).
+Enforcing while the bot is offline would need the `guilds.members.read`
+OAuth scope (everyone re-logs once) — the site's OAuth is currently
 `identify` + `guilds` only, so it cannot fetch role IDs.
 
 ## Web dashboard

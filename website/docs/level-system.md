@@ -2,6 +2,17 @@
 
 Source: `cogs/Level_system.py`.
 
+**All 24 level commands live on the main bot only** (Havenly Bot 2.0) —
+the main bot owns level writes, so nothing can double-award XP. The
+Helper loads no level code at all. Live counts (Discord API,
+2026-11-13): main 54 top-level / 83 runnable, Helper 11 / 30, 0 shared.
+
+Storage is **Postgres**: `get_levels` / `save_levels` (and the rest of
+`data/DB/Storage/storage.py`) read and write the `levels` table in the
+shared `havenly` database. The live SQLite `bot.db` is frozen at
+2026-11-12 11:41 and nothing writes to it any more — see
+[Data layer](./data-layer.md).
+
 ## Earning XP
 
 `on_message` rolls `random.randint(xp_min, xp_max)` per message, subject
@@ -12,11 +23,15 @@ immediately while off, so nothing earns XP from any source until an
 admin runs `/toggle_levels`. `/daily`, `/add_xp`, and the panel add-XP
 button refuse while off.
 
+Settings live in `/level_settings` (show / change XP rate, cooldowns,
+roles — added 2026-11-11) and `/getxpsettings` (show them).
+`/toggle_thread_xp` turns XP in threads on or off per guild (default
+on, added 2026-11-11).
+
 ## `award_xp()` — the single funnel
 
 **All** XP flows through `award_xp()`: messages, `/add_xp`, `/daily`,
-game votes, and voice time (banked in 5-minute chunks by the VoiceXP
-cog). It:
+and game votes. It:
 
 1. Applies the active XP event multiplier — unless `apply_event=False`,
    which is how manual `/add_xp` grants stay exact.
@@ -24,6 +39,12 @@ cog). It:
    the next level. (Level *n* costs *n* × 100 XP.)
 3. Grants cumulative role rewards (`apply_level_rewards`).
 4. Posts the level-up announcement (`announce_level_up`).
+
+> **Voice XP is gone.** Voice time used to bank XP in 5-minute chunks
+> through the VoiceXP cog, and old code/comments may still mention it.
+> VoiceXP is one of the seven deliberately disabled cogs (2026-11-12),
+> so no voice XP is awarded now. If VoiceXP is ever re-enabled, its
+> awards go through this same funnel.
 
 The core loop, simplified:
 
@@ -64,12 +85,28 @@ multipliers, and announcements for free — and a bug fix in one place
 fixes them all. If you add a new XP source, call `award_xp()`; don't
 write your own math.
 
+Cross-process safety: `award_xp` takes the shared Postgres advisory
+lock (`get_level_lock()` — `pg_advisory_xact_lock` on
+`levels:<guild_id>`), so the main bot's grants and the Helper's
+`/userinfo` panel XP buttons can never race each other. Never write
+level rows directly and bypass the lock.
+
 ## Level-up announcements
 
-Announcements go to the configured channel. If no level-up channel is
-set, the announcement is sent to the user by DM instead of the public
-channel where they leveled up — closed DMs fail silently with no
-public fallback. The text is the custom template if an admin set one
+The delivery rule changed 2026-11-09 — **there are no level-up DMs**:
+
+- **A level channel is set** (`/set_level_channel`): level-ups post
+  there, publicly.
+- **No channel set, and the XP came from a slash command** (`/daily`,
+  `/add_xp`): the level-up is an ephemeral followup only the invoker
+  sees. Those commands defer ephemeral from the start, so the followup
+  stays private — a public defer would lock the whole interaction
+  public.
+- **No channel set, and the XP came from a message** (or voice, when
+  VoiceXP was live): the level-up stays **silent** — no message
+  anywhere.
+
+The text is the custom template if an admin set one
 (`/set_levelup_message`, with `{user}` / `{name}` / `{level}`
 placeholders) — otherwise the default message. A confetti card image is
 attached when Pillow is installed; without Pillow it's text-only. Nothing
@@ -88,6 +125,8 @@ message names `/toggle_level_messages` so users can opt out.
 `/no_xp_bulk` opens a picker (up to 25 text channels at once) with
 **Disable XP** / **Enable XP** buttons that add or remove all picked
 channels in one batch. Only the admin who opened the picker can use it.
+
+XP in threads is a separate toggle: `/toggle_thread_xp` (default on).
 
 ## Cards
 

@@ -18,8 +18,13 @@ is deleted once, not once per rule):
   - invites: a discord.gg / discord.com/invite / discordapp.com/invite
     link. The guild's own vanity code (if it has one) is allowed, so
     the server's own invite is not eaten; every other invite is.
+    Every invite in the message is checked, so a leading vanity
+    invite cannot shield a later external one.
   - external links: any http(s) URL whose host is not a Discord host
-    (discord.com, discord.gg, discordapp.com, including subdomains).
+    (discord.com, discord.gg, discordapp.com, including subdomains),
+    plus bare www. domains with no scheme (www.example.com).
+    Every URL in the message is checked, not just the first, so a
+    leading allowed link cannot shield a later external one.
     Invite links are caught by the invites rule first, so with only
     this rule on, a discord.gg link still passes.
   - caps: at least 10 letters, at least 80% of them uppercase.
@@ -39,6 +44,15 @@ Per-user log cooldown: a member tripping the same rule repeatedly
 gets one log embed per 60 seconds; the messages are still deleted,
 the log channel just does not get spammed with one embed each.
 
+Idle-entry sweeper (P3-9): the spam-history dict (`_recent`) and the
+log-cooldown dict (`_last_logged`) are keyed per (guild, user[,
+rule]) and used to shrink only when that same member messages or
+trips again, so idle members' entries sat in memory for the bot's
+whole uptime. A background loop sweeps both dicts every 30 minutes
+and drops entries idle for over an hour -- the spam window tops out
+at 300s and the log cooldown is 60s, so an idle-over-an-hour entry
+can never affect another decision.
+
 Tables: automod_config in data/DB/models.py. Storage helpers live in
 data/DB/Storage/storage.py. New table only -- create_all() creates
 it on the next bot boot and never alters an existing table.
@@ -48,7 +62,7 @@ import time
 from collections import deque
 
 import discord
-from discord.ext import commands
+from discord.ext import commands, tasks
 from discord.commands import SlashCommandGroup
 
 from config import GUILD_IDS, Manage_messages_required, extra_help
@@ -69,6 +83,14 @@ CAPS_MIN_UPPER_RATIO = 0.80
 # One log embed per member per rule per this many seconds; deletes
 # still happen on every offending message.
 LOG_COOLDOWN_SECONDS = 60
+# Idle-entry TTL for the in-memory automod dicts (P3-9): the spam
+# window tops out at 300s and the log cooldown is 60s, so an entry
+# idle for over an hour can never affect another decision.
+AUTOMOD_IDLE_TTL_SECONDS = 3600
+# How often the sweeper runs. Entries only ever accumulate while
+# members message, so a half-hour cadence bounds the leak to at most
+# ~1.5 hours of idle entries.
+AUTOMOD_SWEEP_INTERVAL_MINUTES = 30
 # Rule keys, in the order they are checked. The toggle command and
 # the web page both use these exact strings.
 RULES = ("spam", "invites", "external_links", "caps")
@@ -80,6 +102,12 @@ _INVITE_RE = re.compile(
     re.IGNORECASE,
 )
 _URL_RE = re.compile(r"https?://([A-Za-z0-9.\-]+)", re.IGNORECASE)
+# Bare www. domains with no scheme (www.example.com) -- Discord
+# linkifies these, so the external-links rule treats them as links
+# too. The negative lookbehind keeps it from matching inside a
+# longer word (mywww.example.com is not a link).
+_BARE_WWW_RE = re.compile(r"(?<![A-Za-z0-9.])www\.([A-Za-z0-9.\-]+)",
+                          re.IGNORECASE)
 _DISCORD_HOSTS = ("discord.com", "discord.gg", "discordapp.com")
 
 
@@ -108,8 +136,61 @@ class Automod(commands.Cog):
         self._recent = {}
         # (guild_id, user_id, rule) -> last log-embed timestamp.
         self._last_logged = {}
+        # Same pattern as VoiceXP's voice_tick: the loop is started
+        # here and its before_loop waits for the bot to be ready.
+        self._sweep_loop.start()
 
     # ---------- internals ----------
+
+    def _sweep_stale_entries(self, now=None):
+        """Drop automod dict entries idle longer than the TTL (P3-9).
+
+        Both dicts only ever shrink when the same (guild, user[,
+        rule]) shows up again, so idle members' entries sat in
+        memory for the bot's whole uptime. A spam-history deque is
+        dropped when its NEWEST entry is older than the TTL -- with
+        no fresh message, every entry in it would be pruned by the
+        window check on the next message anyway, and an empty deque
+        is dropped too. A log-cooldown entry is dropped when its
+        timestamp is older than the TTL (the cooldown itself is only
+        60s). Returns (recent_dropped, logged_dropped) for the log
+        line. Pure and synchronous: no awaits, so it cannot stall
+        the event loop.
+        """
+        now = time.time() if now is None else now
+        cutoff = now - AUTOMOD_IDLE_TTL_SECONDS
+        recent_dropped = 0
+        for key in list(self._recent):
+            history = self._recent[key]
+            if not history or history[-1] < cutoff:
+                del self._recent[key]
+                recent_dropped += 1
+        logged_dropped = 0
+        for key in list(self._last_logged):
+            if self._last_logged[key] < cutoff:
+                del self._last_logged[key]
+                logged_dropped += 1
+        return recent_dropped, logged_dropped
+
+    @tasks.loop(minutes=AUTOMOD_SWEEP_INTERVAL_MINUTES)
+    async def _sweep_loop(self):
+        # Every await in a background loop gets its own guard, so a
+        # transient failure here can never kill the loop until
+        # restart. The sweep itself is synchronous, so the only
+        # failure mode is a bug in the dict walk, which is logged
+        # and retried next tick.
+        try:
+            recent, logged = self._sweep_stale_entries()
+        except Exception as e:
+            print(f"[Automod] Sweep failed: {e!r}")
+            return
+        if recent or logged:
+            print(f"[Automod] Swept {recent} idle spam-history and "
+                  f"{logged} idle log-cooldown entries")
+
+    @_sweep_loop.before_loop
+    async def _before_sweep_loop(self):
+        await self.bot.wait_until_ready()
 
     async def _ensure_db(self):
         try:
@@ -135,17 +216,22 @@ class Automod(commands.Cog):
             history.popleft()
 
         if cfg.get("invites_enabled"):
-            match = _INVITE_RE.search(content)
-            if match:
-                # The guild's own vanity invite is allowed; anything
-                # else that looks like an invite is not.
-                vanity = getattr(message.guild, "vanity_url_code", None)
-                if not vanity or match.group(1).lower() != vanity.lower():
+            # Every invite in the message is checked: a leading
+            # vanity invite must not shield a later external one.
+            vanity = getattr(message.guild, "vanity_url_code", None)
+            vanity = vanity.lower() if vanity else None
+            for match in _INVITE_RE.finditer(content):
+                if not vanity or match.group(1).lower() != vanity:
                     return "invites"
         if cfg.get("external_links_enabled"):
-            match = _URL_RE.search(content)
-            if match and not _is_discord_host(match.group(1)):
-                return "external_links"
+            # Every URL is checked, with or without a scheme: a
+            # leading Discord link must not shield a later one.
+            for match in _URL_RE.finditer(content):
+                if not _is_discord_host(match.group(1)):
+                    return "external_links"
+            for match in _BARE_WWW_RE.finditer(content):
+                if not _is_discord_host(match.group(1)):
+                    return "external_links"
         if cfg.get("caps_enabled") and _caps_hit(content):
             return "caps"
         if cfg.get("spam_enabled"):
@@ -196,7 +282,7 @@ class Automod(commands.Cog):
                        else "Delete failed -- the bot may be missing "
                             "Manage Messages in that channel."),
                 inline=False)
-            embed.set_footer(text="Kush Bush Logger")
+            embed.set_footer(text="Powered by Havenly Bot")
             await logger_cog.send(message.guild, "moderation", embed)
         except Exception:
             pass

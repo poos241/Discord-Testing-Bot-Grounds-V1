@@ -12,20 +12,20 @@ and changed independently.
 
 Commands (all guild-scoped, all require Manage Channels):
 
-  - /auto_thread -- toggle auto-threads for the channel the command
+  - /auto_thread toggle -- toggle auto-threads for the channel the command
     is run in. Turning it on uses the default 24-hour archive and no
-    name prefix; run /set_auto_thread_channel afterwards to tune it.
-  - /set_auto_thread_channel <channel> [archive_minutes] [name_prefix]
+    name prefix; run /auto_thread toggle set_channel afterwards to tune it.
+  - /auto_thread toggle set_channel <channel> [archive_minutes] [name_prefix]
     -- designate a channel (or update its settings if it is already
     designated). Archive must be one of Discord's allowed values:
     60 (1 hour), 1440 (24 hours, the default), 4320 (3 days), or
     10080 (7 days). The 3-day and 7-day values need a boosted server;
     if Discord rejects one, thread creation falls back to 24 hours
     for that message instead of failing outright.
-  - /remove_auto_thread_channel <channel> -- stop auto-threading a
+  - /auto_thread toggle remove_channel <channel> -- stop auto-threading a
     channel. Existing threads are left alone; only new messages stop
     getting threads.
-  - /auto_thread_status -- list every designated channel in this
+  - /auto_thread toggle status -- list every designated channel in this
     server with its archive setting and name prefix.
 
 How a thread is named: the message's own text, collapsed to one line
@@ -54,8 +54,9 @@ creates it on the next bot boot and never alters an existing table.
 """
 import discord
 from discord.ext import commands
+from discord.commands import SlashCommandGroup
 
-from config import GUILD_IDS, Manage_channels_required, extra_help
+from config import GUILD_IDS, extra_help
 from data.DB.db import database
 from data.DB.Storage.storage import (
     delete_auto_thread_channel,
@@ -101,6 +102,8 @@ def _thread_name(message, prefix):
 
 class AutoThreads(commands.Cog):
     """Auto-create discussion threads for designated channels."""
+
+    auto_thread = SlashCommandGroup("auto_thread", "Automatic discussion threads.", guild_ids=GUILD_IDS)
 
     def __init__(self, bot):
         self.bot = bot
@@ -197,12 +200,17 @@ class AutoThreads(commands.Cog):
 
     # ---------- commands ----------
 
-    @discord.slash_command(name="auto_thread",
-                           description="Toggle auto-threads for the channel this command is run in.",
-                           guild_ids=GUILD_IDS)
-    @extra_help("No arguments: flips auto-threads on or off for the current channel. Turning it on uses the default 24-hour archive and no name prefix; use /set_auto_thread_channel to tune the archive time or add a name prefix. Requires Manage Channels. Does not work in threads or DMs.")
-    @Manage_channels_required()
+    @auto_thread.command(
+        name="toggle",
+        description="Toggle auto-threads for the channel this command is run in.",
+    )
+    @extra_help("No arguments: flips auto-threads on or off for the current channel. Turning it on uses the default 24-hour archive and no name prefix; use /auto_thread toggle set_channel to tune the archive time or add a name prefix. Requires Manage Channels. Does not work in threads or DMs.")
     async def auto_thread_toggle(self, ctx):
+        from utils.permissions import (
+            check_slash_permission, _default_manage_channels_or_admin)
+        if not await check_slash_permission(
+                ctx, "auto_thread_toggle", _default_manage_channels_or_admin):
+            return
         if ctx.guild is None:
             return await ctx.respond("Auto-thread commands only work in a server.",
                                      ephemeral=True)
@@ -227,19 +235,25 @@ class AutoThreads(commands.Cog):
             f"Auto-threads are now **on** for {ctx.channel.mention}: every "
             f"new message gets a discussion thread that auto-archives "
             f"after {_archive_label(DEFAULT_ARCHIVE_MINUTES)}. Tune it with "
-            "/set_auto_thread_channel.",
+            "/auto_thread toggle set_channel.",
             ephemeral=True)
 
-    @discord.slash_command(name="set_auto_thread_channel",
-                           description="Designate a channel for auto-threads, or update its settings.",
-                           guild_ids=GUILD_IDS)
+    @auto_thread.command(
+        name="set_channel",
+        description="Designate a channel for auto-threads, or update its settings.",
+    )
     @extra_help("Channel: the text channel to designate. Archive minutes: 60, 1440, 4320, or 10080 (blank keeps the current setting, or 24 hours for a new channel). Name prefix: optional text put in front of every thread name in this channel, e.g. 'Discussion' (blank keeps the current prefix, or none for a new channel). Requires Manage Channels.")
-    @Manage_channels_required()
     async def set_auto_thread_channel_cmd(
             self, ctx,
             channel: discord.Option(discord.TextChannel, "Text channel to designate for auto-threads"),
             archive_minutes: discord.Option(int, "Auto-archive after: 60, 1440, 4320, or 10080 minutes (blank keeps current)", required=False, default=None),
             name_prefix: discord.Option(str, "Optional text put in front of every thread name (blank keeps current)", required=False, default=None)):
+        from utils.permissions import (
+            check_slash_permission, _default_manage_channels_or_admin)
+        if not await check_slash_permission(
+                ctx, "auto_thread_set_channel",
+                _default_manage_channels_or_admin):
+            return
         if ctx.guild is None:
             return await ctx.respond("Auto-thread commands only work in a server.",
                                      ephemeral=True)
@@ -270,14 +284,20 @@ class AutoThreads(commands.Cog):
                if payload["name_prefix"] else "."),
             ephemeral=True)
 
-    @discord.slash_command(name="remove_auto_thread_channel",
-                           description="Stop auto-threading a channel (existing threads are left alone).",
-                           guild_ids=GUILD_IDS)
+    @auto_thread.command(
+        name="remove_channel",
+        description="Stop auto-threading a channel (existing threads are left alone).",
+    )
     @extra_help("Removes the channel from the auto-thread list. New messages stop getting threads; threads already created stay where they are. Requires Manage Channels.")
-    @Manage_channels_required()
     async def remove_auto_thread_channel_cmd(
             self, ctx,
             channel: discord.Option(discord.TextChannel, "Text channel to stop auto-threading")):
+        from utils.permissions import (
+            check_slash_permission, _default_manage_channels_or_admin)
+        if not await check_slash_permission(
+                ctx, "auto_thread_remove_channel",
+                _default_manage_channels_or_admin):
+            return
         if ctx.guild is None:
             return await ctx.respond("Auto-thread commands only work in a server.",
                                      ephemeral=True)
@@ -295,12 +315,18 @@ class AutoThreads(commands.Cog):
             "Existing threads are left alone.",
             ephemeral=True)
 
-    @discord.slash_command(name="auto_thread_status",
-                           description="List every channel designated for auto-threads in this server.",
-                           guild_ids=GUILD_IDS)
+    @auto_thread.command(
+        name="status",
+        description="List every channel designated for auto-threads in this server.",
+    )
     @extra_help("Read-only list of designated channels with each one's archive setting and name prefix. Requires Manage Channels.")
-    @Manage_channels_required()
     async def auto_thread_status_cmd(self, ctx):
+        from utils.permissions import (
+            check_slash_permission, _default_manage_channels_or_admin)
+        if not await check_slash_permission(
+                ctx, "auto_thread_status",
+                _default_manage_channels_or_admin):
+            return
         if ctx.guild is None:
             return await ctx.respond("Auto-thread commands only work in a server.",
                                      ephemeral=True)
@@ -309,7 +335,7 @@ class AutoThreads(commands.Cog):
         if not rows:
             return await ctx.respond(
                 "No channels are designated for auto-threads yet. Use "
-                "/set_auto_thread_channel to add one, or run /auto_thread "
+                "/auto_thread toggle set_channel to add one, or run /auto_thread toggle "
                 "in a channel to toggle it on there.",
                 ephemeral=True)
         lines = []

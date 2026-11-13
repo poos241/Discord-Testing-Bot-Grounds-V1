@@ -11,7 +11,7 @@ class BaseLogger(commands.Cog):
         self.logger = Logger(bot)
 
     async def send(self, guild, category, embed):
-        await self.logger.send(guild, category, embed)
+        return await self.logger.send(guild, category, embed)
 
     async def audit_entry(self, guild, action, target_id=None):
         return await Audit.latest(guild, action, target_id=target_id)

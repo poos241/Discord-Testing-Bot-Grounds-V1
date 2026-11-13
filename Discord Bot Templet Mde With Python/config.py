@@ -7,10 +7,20 @@ import random
 from discord.ext import commands
 from discord.commands import Option
 
+# Worker mode: Havenly Helper runs the SAME codebase with WORKER_MODE=1
+# (set in its systemd unit, not in .env). In worker mode the bot logs
+# in with WORKER_TOKEN, loads only WORKER_COGS (see bot.py), and its
+# background loops / listeners are gated (see each cog). The main bot
+# never sets WORKER_MODE, so this is False there and everything behaves
+# exactly as today.
+WORKER_MODE = os.getenv("WORKER_MODE", "").strip().lower() in (
+    "1", "true", "yes", "on",
+)
 
-## guild id 731453757388357642 for the house of fluff
 
-GUILD_IDS = [557680433245061130,1298567950319489054]
+## guild ID's
+
+GUILD_IDS = [1318042499784249415, 557680433245061130]
 
 OWNER_IDS = [287282266261159937, 765094342279954509]
 
@@ -23,8 +33,14 @@ conch_responses = [
 
 # List of roast random statues
 statuses = [
-    "Hello Nice To Meet You", "I'm in your walls ",
-    "Say Hello to my little friend", "with myself", "VRChat","With a Kush bush", "you get high","myself get high", "you get high", "YouTube", "you play DDO", "you in your walls", "dice roll"
+    "Havenly Bot 2.0 Here use /help for help"
+    
+]
+
+# Presence lines for the worker (Havenly Helper). The main bot uses
+# `statuses` above; the worker must not claim to be Havenly Bot 2.0.
+worker_statuses = [
+    "Havenly Helper — background jobs",
 ]
 
 
@@ -145,6 +161,43 @@ _SQLITE_JSON_FILES = frozenset({
 })
 
 
+def _atomic_write_json(path, data):
+    """Write JSON to ``path`` atomically: temp file + ``os.replace``.
+
+    A crash mid-write used to leave a torn half-written file, and the
+    next load then silently reset it to ``{}`` (P3-35). Writing to a
+    temp file in the same directory and renaming over the target makes
+    the switch atomic — readers see either the old file or the new one,
+    never a mix — and a failed write leaves the old file untouched.
+    The temp file is removed on failure so no orphan ``.tmp`` is left.
+    """
+    tmp_path = path + ".tmp"
+    try:
+        with open(tmp_path, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=4)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp_path, path)
+    except BaseException:
+        try:
+            os.remove(tmp_path)
+        except OSError:
+            pass
+        raise
+    # fsync the directory so the rename itself survives a crash.
+    # POSIX only: Windows has no portable directory fsync, and the
+    # atomic rename above still holds there.
+    if os.name == "posix":
+        try:
+            dir_fd = os.open(os.path.dirname(path) or ".", os.O_RDONLY)
+            try:
+                os.fsync(dir_fd)
+            finally:
+                os.close(dir_fd)
+        except OSError:
+            print(f"[WARN] Could not fsync directory for '{path}' (save still completed).")
+
+
 def load_json(filename):
     if filename in _SQLITE_JSON_FILES:
         from utils.json_sqlite_store import load_store
@@ -152,8 +205,7 @@ def load_json(filename):
 
     path = os.path.join(DATA_DIR, filename)
     if not os.path.exists(path):
-        with open(path, 'w') as f:
-            json.dump({}, f)
+        _atomic_write_json(path, {})
         return {}
 
     try:
@@ -162,10 +214,25 @@ def load_json(filename):
             if not data:
                 return {}
             return json.loads(data)
-    except (json.JSONDecodeError, IOError):
-        # File exists but is corrupted or unreadable
-        print(f"⚠️ Warning: '{filename}' is invalid JSON. Resetting to empty dict.")
+    except json.JSONDecodeError:
+        # File exists but is corrupted (e.g. torn by a pre-fix crash
+        # mid-write). Preserve the bytes before resetting so the data
+        # isn't silently lost — the .bak is the recovery copy.
+        bak_path = path + ".bak"
+        try:
+            with open(bak_path, "w", encoding="utf-8") as bak:
+                bak.write(data)
+        except OSError:
+            print(f"[WARN] '{filename}' is invalid JSON and the .bak copy could not be written. Resetting to empty dict.")
+            return {}
+        print(f"[WARN] '{filename}' is invalid JSON. Kept a copy at '{bak_path}' and reset to empty dict.")
         return {}
+    except IOError:
+        # File exists but could not be read (permissions, transient
+        # error) — nothing to preserve, just report and reset.
+        print(f"[WARN] Could not read '{filename}'. Returning empty dict.")
+        return {}
+
 
 def save_json(filename, data):
     if filename in _SQLITE_JSON_FILES:
@@ -174,10 +241,7 @@ def save_json(filename, data):
         return
 
     path = os.path.join(DATA_DIR, filename)
-    with open(path, "w", encoding='utf-8') as f:
-        json.dump(data, f, indent=4)
-
-    
+    _atomic_write_json(path, data)
 
 def admin_required():
     async def predicate(ctx):

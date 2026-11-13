@@ -4,9 +4,9 @@ Admin-only commands to grant (or deny) a role or one user access to a
 specific bot action, without turning on Discord's Administrator
 permission for that role.
 
-* /perm_allow -- grant a role or a user a command (allow or deny).
-* /perm_remove -- remove a grant.
-* /perm_list -- show what is set up in this server.
+* /perm allow -- grant a role or a user a command (allow or deny).
+* /perm remove -- remove a grant.
+* /perm list -- show what is set up in this server.
 
 The rules live in the command_permissions table (shared SQLite db),
 so the website reads the same table from the database file and can
@@ -18,8 +18,11 @@ allow; no rules at all falls back to the command's normal Discord
 permission check; rules that exist but do not match deny).
 """
 
+import time
+
 import discord
 from discord.ext import commands
+from discord.commands import SlashCommandGroup
 
 from config import GUILD_IDS, extra_help
 from data.DB.Storage.storage import (
@@ -61,9 +64,71 @@ _GRANTABLE_DESC = dict(GRANTABLE_COMMANDS)
 
 _RULE_CHOICES = ["allow", "deny"]
 
+# /perm reset preview tokens: confirm=True only deletes when the same
+# admin previewed the same scope within the last 5 minutes. A single
+# call with confirm=True and no preview shows the preview instead of
+# deleting, so a stray confirm can never wipe every grant in one go.
+# The token also records how many grants the preview showed, so if
+# grants are added or removed in between, the confirm is refused and
+# a fresh preview is shown. Tokens live in memory only, so a bot
+# restart clears them and the admin must preview again.
+_PERM_RESET_PREVIEW_TTL_SECONDS = 300
+_perm_reset_previews = {}
+
+
+def _perm_reset_scope_key(role, user, command):
+    """Stable key for the scope a /perm reset call targets."""
+    if role is not None:
+        return "role:%s" % role.id
+    if user is not None:
+        return "user:%s" % user.id
+    if command is not None:
+        return "command:%s" % command
+    return "all"
+
+
+def _perm_reset_record_preview(guild_id, author_id, scope_key, count):
+    _perm_reset_previews[(guild_id, author_id, scope_key)] = (
+        count, time.monotonic())
+
+
+def _perm_reset_preview_fresh(guild_id, author_id, scope_key, count):
+    """True when this admin previewed this exact scope recently and
+    the grant count has not changed since the preview."""
+    entry = _perm_reset_previews.get((guild_id, author_id, scope_key))
+    if entry is None:
+        return False
+    preview_count, shown_at = entry
+    if preview_count != count:
+        return False
+    return time.monotonic() - shown_at <= _PERM_RESET_PREVIEW_TTL_SECONDS
+
+
+def _perm_reset_preview_text(guild, scope, matching):
+    """The "this would remove N grants" preview, without the closing
+    line telling the admin how to confirm -- callers add their own."""
+    preview = []
+    for g in matching[:15]:
+        label = _target_label(guild, g.get("target_type"), g.get("target_id"))
+        verdict = "allow" if g.get("allowed") else "DENY"
+        preview.append(
+            "`%s` -- %s (%s)" % (g.get("command"), label, verdict)
+        )
+    if len(matching) > 15:
+        preview.append("...and %d more" % (len(matching) - 15))
+    return (
+        "This would remove **%d** grant%s for %s:\n%s"
+        % (
+            len(matching),
+            "s" if len(matching) != 1 else "",
+            scope,
+            "\n".join(preview),
+        )
+    )
+
 
 class BulkPermView(discord.ui.View):
-    """Step 1 of the /perm_bulk builder: pick as many roles as you
+    """Step 1 of the /perm bulk builder: pick as many roles as you
     want (up to 25 at once), then Next shows every command at once."""
 
     def __init__(self, author_id: int, guild: discord.Guild):
@@ -94,11 +159,7 @@ class BulkPermView(discord.ui.View):
         self.add_item(cancel_button)
 
     async def _on_roles(self, interaction: discord.Interaction):
-        if interaction.user.id != self.author_id:
-            await interaction.response.send_message(
-                "Only the admin who opened this builder can use it.",
-                ephemeral=True,
-            )
+        if not await _check_builder_access(interaction, self.author_id):
             return
         self.role_ids = [r.id for r in self.role_select.values]
         await interaction.response.edit_message(
@@ -108,11 +169,7 @@ class BulkPermView(discord.ui.View):
         )
 
     async def _on_next(self, interaction: discord.Interaction):
-        if interaction.user.id != self.author_id:
-            await interaction.response.send_message(
-                "Only the admin who opened this builder can use it.",
-                ephemeral=True,
-            )
+        if not await _check_builder_access(interaction, self.author_id):
             return
         if not self.role_ids:
             await interaction.response.send_message(
@@ -123,9 +180,10 @@ class BulkPermView(discord.ui.View):
         await interaction.response.edit_message(
             content=(
                 "Picked **%d** role%s. Tick commands in any (or all) of "
-                "the four lists below -- every grantable command is "
-                "shown at once. Then hit **Grant (allow)** or "
-                "**Grant (deny)**."
+                "the lists below -- every grantable command is shown "
+                "(use **More commands** to see the last group). Then hit "
+                "**Grant (allow)** or **Grant (deny)** to preview the "
+                "grant before anything is written."
                 % (len(self.role_ids), "s" if len(self.role_ids) != 1 else "")
             ),
             view=cmd_view,
@@ -133,11 +191,7 @@ class BulkPermView(discord.ui.View):
         self.stop()
 
     async def _on_cancel(self, interaction: discord.Interaction):
-        if interaction.user.id != self.author_id:
-            await interaction.response.send_message(
-                "Only the admin who opened this builder can use it.",
-                ephemeral=True,
-            )
+        if not await _check_builder_access(interaction, self.author_id):
             return
         for item in self.children:
             item.disabled = True
@@ -149,20 +203,38 @@ class BulkPermView(discord.ui.View):
 
 
 class BulkCommandView(discord.ui.View):
-    """Step 2 of the /perm_bulk builder: every grantable command is
-    shown at once in four multi-select lists (Discord caps a select
-    at 25 options). Tick commands in any or all of them; picks stay
-    ticked when you move to another list. Grant defers first, so a
-    big grant (many roles x many commands) never times out."""
+    """Step 2 of the /perm bulk builder: every grantable command is
+    shown in multi-select lists (Discord caps a select at 25 options).
+    There are six groups now, so they are paged four at a time: five
+    selects plus the Grant / Back buttons would need a sixth action
+    row, and Discord caps a message at five. Tick commands in any or
+    all of them; picks stay ticked when you move to another list or
+    page. Grant defers first, so a big grant (many roles x many
+    commands) never times out -- and nothing is written here: Grant
+    opens a preview step first."""
 
-    def __init__(self, author_id: int, guild: discord.Guild, role_ids):
+    # Groups per page: 4 selects + the button row = Discord's 5-row cap.
+    _GROUPS_PER_PAGE = 4
+
+    def __init__(self, author_id: int, guild: discord.Guild, role_ids,
+                 commands=None, page: int = 0):
         super().__init__(timeout=300)
         self.author_id = author_id
         self.guild = guild
         self.role_ids = list(role_ids)
-        self.commands: set[str] = set()
+        self.commands: set[str] = set(commands or [])
+        self.page = page
         self.selects = []
-        for label, cmds in BULK_COMMAND_GROUPS:
+        self._build_page()
+
+    def _build_page(self):
+        """(Re)build this page's selects + buttons. Picks live in
+        self.commands, so moving between pages never loses them."""
+        self.clear_items()
+        self.selects = []
+        start = self.page * self._GROUPS_PER_PAGE
+        for label, cmds in BULK_COMMAND_GROUPS[
+                start:start + self._GROUPS_PER_PAGE]:
             sel = discord.ui.Select(
                 placeholder="%s (pick any)" % label,
                 options=[
@@ -179,6 +251,12 @@ class BulkCommandView(discord.ui.View):
             sel.callback = self._make_on_commands(sel, cmds)
             self.selects.append(sel)
             self.add_item(sel)
+        # Re-mark any picks carried back from the confirm step or
+        # another page so they stay ticked (a redraw that forgets
+        # them makes them look lost).
+        for sel in self.selects:
+            for opt in sel.options:
+                opt.default = opt.value in self.commands
 
         grant_allow = discord.ui.Button(
             label="Grant (allow)", style=discord.ButtonStyle.green
@@ -204,13 +282,45 @@ class BulkCommandView(discord.ui.View):
         cancel_button.callback = self._on_cancel
         self.add_item(cancel_button)
 
+        if self.page < self._max_page():
+            next_button = discord.ui.Button(
+                label="More commands \u25b8",
+                style=discord.ButtonStyle.secondary,
+            )
+            next_button.callback = self._on_next_page
+            self.add_item(next_button)
+        elif self.page > 0:
+            prev_button = discord.ui.Button(
+                label="\u25c2 Fewer commands",
+                style=discord.ButtonStyle.secondary,
+            )
+            prev_button.callback = self._on_prev_page
+            self.add_item(prev_button)
+
+    def _max_page(self):
+        return (len(BULK_COMMAND_GROUPS) - 1) // self._GROUPS_PER_PAGE
+
+    async def _on_next_page(self, interaction: discord.Interaction):
+        if not await _check_builder_access(interaction, self.author_id):
+            return
+        self.page += 1
+        self._build_page()
+        await interaction.response.edit_message(
+            content=_bulk_cmd_status(self), view=self
+        )
+
+    async def _on_prev_page(self, interaction: discord.Interaction):
+        if not await _check_builder_access(interaction, self.author_id):
+            return
+        self.page -= 1
+        self._build_page()
+        await interaction.response.edit_message(
+            content=_bulk_cmd_status(self), view=self
+        )
+
     def _make_on_commands(self, sel, group_cmds):
         async def _on_commands(interaction: discord.Interaction):
-            if interaction.user.id != self.author_id:
-                await interaction.response.send_message(
-                    "Only the admin who opened this builder can use it.",
-                    ephemeral=True,
-                )
+            if not await _check_builder_access(interaction, self.author_id):
                 return
             # Replace this group's picks with what is ticked now, and
             # re-mark the ticked options so they stay ticked when the
@@ -227,17 +337,16 @@ class BulkCommandView(discord.ui.View):
         return _on_commands
 
     async def _on_grant_allow(self, interaction: discord.Interaction):
-        await self._do_grant(interaction, allowed=True)
+        await self._show_confirm(interaction, allowed=True)
 
     async def _on_grant_deny(self, interaction: discord.Interaction):
-        await self._do_grant(interaction, allowed=False)
+        await self._show_confirm(interaction, allowed=False)
 
-    async def _do_grant(self, interaction: discord.Interaction, allowed: bool):
-        if interaction.user.id != self.author_id:
-            await interaction.response.send_message(
-                "Only the admin who opened this builder can use it.",
-                ephemeral=True,
-            )
+    async def _show_confirm(self, interaction: discord.Interaction, allowed: bool):
+        """Step 3: show the exact grant for review before writing
+        anything. A mis-tap on Grant no longer writes up to 25 roles
+        x 95 commands with no summary."""
+        if not await _check_builder_access(interaction, self.author_id):
             return
         if not self.role_ids or not self.commands:
             await interaction.response.send_message(
@@ -245,45 +354,27 @@ class BulkCommandView(discord.ui.View):
                 ephemeral=True,
             )
             return
-        # Defer first: a big grant (many roles x many commands) does
-        # a database write per grant, which can take longer than
-        # Discord's 3-second interaction window.
-        await interaction.response.defer(ephemeral=True)
-        created = 0
-        for role_id in self.role_ids:
-            for cmd in sorted(self.commands):
-                await save_command_permission(
-                    str(self.guild.id), cmd, "role", str(role_id),
-                    allowed, str(self.author_id),
-                )
-                created += 1
-        role_mentions = []
-        for role_id in self.role_ids:
-            role = self.guild.get_role(role_id)
-            role_mentions.append(role.mention if role else "`%s`" % role_id)
-        for item in self.children:
-            item.disabled = True
-        await interaction.edit_original_response(
-            content=(
-                "Gave **%d** grant%s (%s) to %s:\n%s"
-                % (
-                    created,
-                    "s" if created != 1 else "",
-                    "allow" if allowed else "DENY",
-                    ", ".join(role_mentions),
-                    ", ".join("`%s`" % c for c in sorted(self.commands)),
-                )
-            ),
-            view=self,
+        eligible, excluded = _split_roles(self.guild, self.role_ids)
+        if not eligible:
+            await interaction.response.send_message(
+                "Nothing to grant: every picked role was excluded (%s). "
+                "Pick a normal role instead." % ", ".join(excluded),
+                ephemeral=True,
+            )
+            return
+        confirm_view = BulkConfirmView(
+            self.author_id, self.guild, eligible, excluded,
+            sorted(self.commands), allowed,
+        )
+        await interaction.response.edit_message(
+            content="Review this grant before it is written:",
+            embed=confirm_view.summary_embed(),
+            view=confirm_view,
         )
         self.stop()
 
     async def _on_back(self, interaction: discord.Interaction):
-        if interaction.user.id != self.author_id:
-            await interaction.response.send_message(
-                "Only the admin who opened this builder can use it.",
-                ephemeral=True,
-            )
+        if not await _check_builder_access(interaction, self.author_id):
             return
         view = BulkPermView(self.author_id, self.guild)
         view.role_ids = list(self.role_ids)
@@ -295,11 +386,7 @@ class BulkCommandView(discord.ui.View):
         self.stop()
 
     async def _on_cancel(self, interaction: discord.Interaction):
-        if interaction.user.id != self.author_id:
-            await interaction.response.send_message(
-                "Only the admin who opened this builder can use it.",
-                ephemeral=True,
-            )
+        if not await _check_builder_access(interaction, self.author_id):
             return
         for item in self.children:
             item.disabled = True
@@ -310,11 +397,175 @@ class BulkCommandView(discord.ui.View):
         self.stop()
 
 
+class BulkConfirmView(discord.ui.View):
+    """Step 3 of the /perm bulk builder: preview exactly what will be
+    written, then confirm. Nothing is written until Confirm is
+    tapped, and the tap re-checks that the clicker is still an admin
+    (a demoted admin cannot execute the grant within the 300 s view
+    lifetime). The grant defers first, so a big grant (many roles x
+    many commands) never times out."""
+
+    def __init__(self, author_id: int, guild: discord.Guild, role_ids,
+                 excluded, commands, allowed: bool):
+        super().__init__(timeout=300)
+        self.author_id = author_id
+        self.guild = guild
+        self.role_ids = list(role_ids)
+        self.excluded = list(excluded)
+        self.commands = sorted(commands)
+        self.allowed = allowed
+
+        confirm_button = discord.ui.Button(
+            label="Confirm grant (%s)" % ("allow" if allowed else "deny"),
+            style=discord.ButtonStyle.green if allowed
+            else discord.ButtonStyle.red,
+        )
+        confirm_button.callback = self._on_confirm
+        self.add_item(confirm_button)
+
+        back_button = discord.ui.Button(
+            label="Back to commands", style=discord.ButtonStyle.secondary
+        )
+        back_button.callback = self._on_back
+        self.add_item(back_button)
+
+        cancel_button = discord.ui.Button(
+            label="Cancel", style=discord.ButtonStyle.grey
+        )
+        cancel_button.callback = self._on_cancel
+        self.add_item(cancel_button)
+
+    def summary_embed(self):
+        """The preview: roles, commands, total grants, and anything
+        excluded from the grant."""
+        role_mentions = []
+        for role_id in self.role_ids:
+            role = self.guild.get_role(role_id) if self.guild else None
+            role_mentions.append(role.mention if role else "`%s`" % role_id)
+        total = len(self.role_ids) * len(self.commands)
+        desc = (
+            "**%d** role%s x **%d** command%s = **%d** grant%s "
+            "(%s).\n\nRoles: %s\n\nCommands: %s"
+            % (
+                len(self.role_ids), "s" if len(self.role_ids) != 1 else "",
+                len(self.commands), "s" if len(self.commands) != 1 else "",
+                total, "s" if total != 1 else "",
+                "allow" if self.allowed else "DENY",
+                ", ".join(role_mentions),
+                ", ".join("`%s`" % c for c in self.commands),
+            )
+        )
+        if self.excluded:
+            desc += (
+                "\n\n:warning: NOT granted (excluded): %s. "
+                "@everyone would give the command to every member, "
+                "and managed or deleted roles cannot hold grants."
+                % ", ".join(self.excluded)
+            )
+        embed = discord.Embed(
+            title="Confirm bulk grant (%s)"
+            % ("allow" if self.allowed else "deny"),
+            description=desc,
+            color=discord.Color.green() if self.allowed
+            else discord.Color.red(),
+        )
+        embed.set_footer(
+            text="Nothing is written until you tap Confirm grant."
+        )
+        return embed
+
+    async def _on_confirm(self, interaction: discord.Interaction):
+        await self._do_grant(interaction)
+
+    async def _do_grant(self, interaction: discord.Interaction):
+        if not await _check_builder_access(interaction, self.author_id):
+            return
+        if not self.role_ids or not self.commands:
+            await interaction.response.send_message(
+                "Nothing left to grant -- pick roles and commands again.",
+                ephemeral=True,
+            )
+            return
+        # Re-split at click time: a role could have been deleted or
+        # become managed since the preview was shown.
+        eligible, excluded = _split_roles(self.guild, self.role_ids)
+        if not eligible:
+            await interaction.response.send_message(
+                "Nothing to grant: every picked role was excluded (%s). "
+                "Pick a normal role instead." % ", ".join(excluded),
+                ephemeral=True,
+            )
+            return
+        # Defer first: a big grant (many roles x many commands) does
+        # a database write per grant, which can take longer than
+        # Discord's 3-second interaction window.
+        await interaction.response.defer(ephemeral=True)
+        created = 0
+        for role_id in eligible:
+            for cmd in sorted(self.commands):
+                await save_command_permission(
+                    str(self.guild.id), cmd, "role", str(role_id),
+                    self.allowed, str(self.author_id),
+                )
+                created += 1
+        role_mentions = []
+        for role_id in eligible:
+            role = self.guild.get_role(role_id) if self.guild else None
+            role_mentions.append(role.mention if role else "`%s`" % role_id)
+        for item in self.children:
+            item.disabled = True
+        result = (
+            "Gave **%d** grant%s (%s) to %s:\n%s"
+            % (
+                created,
+                "s" if created != 1 else "",
+                "allow" if self.allowed else "DENY",
+                ", ".join(role_mentions),
+                ", ".join("`%s`" % c for c in sorted(self.commands)),
+            )
+        )
+        if excluded:
+            result += (
+                "\n\n:warning: Excluded (not granted): %s."
+                % ", ".join(excluded)
+            )
+        await interaction.edit_original_response(
+            content=result, embeds=[], view=self,
+        )
+        self.stop()
+
+    async def _on_back(self, interaction: discord.Interaction):
+        if not await _check_builder_access(interaction, self.author_id):
+            return
+        view = BulkCommandView(
+            self.author_id, self.guild, self.role_ids,
+            commands=self.commands,
+        )
+        await interaction.response.edit_message(
+            content=_bulk_cmd_status(view),
+            embeds=[],
+            view=view,
+        )
+        self.stop()
+
+    async def _on_cancel(self, interaction: discord.Interaction):
+        if not await _check_builder_access(interaction, self.author_id):
+            return
+        for item in self.children:
+            item.disabled = True
+        await interaction.response.edit_message(
+            content="Bulk grant cancelled -- nothing was changed.",
+            embeds=[],
+            view=self,
+        )
+        self.stop()
+
+
 def _bulk_cmd_status(view):
     """Status line for the command-picking step."""
     return (
         "Picked **%d** role%s and **%d** command%s so far. "
-        "Tick commands in any of the four lists -- your picks stay "
+        "Tick commands in any of the lists -- your picks stay "
         "ticked."
         % (
             len(view.role_ids), "s" if len(view.role_ids) != 1 else "",
@@ -326,6 +577,73 @@ def _bulk_cmd_status(view):
 def _is_admin(ctx):
     perms = ctx.author.guild_permissions if ctx.guild else None
     return bool(perms and perms.administrator)
+
+
+def _interaction_is_admin(interaction: discord.Interaction) -> bool:
+    """Re-check the clicker is still a server admin at click time.
+
+    The builder views live up to 300 s, and an admin can be demoted
+    after opening one. Every callback re-checks this instead of
+    trusting the admin check the slash command did when the builder
+    was opened. `guild_permissions.administrator` is True for the
+    server owner too, so owners still pass.
+    """
+    member = interaction.user
+    if interaction.guild is None:
+        return False
+    # Duck-typed on purpose: in a guild interaction the user is a
+    # Member with guild_permissions; in a DM it is a User without
+    # them, which must fail closed. (Duck-typing also keeps this
+    # check usable from the test harness's fake members.)
+    perms = getattr(member, "guild_permissions", None)
+    return bool(perms and perms.administrator)
+
+
+async def _check_builder_access(interaction, author_id: int) -> bool:
+    """Author + still-an-admin check shared by every builder callback.
+
+    Returns True when the clicker is the admin who opened the builder
+    and is still an admin; otherwise tells them why the builder is
+    closed and returns False.
+    """
+    if interaction.user.id != author_id:
+        await interaction.response.send_message(
+            "Only the admin who opened this builder can use it.",
+            ephemeral=True,
+        )
+        return False
+    if not _interaction_is_admin(interaction):
+        await interaction.response.send_message(
+            "You are no longer a server admin, so this builder is "
+            "closed. Ask a current admin to open a new one.",
+            ephemeral=True,
+        )
+        return False
+    return True
+
+
+def _split_roles(guild, role_ids):
+    """Split picked roles into grantable ones and excluded ones.
+
+    @everyone and managed (integration/bot) roles are never granted:
+    an @everyone allow matches every member in `custom_perm_decision`,
+    so one mis-tap would hand every grantable command to the whole
+    server. Deleted roles (no longer in the guild) are excluded too.
+    Returns (eligible_ids, excluded_labels).
+    """
+    eligible = []
+    excluded = []
+    for role_id in role_ids:
+        role = guild.get_role(role_id) if guild else None
+        if role is None:
+            excluded.append("deleted role %s" % role_id)
+        elif role.is_default():
+            excluded.append("@everyone")
+        elif role.managed:
+            excluded.append("@%s (managed role)" % role.name)
+        else:
+            eligible.append(role_id)
+    return eligible, excluded
 
 
 def _target_label(guild, target_type, target_id):
@@ -344,7 +662,7 @@ def _target_label(guild, target_type, target_id):
 
 
 def _role_sort_key(guild, role_id):
-    """Sort roles for /perm_overview: highest in the hierarchy first,
+    """Sort roles for /perm overview: highest in the hierarchy first,
     then by name. Unknown roles sort last."""
     try:
         role = guild.get_role(int(role_id))
@@ -452,13 +770,14 @@ def _user_display(guild, target_id):
 class Permissions(commands.Cog):
     """Admin-only setup for the custom per-command permissions system."""
 
+    perm = SlashCommandGroup("perm", "Manage custom per-command permissions.", guild_ids=GUILD_IDS)
+
     def __init__(self, bot):
         self.bot = bot
 
-    @discord.slash_command(
-        name="perm_allow",
+    @perm.command(
+        name="allow",
         description="Grant (or deny) a role or user a command.",
-        guild_ids=GUILD_IDS,
     )
     @extra_help(
         "Give a role a command (e.g. Trial Moderator can use timeout "
@@ -516,10 +835,9 @@ class Permissions(commands.Cog):
             ephemeral=True,
         )
 
-    @discord.slash_command(
-        name="perm_remove",
+    @perm.command(
+        name="remove",
         description="Remove a custom permission grant.",
-        guild_ids=GUILD_IDS,
     )
     @extra_help(
         "Remove a role or user grant for one command, so the command "
@@ -580,10 +898,9 @@ class Permissions(commands.Cog):
                 ephemeral=True,
             )
 
-    @discord.slash_command(
-        name="perm_list",
+    @perm.command(
+        name="list",
         description="Show the custom permission grants in this server.",
-        guild_ids=GUILD_IDS,
     )
     @extra_help(
         "List every custom permission grant in this server, or just the "
@@ -630,32 +947,32 @@ class Permissions(commands.Cog):
             if command
             else "Custom permissions in this server"
         )
-        embed = discord.Embed(title=title, color=discord.Color.blurple())
-        # Keep the embed under Discord's field limits; split if needed.
-        chunk = ""
-        field_no = 1
-        for line in lines:
-            if len(chunk) + len(line) + 1 > 1000:
-                embed.add_field(
-                    name="Grants %d" % field_no, value=chunk, inline=False
-                )
-                field_no += 1
-                chunk = ""
-            chunk += line + "\n"
-        if chunk:
-            embed.add_field(
-                name="Grants %d" % field_no, value=chunk, inline=False
-            )
-        embed.set_footer(
-            text="Server admins always keep access. Commands with no "
-            "grants use their normal Discord permission check."
+        # Route through _chunk_embeds like /perm commands and
+        # /perm overview: the old code split lines into 1000-char
+        # fields with no cap on field count (25 max) or total
+        # characters (6000 max per message), so on a grant-heavy
+        # server ctx.respond failed with an API error and the admin
+        # got nothing. _chunk_embeds splits on line boundaries and
+        # packs fields into as many embeds as needed.
+        embeds = _chunk_embeds(
+            title,
+            discord.Color.blurple(),
+            [("Grants", "\n".join(lines))],
+            footer=(
+                "Server admins always keep access. Commands with no "
+                "grants use their normal Discord permission check."
+            ),
         )
-        await ctx.respond(embed=embed, ephemeral=True)
+        # Discord caps the TOTAL characters across all embeds in one
+        # message at 6000, not just each embed, so send one embed per
+        # message: the first as the reply, the rest as followups.
+        await ctx.respond(embed=embeds[0], ephemeral=True)
+        for extra in embeds[1:]:
+            await ctx.followup.send(embed=extra, ephemeral=True)
 
-    @discord.slash_command(
-        name="perm_bulk",
+    @perm.command(
+        name="bulk",
         description="Grant many roles many commands at once (multi-select builder)",
-        guild_ids=GUILD_IDS,
     )
     async def perm_bulk(
         self,
@@ -663,7 +980,9 @@ class Permissions(commands.Cog):
     ):
         """Open the bulk builder: pick as many roles as you want, then
         tick as many commands as you want from the four lists (every
-        grantable command is shown at once), then Grant."""
+        grantable command is shown at once), then preview the grant
+        and confirm it. Nothing is written until you confirm;
+        @everyone and managed roles are never granted."""
         if not _is_admin(ctx):
             await ctx.respond(
                 "Only a server admin can set up custom permissions.",
@@ -684,10 +1003,9 @@ class Permissions(commands.Cog):
             ephemeral=True,
         )
 
-    @discord.slash_command(
-        name="perm_commands",
+    @perm.command(
+        name="commands",
         description="Show every command and which roles (and users) have it",
-        guild_ids=GUILD_IDS,
     )
     async def perm_commands(
         self,
@@ -744,11 +1062,6 @@ class Permissions(commands.Cog):
                 "permission check. Per-user grants are marked (user)."
             ),
         )
-        print(
-            "[PERM] /perm_commands: %d fields -> %d embeds, sizes=%s"
-            % (len(fields), len(embeds), [len(e) for e in embeds]),
-            flush=True,
-        )
         # Discord caps the TOTAL characters across all embeds in one
         # message at 6000, not just each embed, so send one embed per
         # message: the first as the reply, the rest as followups.
@@ -756,10 +1069,9 @@ class Permissions(commands.Cog):
         for extra in embeds[1:]:
             await ctx.followup.send(embed=extra, ephemeral=True)
 
-    @discord.slash_command(
-        name="perm_overview",
+    @perm.command(
+        name="overview",
         description="Show what each role can do, and any per-user grants",
-        guild_ids=GUILD_IDS,
     )
     async def perm_overview(
         self,
@@ -782,7 +1094,7 @@ class Permissions(commands.Cog):
         if not grants:
             await ctx.respond(
                 "No custom permission grants are set in this server. "
-                "Use /perm_allow or /perm_bulk to add some.",
+                "Use /perm allow or /perm bulk to add some.",
                 ephemeral=True,
             )
             return
@@ -842,11 +1154,6 @@ class Permissions(commands.Cog):
                 "Per-user grants override what the person's roles allow."
             ),
         )
-        print(
-            "[PERM] /perm_overview: %d fields -> %d embeds, sizes=%s"
-            % (len(fields), len(embeds), [len(e) for e in embeds]),
-            flush=True,
-        )
         # Discord caps the TOTAL characters across all embeds in one
         # message at 6000, not just each embed, so send one embed per
         # message: the first as the reply, the rest as followups.
@@ -854,10 +1161,9 @@ class Permissions(commands.Cog):
         for extra in embeds[1:]:
             await ctx.followup.send(embed=extra, ephemeral=True)
 
-    @discord.slash_command(
-        name="perm_reset",
+    @perm.command(
+        name="reset",
         description="Remove custom permission grants (preview first, confirm to delete)",
-        guild_ids=GUILD_IDS,
     )
     async def perm_reset(
         self,
@@ -922,30 +1228,34 @@ class Permissions(commands.Cog):
                 ephemeral=True,
             )
             return
+        scope_key = _perm_reset_scope_key(role, user, command)
         if not confirm:
-            preview = []
-            for g in matching[:15]:
-                label = _target_label(
-                    ctx.guild, g.get("target_type"), g.get("target_id")
-                )
-                verdict = "allow" if g.get("allowed") else "DENY"
-                preview.append(
-                    "`%s` -- %s (%s)" % (g.get("command"), label, verdict)
-                )
-            if len(matching) > 15:
-                preview.append("...and %d more" % (len(matching) - 15))
             await ctx.respond(
-                "This would remove **%d** grant%s for %s:\n%s\n\n"
-                "Re-run with `confirm: True` to actually delete them."
-                % (
-                    len(matching),
-                    "s" if len(matching) != 1 else "",
-                    scope,
-                    "\n".join(preview),
-                ),
+                _perm_reset_preview_text(ctx.guild, scope, matching)
+                + "\n\nRe-run with `confirm: True` within 5 minutes to "
+                "actually delete them.",
                 ephemeral=True,
             )
+            _perm_reset_record_preview(
+                ctx.guild.id, ctx.author.id, scope_key, len(matching))
             return
+        if not _perm_reset_preview_fresh(
+                ctx.guild.id, ctx.author.id, scope_key, len(matching)):
+            # No preview for this scope (or it expired, or the grants
+            # changed since): show the preview instead of deleting,
+            # and record it so a second confirm=True works.
+            await ctx.respond(
+                _perm_reset_preview_text(ctx.guild, scope, matching)
+                + "\n\nNothing was deleted: `confirm: True` only works "
+                "within 5 minutes of a preview for the same scope. "
+                "Re-run with `confirm: True` to actually delete them.",
+                ephemeral=True,
+            )
+            _perm_reset_record_preview(
+                ctx.guild.id, ctx.author.id, scope_key, len(matching))
+            return
+        _perm_reset_previews.pop(
+            (ctx.guild.id, ctx.author.id, scope_key), None)
         if role is not None:
             removed = await delete_command_permissions_for_target(
                 str(ctx.guild.id), "role", str(role.id)

@@ -19,6 +19,11 @@ from data.DB.Storage.storage import (
 # long a channel can stay locked; the cap here just keeps a typo like
 # 99999 minutes from locking a channel effectively forever).
 LOCKDOWN_MAX_MINUTES = 10080
+# Default server-wide lock when /lockdown lockall is given no duration:
+# a timed lock that heals itself, so one tap can never silence the
+# whole server forever. A single-channel /lockdown lock can still be
+# permanent; the server-wide switch cannot.
+LOCKALL_DEFAULT_MINUTES = 60
 # Discord slowmode cap: 6 hours.
 SLOWMODE_MAX_SECONDS = 21600
 
@@ -49,6 +54,98 @@ def _fmt_minutes(minutes):
     return f"{minutes}m"
 
 
+class LockallConfirmView(discord.ui.View):
+    """Confirm a server-wide lockdown before any channel is touched.
+
+    The command only builds the list of channels; the Confirm button
+    re-checks the lockall gate at click time (so someone who lost the
+    grant after the prompt opened cannot fire another mod's lock) and
+    then runs the lock loop. A DB error on one channel is logged and
+    reported, and the loop keeps going -- a bad save must not abort a
+    server-wide lock half-way through and leave the interaction failed.
+    """
+
+    def __init__(self, cog, guild, moderator_id, reason, unlock_at,
+                 to_lock, already_locked):
+        super().__init__(timeout=180)
+        self.cog = cog
+        self.guild = guild
+        self.moderator_id = moderator_id
+        self.reason = reason
+        self.unlock_at = unlock_at
+        self.to_lock = list(to_lock)
+        self.already_locked = list(already_locked)
+        self.done = False
+
+    @discord.ui.button(label="Yes, lock all channels",
+                       style=discord.ButtonStyle.danger)
+    async def confirm(self, button: discord.ui.Button,
+                      interaction: discord.Interaction):
+        if self.done:
+            await interaction.response.send_message(
+                "This lockdown was already confirmed or cancelled.",
+                ephemeral=True)
+            return
+        self.done = True
+        from utils.permissions import (check_interaction_permission,
+                                       _default_manage_or_admin)
+        if not await check_interaction_permission(
+                interaction, "lockdown_lockall", _default_manage_or_admin):
+            return
+        await interaction.response.defer(ephemeral=True)
+        gid = str(self.guild.id)
+        locked, skipped, failed = [], [], []
+        for channel in self.to_lock:
+            try:
+                if await get_lockdown(gid, str(channel.id)):
+                    skipped.append(channel.mention)
+                    continue
+                await self.cog._lock_channel(
+                    self.guild, channel, self.moderator_id, self.reason,
+                    self.unlock_at, "server")
+                locked.append(channel.mention)
+            except (discord.Forbidden, discord.HTTPException):
+                failed.append(f"{channel.mention} (no permission)")
+            except Exception as e:
+                print(f"[Lockdown] lockall: failed to lock "
+                      f"#{channel.name}: {e!r}")
+                failed.append(f"{channel.mention} (save failed -- "
+                              f"check the channel)")
+        timer = f" Auto-unlocks <t:{self.unlock_at}:R>."
+        lines = [f"Server lockdown: **{len(locked)}** channels locked.{timer}"]
+        total_skipped = len(skipped) + len(self.already_locked)
+        if total_skipped:
+            lines.append(f"Already locked, left alone: {total_skipped}.")
+        if failed:
+            lines.append("Could not lock (%d): %s" % (
+                len(failed),
+                ", ".join(failed[:10]) + ("..." if len(failed) > 10 else "")))
+        await interaction.followup.send("\n".join(lines), ephemeral=True)
+        await self.cog._log(self.guild, discord.Embed(
+            title="Server Locked Down",
+            description=f"{len(locked)} channels locked by "
+                        f"<@{self.moderator_id}>."
+                        + f" Auto-unlock <t:{self.unlock_at}:R>."
+                        + (f" Reason: {self.reason}" if self.reason else ""),
+            color=discord.Color.red(),
+            timestamp=discord.utils.utcnow()))
+        self.stop()
+
+    @discord.ui.button(label="Cancel", style=discord.ButtonStyle.secondary)
+    async def cancel(self, button: discord.ui.Button,
+                     interaction: discord.Interaction):
+        if self.done:
+            await interaction.response.send_message(
+                "This lockdown was already confirmed or cancelled.",
+                ephemeral=True)
+            return
+        self.done = True
+        await interaction.response.edit_message(
+            content="Server lockdown cancelled -- nothing was locked.",
+            view=None)
+        self.stop()
+
+
 class Lockdown(commands.Cog):
     """Channel/server lockdown, slowmode, and timed auto-unlock.
 
@@ -70,15 +167,26 @@ class Lockdown(commands.Cog):
 
     async def _lock_channel(self, guild, channel, moderator_id, reason,
                             unlock_at, scope):
-        """Deny @everyone send_messages; record the previous value.
+        """Save the lock record first, then deny @everyone send_messages.
+
+        The record is the source of truth for /lockdown status and the
+        auto-unlock ticker, so it must exist (and be verified readable)
+        before Discord is touched. The old order -- edit first, save
+        second -- left a channel locked with no record when the save
+        failed: invisible to status, never auto-unlocked. If the save
+        fails here, the channel is untouched and the DB error
+        propagates to the caller. If the Discord edit then fails with
+        Forbidden/HTTPException, the edit definitely did not apply, so
+        the record is rolled back; if the rollback itself fails, the
+        stale row is logged loudly (it stays visible in status and
+        self-heals at the auto-unlock tick). Any other edit error is
+        re-raised with the record kept -- the edit may have applied,
+        and a stale visible record is safer than an invisible lock.
 
         Returns the previous send_messages value (True/False/None).
         """
         everyone = guild.default_role
         previous = channel.overwrites_for(everyone).send_messages
-        await channel.set_permissions(
-            everyone, send_messages=False,
-            reason=reason or f"Channel locked by {moderator_id}")
         await save_lockdown(str(guild.id), str(channel.id), {
             "previous_send_messages": _prev_to_int(previous),
             "locked_by": str(moderator_id),
@@ -87,14 +195,47 @@ class Lockdown(commands.Cog):
             "reason": reason or "",
             "scope": scope,
         })
+        saved = await get_lockdown(str(guild.id), str(channel.id))
+        if not saved:
+            raise RuntimeError(
+                f"lock record for #{channel.name} did not persist")
+        try:
+            await channel.set_permissions(
+                everyone, send_messages=False,
+                reason=reason or f"Channel locked by {moderator_id}")
+        except (discord.Forbidden, discord.HTTPException):
+            try:
+                await delete_lockdown(str(guild.id), str(channel.id))
+            except Exception as e:
+                print(f"[Lockdown] _lock_channel: Discord edit failed "
+                      f"for #{channel.name} AND the lock-record rollback "
+                      f"failed: {e!r} -- stale row remains, visible in "
+                      f"/lockdown status and cleared by the auto-unlock "
+                      f"tick")
+            raise
+        except Exception:
+            print(f"[Lockdown] _lock_channel: unexpected error locking "
+                  f"#{channel.name} -- lock record KEPT (the edit may "
+                  f"have applied; a visible record beats an invisible "
+                  f"lock)")
+            raise
         return previous
 
     async def _unlock_channel(self, guild, row, reason):
         """Restore the recorded @everyone overwrite and drop the row.
 
-        Returns (ok, note): ok is False when the channel is gone or
-        the bot could not edit it; the row is still dropped so a
-        dead lock never blocks the status list.
+        Returns (ok, note). When the Discord edit fails, the row is
+        KEPT on purpose: the channel is still locked, so the record
+        must stay visible in /lockdown status and be retried -- the
+        auto-unlock ticker picks a still-due timed lock up again on
+        its next tick, and a permanent lock can be retried with
+        /lockdown unlock once the bot can edit the channel again.
+        The old behavior deleted the row on failure, which left a
+        locked channel with no record and no retry -- only recoverable
+        via the manual-unlock fallback, which resets the overwrite to
+        unset instead of restoring the recorded previous value. A row
+        is only dropped when the channel itself is gone (nothing left
+        to unlock).
         """
         gid, cid = row["guild_id"], row["channel_id"]
         channel = guild.get_channel(int(cid))
@@ -107,8 +248,15 @@ class Lockdown(commands.Cog):
                 send_messages=_int_to_prev(row.get("previous_send_messages")),
                 reason=reason)
         except (discord.Forbidden, discord.HTTPException) as e:
-            await delete_lockdown(gid, cid)
-            return False, f"could not edit permissions ({e.__class__.__name__})"
+            print(f"[Lockdown] _unlock_channel: could not edit "
+                  f"permissions for #{channel.name} in {guild.name} "
+                  f"({e.__class__.__name__}) -- lock record KEPT, the "
+                  f"channel is still locked; a timed lock is retried by "
+                  f"the auto-unlock ticker, a permanent lock by "
+                  f"/lockdown unlock once the bot can edit the channel")
+            return False, (f"could not edit permissions "
+                           f"({e.__class__.__name__}) -- the lock record "
+                           f"was kept, so the channel is still locked")
         await delete_lockdown(gid, cid)
         return True, "unlocked"
 
@@ -132,7 +280,7 @@ class Lockdown(commands.Cog):
         if unlock_at:
             embed.add_field(name="Auto-unlock",
                             value=f"<t:{unlock_at}:R>", inline=True)
-        embed.set_footer(text="Kush Bush Logger")
+        embed.set_footer(text="Powered by Havenly Bot")
         return embed
 
     def _resolve_channel(self, ctx, channel):
@@ -166,7 +314,11 @@ class Lockdown(commands.Cog):
                 channel = guild.get_channel(int(row["channel_id"]))
                 ok, note = await self._unlock_channel(
                     guild, row, "Timed lockdown expired (automatic)")
-                if channel is not None:
+                if channel is None:
+                    # Channel is gone: _unlock_channel already cleared
+                    # the stale row, nothing to log.
+                    continue
+                if ok:
                     print(f"[Lockdown] Auto-unlocked #{channel.name} in "
                           f"{guild.name} (ok={ok}, {note})")
                     await self._log(guild, discord.Embed(
@@ -174,6 +326,25 @@ class Lockdown(commands.Cog):
                         description=f"{channel.mention} has been unlocked "
                                     f"(timed lockdown expired).",
                         color=discord.Color.green(),
+                        timestamp=discord.utils.utcnow()))
+                else:
+                    # The channel is STILL locked: _unlock_channel kept
+                    # the row on purpose, so the ticker retries it next
+                    # minute. Say so loudly instead of logging a
+                    # success that never happened.
+                    print(f"[Lockdown] Auto-unlock FAILED for "
+                          f"#{channel.name} in {guild.name}: {note} -- "
+                          f"the channel is still locked; the lock record "
+                          f"was kept and will be retried on the next tick")
+                    await self._log(guild, discord.Embed(
+                        title="Lockdown Auto-Unlock Failed",
+                        description=f"{channel.mention} could NOT be "
+                                    f"unlocked when its timed lockdown "
+                                    f"expired: {note}. The channel is "
+                                    f"still locked; the lock record was "
+                                    f"kept and will be retried on the "
+                                    f"next auto-unlock tick.",
+                        color=discord.Color.red(),
                         timestamp=discord.utils.utcnow()))
             except Exception:
                 # One bad row (DB error, malformed row, Discord error)
@@ -236,6 +407,15 @@ class Lockdown(commands.Cog):
             return await ctx.respond(
                 f"Could not lock {target.mention}: I do not have permission "
                 f"to edit that channel's overwrites.", ephemeral=True)
+        except Exception as e:
+            # A save failure (record write or verify) means the channel
+            # was left exactly as it was -- never report it as locked.
+            print(f"[Lockdown] lockdown_lock: could not save lock record "
+                  f"for #{target.name}: {e!r}")
+            return await ctx.respond(
+                f"Could not lock {target.mention}: the lock record could "
+                f"not be saved, so the channel's lock state was not "
+                f"changed. Try again.", ephemeral=True)
         timer = (f" Auto-unlocks <t:{unlock_at}:R>."
                  if unlock_at else " No auto-unlock set.")
         await ctx.respond(
@@ -293,50 +473,57 @@ class Lockdown(commands.Cog):
         await ctx.respond(f"{target.mention} is not locked.", ephemeral=True)
 
     @lockdown.command(name="lockall", description="Lock every text channel in the server.")
-    @extra_help("Server-wide raid/spam switch: denies @everyone send_messages in every text channel. Channels already locked by the bot are left alone (their timers are not touched). A duration sets a timed server lock that auto-unlocks channel by channel. Forum channels are not locked -- lock those individually if needed.")
+    @extra_help("Server-wide raid/spam switch: denies @everyone send_messages in every text channel. Needs Manage Server or Administrator, and always asks for confirmation first -- one tap can no longer silence the whole server. Channels already locked by the bot are left alone (their timers are not touched). A duration in minutes sets a timed lock that auto-unlocks channel by channel; with no duration the lock defaults to 60 minutes, so a server-wide lock can never be permanent by accident (use /lockdown lock for a permanent single-channel lock). Forum channels are not locked -- lock those individually if needed.")
     async def lockdown_lockall(self, ctx, duration: int = None,
                                reason: str = None):
-        from utils.permissions import check_slash_permission, _default_manage_channels_or_admin
-        if not await check_slash_permission(ctx, "lockdown_lockall", _default_manage_channels_or_admin):
+        from utils.permissions import check_slash_permission, _default_manage_or_admin
+        if not await check_slash_permission(ctx, "lockdown_lockall", _default_manage_or_admin):
             return
         if ctx.guild is None:
             return await ctx.respond("Lockdown commands only work in a server.",
                                      ephemeral=True)
-        if duration is not None and (duration < 1 or duration > LOCKDOWN_MAX_MINUTES):
+        defaulted = duration is None
+        if defaulted:
+            duration = LOCKALL_DEFAULT_MINUTES
+        if duration < 1 or duration > LOCKDOWN_MAX_MINUTES:
             return await ctx.respond(
                 f"Duration must be between 1 and {LOCKDOWN_MAX_MINUTES} minutes "
                 f"(1 week).", ephemeral=True)
-        await ctx.defer(ephemeral=True)
-        unlock_at = (int(time.time()) + duration * 60) if duration else None
+        unlock_at = int(time.time()) + duration * 60
         gid = str(ctx.guild.id)
-        locked, skipped, failed = [], [], []
+        to_lock, already_locked = [], []
         for channel in ctx.guild.text_channels:
-            if await get_lockdown(gid, str(channel.id)):
-                skipped.append(channel.mention)
-                continue
             try:
-                await self._lock_channel(ctx.guild, channel, ctx.user.id,
-                                         reason, unlock_at, "server")
-                locked.append(channel.mention)
-            except (discord.Forbidden, discord.HTTPException):
-                failed.append(channel.mention)
-        timer = (f" Auto-unlocks <t:{unlock_at}:R>."
-                 if unlock_at else " No auto-unlock set.")
-        lines = [f"Server lockdown: **{len(locked)}** channels locked.{timer}"]
-        if skipped:
-            lines.append(f"Already locked, left alone: {len(skipped)}.")
-        if failed:
-            lines.append(f"Could not lock ({len(failed)}): "
-                         + ", ".join(failed[:10])
-                         + ("..." if len(failed) > 10 else ""))
-        await ctx.followup.send("\n".join(lines), ephemeral=True)
-        await self._log(ctx.guild, discord.Embed(
-            title="Server Locked Down",
-            description=f"{len(locked)} channels locked by {ctx.user}."
-                        + (f" Auto-unlock <t:{unlock_at}:R>." if unlock_at else "")
-                        + (f" Reason: {reason}" if reason else ""),
-            color=discord.Color.red(),
-            timestamp=discord.utils.utcnow()))
+                locked = await get_lockdown(gid, str(channel.id))
+            except Exception as e:
+                # A read failure must not abort the prompt: treat the
+                # channel as unlocked here; the confirm loop re-checks
+                # and reports the failure per channel if it persists.
+                print(f"[Lockdown] lockall: could not read lock state "
+                      f"for #{channel.name}: {e!r}")
+                locked = None
+            if locked:
+                already_locked.append(channel)
+            else:
+                to_lock.append(channel)
+        if not to_lock:
+            return await ctx.respond(
+                "Every text channel is already locked by the bot -- "
+                "nothing to do.", ephemeral=True)
+        text = (f"Lock **{len(to_lock)}** text channel(s) for "
+                f"**{_fmt_minutes(duration)}**"
+                f"{' (default -- no duration given)' if defaulted else ''}? "
+                f"Auto-unlock <t:{unlock_at}:R>.")
+        if already_locked:
+            text += (f" {len(already_locked)} channel(s) already locked, "
+                     f"left alone.")
+        if reason:
+            text += f" Reason: {reason}"
+        await ctx.respond(
+            text,
+            view=LockallConfirmView(self, ctx.guild, ctx.user.id, reason,
+                                    unlock_at, to_lock, already_locked),
+            ephemeral=True)
 
     @lockdown.command(name="unlockall", description="Unlock every channel the bot has locked in this server.")
     @extra_help("Reverses /lockdown lockall and any individual bot locks in one go, restoring each channel's previous @everyone permission. Channels locked by hand are not touched -- unlock those with /lockdown unlock.")

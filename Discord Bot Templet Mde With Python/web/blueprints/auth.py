@@ -135,7 +135,7 @@ def discord_request(
 
     headers = {
         "User-Agent":
-            "Kush Bush Dashboard/1.0"
+            "Little Haven Dashboard/1.0"
     }
 
     if access_token:

@@ -5,40 +5,49 @@ Source: `cogs/ServerSettings.py`.
 `/bot_settings` (Administrator, guild-scoped, grantable) shows every
 bot system's on/off state and key config in one place, so an admin
 doesn't have to hunt through each system's own command. It reads the
-live config for this server and presents it as a set of embeds.
+live config for this server and presents it as a set of embeds. The
+command itself runs on **Havenly Helper**; the data it shows comes
+from the shared Postgres database both bots use.
 
 ## What's shown
 
 | Section | What it reads |
 |---|---|
 | Levels & XP | `levels_enabled`, XP rate, cooldown, level channel, game XP, no-XP channel count, level roles, XP event, level-up message |
-| Voice XP | `enabled`, XP/min, daily cap |
-| Automod | Which filters are on (spam, invites, external links, caps), spam threshold/window |
+| Voice XP | Deliberately disabled — shows as off/unconfigured (`enabled`, XP/min, daily cap) |
+| Automod | Deliberately disabled — shows as off/unconfigured (which filters are on: spam, invites, external links, caps; spam threshold/window) |
 | Logger | Log channels set (per category) and how many of the 29 events are on |
 | Lockdown | Channels the bot currently has locked |
 | WatchList | Watched user count, log channel |
-| Tickets | On/off, panel channel, open ticket count, next ticket number |
+| Tickets | Deliberately disabled — shows as off/unconfigured (on/off, panel channel, open ticket count, next ticket number) |
 | QOTD | On/off, channel |
 | Debug | On/off (global, not per-server) |
 | Introductions | Intro channel, role, log channel, auto-assign/scan toggles |
-| Appeals | On/off |
+| Appeals | Deliberately disabled — shows as off/unconfigured (on/off) |
 | Ban log | Evidence channel |
 | Timeout board | Board channel |
-| Badges | Custom badge count + names |
+| Badges | Deliberately disabled — shows as off/unconfigured (custom badge count + names) |
+
+**Seven systems are deliberately disabled** (2026-11-12): their cogs
+are commented out in `bot.py` and their commands are **not
+registered** on either bot — VoiceXP, Tickets, Appeals, Automod,
+AutoThreads, TimeCmd, and CustomBadges. Their sections above show as
+off/unconfigured. That is expected, not a fault — do not re-enable
+them. (AutoThreads and TimeCmd have no section in this overview.)
 
 ## Design notes
 
 - **One section, one store.** Each section reads its own storage
-  (the async `data/DB/Storage/storage.py` helpers, the Logger's own
-  SQLite DB, the watchlist store, or the debug flag file) and is
+  (the async `data/DB/Storage/storage.py` helpers, the Logger's
+  Postgres tables, the watchlist store, or the debug flag file) and is
   wrapped so one unreadable system shows "couldn't read" instead of
   breaking the whole overview. Sections run concurrently with
   `asyncio.gather(..., return_exceptions=True)`.
-- **Blocking reads stay off the event loop.** The Logger (sync
-  `sqlite3`) and the watchlist store (sync) are read via
-  `asyncio.to_thread`.
+- **Storage is Postgres now.** Every section reads the shared Postgres
+  database (`havenly`) — the Logger's old SQLite database and the sync
+  watchlist store are gone.
 - **Custom permissions are intentionally left out.** They have their
-  own `/perm_overview` and `/perm_commands`; the overview's footer
+  own `/perm overview` and `/perm commands`; the overview's footer
   points there.
 - **One embed per message.** Discord caps the total characters across
   all embeds in one message at 6000, not 6000 per embed, so the

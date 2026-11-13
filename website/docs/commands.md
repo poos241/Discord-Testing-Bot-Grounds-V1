@@ -1,254 +1,231 @@
 # Commands
 
-Every slash command (and the one context-menu command) in the bot, built from the actual code — **143 slash commands + 1 user context-menu command = 144 commands**. See the README's [Complete command reference](https://github.com/poos241/Discord-Testing-Bot-Grounds-V1#-complete-command-reference) for the same list with full options. Commands are guild-scoped to `GUILD_IDS` in `config.py` unless the Scope column says **Global**.
+How slash commands are built, registered, split across the two bots,
+and gated by the custom permission system. This page is the
+**architecture** reference — it does not list every command. For the
+full per-command reference (every command, its options, and which bot
+runs it), see the README's
+[Systems](https://github.com/poos241/Discord-Testing-Bot-Grounds-V1#systems)
+section. If a command is not in the README, it is not registered on
+either bot.
 
-**Custom permissions:** admin commands below show their *default* gate (usually Administrator or a Discord permission). The custom permissions system (`/perm_allow`, `/perm_bulk`, etc.) can grant a specific command to a specific role or user, overriding that default; server admins always pass. See `/perm_overview` and `/perm_commands` in Discord for what is actually granted.
+## The live counts
 
-## admin_cog
+Counts are the live Discord registrations, verified 2026-11-13
+against the Discord API on both guilds — **the API is the source of
+truth, not the code**. A bot can restart healthy and still have
+commands that never went live, so always verify a new command in the
+API (or in Discord) before calling it done.
 
-| Command | What it does | Options | Who can run it | Scope |
-|---|---|---|---|---|
-| `/timeout` | Times out a member, with a preset length or a free-form duration (max 28d); asks to replace if they already have an active timeout. | `member` (Member, required); `preset` (optional; Light—5m, Short—15m, Medium—1h, Long—1d, Extended—1w, Severe—2w); `duration` (optional string, e.g. `1h30m`); `reason` (optional, default "No reason given") | Manage Server / Admin (in-callback `_is_manager`) | Guild |
-| `/timeout_board` | Posts, moves, shows, or removes the "Active Timeouts" board (lists every active Discord timeout and tempban, soonest expiry first, auto-refreshing). | `channel` (TextChannel, optional — where to post/move the board); `remove` (bool, optional, default false) | Manage Server / Admin (in-callback `_is_manager`) | Guild |
-| `/clear_user` | Deletes a user's messages in one channel or all channels. | `target_user` (User, optional); `user_id` (string, optional, for users who left); `channel` (TextChannel, optional); `amount` (int, optional, default 100) | Administrator | Global |
-| `/userinfo` | Shows a detailed user card with a self-updating mini mod panel (see panel paragraph at the end). | `member` (Member, optional); `user` (string, optional — user ID, mention, or username); `private` (bool, optional, default true — only you see the card); `test_mode` (bool, optional, default false — simulates actions) | Administrator | Guild |
-| `/remove_user_role` | Removes a role from a user. | `member` (Member, required); `role` (Role, required) | Administrator | Global |
-| `/add_user_role` | Gives a role to a user. | `member` (Member, required); `role` (Role, required) | Administrator | Global |
-| `/rename_bot` | Changes the bot's nickname in the server. | `new_nick` (string, required) | Administrator | Global |
-| `/rename_user` | Changes a user's nickname. | `member` (Member, required); `new_nick` (string, required) | Administrator | Global |
-| `/reset_user_name` | Clears a user's nickname (removes the custom nickname). | `member` (Member, required) | Administrator | Global |
-| `/shutdown_bot` | Shuts the bot down (stays down until restarted). | none | Bot owner only | Global |
-| `/restart_bot` | Restarts the bot. | none | Bot owner only | Global |
-| `/restart_web` | Restarts the website (web dashboard). | none | Bot owner only | Global |
+| Bot | Top-level | Runnable slash commands |
+| --- | --- | --- |
+| Havenly Bot 2.0 (main) | 54 | 83 |
+| Havenly Helper (worker) | 11 | 30 |
+| Shared | 0 | 0 |
 
-## fun_cog
+The main bot also has one user context-menu command,
+**Check Introduction** (right-click a user → Apps). Five group names
+are shared between the bots (`banlog`, `intro`, `modlogs`, `qotd`,
+`watch`) but they are split by subcommand — zero runnable commands
+are registered on both bots. See [Two bots](./two-bots.md) for the
+split and why it exists.
 
-| Command | What it does | Options | Who can run it | Scope |
-|---|---|---|---|---|
-| `/eatyeet` | Starts a round of Eat It or Yeet It. | `duration` (int, optional, default 30s; choices: 30s, 1h, 2h, 4h, 8h, 12h, 24h); `source` (string, optional, default auto; Auto = mix of API + local, Local list only, API only) | No gate (everyone) | Guild |
-| `/eatyeet_end` | Ends the active round in this channel early. | none | Round starter or Administrator (in-callback) | Guild |
-| `/eatyeet_leaderboard` | Shows the top 10 players by points. | none | No gate (everyone) | Guild |
-| `/eatyeet_stats` | Shows a player's rounds played, points, majority-vote rate, and streaks. | `user` (User, optional — defaults to you) | No gate (everyone) | Guild |
-| `/eatyeet_suggest` | Suggests a food for the community pool (credited to you). | `food` (string, required, 3–100 chars) | No gate (everyone) | Guild |
-| `/eatyeet_history` | Shows the last 10 finished rounds with foods and verdicts. | none | No gate (everyone) | Guild |
+## How a command is defined
 
-## Level_system
+Commands are pycord slash commands, organised into
+**SlashCommandGroup** families (one group per system area) plus
+standalone top-level commands. The structural rules:
 
-| Command | What it does | Options | Who can run it | Scope |
-|---|---|---|---|---|
-| `/set_xp_rate` | Sets the min/max XP gained per message. | `minimum` (int, required); `maximum` (int, required) | Administrator | Guild |
-| `/set_cooldown` | Sets the cooldown in seconds between XP gains per user (0 = no cooldown). | `seconds` (int, required) | Administrator | Guild |
-| `/set_level_channel` | Sets the channel where level-up messages are posted. | `channel` (TextChannel, required) | Administrator | Guild |
-| `/level` | Shows your (or another member's) level and XP progress. | `member` (Member, optional) | No gate (everyone) | Guild |
-| `/leaderboard` | Shows the top 10 users by level and XP. | none | No gate (everyone) | Guild |
-| `/add_xp` | Adds XP to a user (level-ups are announced like normal). | `member` (Member, required); `amount` (int, required) | Administrator | Guild |
-| `/resetxp` | Resets a user's XP to 0 and level to 1. | `member` (Member, required) | Administrator | Guild |
-| `/cleardata` | Clears all level data for this server. | none | Administrator | Guild |
-| `/getxpsettings` | Shows the server's XP settings (rate, cooldown, level-up channel/message, role rewards, no-XP channels, XP events, game XP toggle). | none | No gate (everyone) | Guild |
-| `/set_level_role` | Sets a role reward for reaching a level (cumulative). | `level` (int, required); `role` (Role, required) | Administrator | Guild |
-| `/remove_level_role` | Removes a level's role reward (members who already have it keep it). | `level` (int, required) | Administrator | Guild |
-| `/toggle_game_xp` | Toggles level XP earned by voting in Eat It or Yeet It (on by default). | none | Administrator | Guild |
-| `/toggle_no_xp` | Toggles message XP on/off for a channel. | `channel` (TextChannel, required) | Administrator | Guild |
-| `/toggle_levels` | Turns the whole level system on/off for this server (off by default — nothing earns XP while off). | none | Administrator | Guild |
-| `/toggle_level_messages` | Turns your own level-up messages on/off (you still earn XP when they are off). | none | No gate (everyone) | Guild |
-| `/no_xp_bulk` | Picks up to 25 channels at once, then disables XP in all of them (or turns XP back on). | none (channel picker) | Administrator | Guild |
-| `/xp_event` | Starts a server-wide bonus XP multiplier event (multiplier 2–5). | `minutes` (int, required); `multiplier` (int, optional, default 2) | Administrator | **Global** (no `guild_ids=` — the only Level command that is global) |
-| `/xp_event_end` | Ends a running XP event early. | none | Administrator | Guild |
-| `/daily` | Claims your daily XP bonus (once every 20h; consecutive-day streaks earn more). | none | No gate (everyone) | Guild |
-| `/cardcolor` | Sets your rank/level-up card accent color (hex, preset name, or `reset`). | `color` (string, required) | No gate (everyone) | Guild |
-| `/set_levelup_message` | Sets a custom level-up announcement (`{user}`, `{name}`, `{level}`); run with no text to reset to default. | `message` (string, optional) | Administrator | Guild |
-| `/rank` | Shows your rank card image (level, XP progress, server rank). | `member` (Member, optional) | No gate (everyone) | Guild |
+- **Define groups at module level, never as cog methods.** A group
+  defined inside a cog method does not survive the way pycord
+  registers commands. Register a module-level group with
+  `bot.add_application_command()` inside the package `setup()` that
+  loads the cogs.
+- **Register guild-scoped, not global.** Every command is registered
+  with `guild_ids=GUILD_IDS` (the test server and Little Haven, in
+  `config.py`). Global commands take up to an hour to propagate and
+  are not what this bot wants. The one known exception is
+  `/xp_event`, which is global while `/xp_event_end` is guild-scoped
+  — that asymmetry is a quirk, not a pattern to copy.
+- **Sync happens at startup, in `on_ready`.** The bot calls
+  `sync_commands(force=True)` once it is ready. Commands only appear
+  in Discord after a restart of the bot that owns them — and the
+  Helper only syncs at startup, so inviting the Helper to a new
+  guild needs a `havenly-helper` restart before its commands show up
+  there (see [Two bots](./two-bots.md)).
+- **The worker does not auto-sync.** pycord's `Bot.on_connect`
+  auto-syncs with no guild arguments, which 403s for the Helper on
+  guilds it has not joined and aborts the whole sync. The bot is
+  created with `auto_sync_commands=not WORKER_MODE`, so the Helper
+  relies on its explicit `on_ready` sync (to `client.guilds`) and
+  the main bot keeps the default behaviour.
+- **Answer Discord before slow work.** Defer the interaction before
+  any database write or other slow work, or the command fails with
+  "The application did not respond". If the reply must stay private,
+  defer **ephemeral from the start** — a public defer locks the whole
+  interaction public, and Discord ignores `ephemeral` on a later
+  followup.
 
-## VoiceXP
+## Discord's hard limits
 
-| Command | What it does | Options | Who can run it | Scope |
-|---|---|---|---|---|
-| `/voicexp optin` | Opts you in to earning XP for time in voice channels (needs 1+ other non-bot person; muted/deafened/AFK time never counts). | none | No gate (everyone) | Guild |
-| `/voicexp optout` | Opts you out of voice XP (banked totals are kept). | none | No gate (everyone) | Guild |
-| `/voicexp status` | Shows your (or another member's) voice XP stats (opt-in state, total voice time/XP, today's cap progress). | `member` (Member, optional) | No gate (everyone) | Guild |
-| `/voicexp leaderboard` | Shows the top 10 by total qualifying voice time (with voice XP). | none | No gate (everyone) | Guild |
-| `/voicexp config` | Shows the server's voice XP settings (enabled state, rate, cap, opt-in count). | none | Administrator | Guild |
-| `/voicexp setrate` | Sets XP earned per minute of voice time (1–10, default 1). | `rate` (int, required) | Administrator | Guild |
-| `/voicexp setcap` | Sets the daily voice XP cap per user (0 = no cap, default 100 XP per UTC day). | `cap` (int, required) | Administrator | Guild |
-| `/voicexp enable` | Enables voice XP for this server. | none | Administrator | Guild |
-| `/voicexp disable` | Disables voice XP for this server (banked totals and opt-ins are kept). | none | Administrator | Guild |
+Check these before adding or changing a command — Discord rejects the
+whole registration when one is broken, and the failure is silent from
+the bot's side (the old commands keep working; the new ones never go
+live):
 
-## WatchList
+- **100 guild application commands per guild, per bot.** The main bot
+  is at 54 top-level, the Helper at 11 — plenty of headroom now, but
+  count first. The bot hit this cap on 2026-11-11 (103 top-level,
+  sync failed `400/30032`), and the fix was merging command families
+  into groups (`/perm`, `/watch`, `/intro`, `/modlogs`, `/banlog`,
+  `/auto_thread`, `/logs`) — 103 → 68, then the split took the main
+  bot to 54. A merge or a removal is part of the plan for any new
+  top-level command, not a later fix. Treat a sync failure with error
+  400 code 30032 as a command-count failure.
+- **25 choices per slash option.** Split a long picker into
+  per-category subcommands instead of cutting useful options.
+- **Required options before optional ones.** Discord rejects a
+  command when a required option follows an optional one — check the
+  exact command payloads the bot will send, not just that the code
+  compiles. (This is why `/banlog delete`'s `confirm` is optional in
+  the form but enforced in code.)
+- **Modal labels at 45 characters or fewer.** Put examples and hints
+  in the placeholder text, not the label.
+- **10 attachments per slash command.** Attachment links expire after
+  24 hours — re-host screenshots by re-uploading to a stored evidence
+  channel instead of relying on the link.
 
-| Command | What it does | Options | Who can run it | Scope |
-|---|---|---|---|---|
-| `/watch_add` | Adds a user to the watch list (their messages are logged to the watch channel). | `user` (Member, required) | Manage Server / Admin | Global |
-| `/watch_remove` | Removes a user from the watch list. | `user` (Member, required) | Manage Server / Admin | Global |
-| `/watch_add_id` | Adds a user to the watch list by Discord ID (or mention). | `user_id` (string, required) | Manage Server / Admin | Global |
-| `/watch_remove_id` | Removes a user from the watch list by Discord ID. | `user_id` (string, required) | Manage Server / Admin | Global |
-| `/watch_list` | Shows everyone on the watch list. | none | Manage Server / Admin | Global |
-| `/watch_status` | Shows watch-list status (user count, log channel, logging state). | none | Manage Server / Admin | Global |
-| `/watch_info` | Shows details about one watched user (who added them and when). | `user` (Member, required) | Manage Server / Admin | Global |
-| `/watch_set_channel` | Sets the channel where watched users' messages are logged. | `channel` (TextChannel, required) | Manage Server / Admin | Global |
-| `/watch_clear` | Removes everyone from the watch list (with confirmation; already-sent logs are kept). | none | Manage Server / Admin | Global |
+Embed limits apply to command replies too: 6000 characters total
+across all embeds in one message (send one embed per message when the
+combined total would pass it), 1024 characters per embed field value
+(chunk long lists across fields on line boundaries, never mid-line),
+role mentions only in field values, never field names, and no
+timestamps in embed footers.
 
-## DebugCog
+## Which bot a command runs on
 
-| Command | What it does | Options | Who can run it | Scope |
-|---|---|---|---|---|
-| `/debug on` | Enables debug logging (persists via `data/.debug_enabled`). | none | Administrator or Manage Server | Guild |
-| `/debug off` | Disables debug logging. | none | Administrator or Manage Server | Guild |
-| `/debug status` | Shows whether debug mode is on or off. | none | Administrator or Manage Server | Guild |
-| `/debug test` | Prints a test debug line to the console + `data/debug.log`. | none | Administrator or Manage Server | Guild |
+The split is **Option C: setup vs. use** (see
+[Two bots](./two-bots.md)). The rule of thumb: if a command does
+something *right now* for a member or a mod, it lives on the main
+bot; if it *sets something up* or *runs a batch job*, it lives on the
+Helper. All 24 level commands stay on the main bot.
 
-## QOTD
+The split is implemented two ways:
 
-| Command | What it does | Options | Who can run it | Scope |
-|---|---|---|---|---|
-| `/qotd today` | Shows today's Question of the Day. | none | No gate (everyone) | Guild |
-| `/qotd history` | Looks back at past Questions of the Day. | `count` (int, optional, default 7, 1–25) | No gate (everyone) | Guild |
-| `/qotd submit` | Submits a question for a future QOTD (10–500 characters). | `question` (string, required) | No gate (everyone) | Guild |
-| `/qotd post` | Posts today's question right now. | none | Manage Messages / Admin | Guild |
-| `/qotd skip` | Replaces today's question with a fresh one. | none | Manage Messages / Admin | Guild |
-| `/qotd config` | Sets the QOTD channel, post time, timezone, or on/off. | `channel` (TextChannel, optional); `post_time` (string, optional, HH:MM 24-hour); `timezone` (string, optional, autocomplete); `enabled` (bool, optional) | Manage Messages / Admin | Guild |
-| `/qotd pending` | Lists submitted questions waiting for approval. | none | Manage Messages / Admin | Guild |
-| `/qotd approve` | Approves a submitted question into the rotation. | `question_id` (int, required — the pending question's #id) | Manage Messages / Admin | Guild |
-| `/qotd reject` | Rejects a submitted question. | `question_id` (int, required) | Manage Messages / Admin | Guild |
-| `/qotd remove` | Removes a question from this server's rotation. | `question_id` (int, required — from history or a post) | Manage Messages / Admin | Guild |
+- **Cog level** — `bot.py` loads `COGS` in main mode and
+  `WORKER_COGS` in worker mode (`WORKER_MODE=1`). Cogs that exist
+  only on one bot (Backup, Permissions, ServerSettings on the
+  Helper) are simply not in the other mode's list. `cogs.Logger`
+  loads in **both** modes: its 8 listener cogs are gated to
+  main-only, its `/logs` + `/log_toggle` commands go to the worker,
+  and its prune loop is main-only.
+- **Per-command gating** — a cog that has commands on both bots
+  (Introduction, Modlogs, GHLog, WatchList, QOTD, Logger) wraps
+  each command definition in a `WORKER_MODE` check at class level,
+  so the command only exists on the class in the matching mode and
+  only registers on that bot. The pattern is in
+  `cogs/Introduction.py`. Background behaviour is gated the same
+  way: the QOTD posting loop, the Logger prune loop, the WatchList
+  `on_message` listener, and the Logger listeners are main-only;
+  the timeout-board refresh + tempban sweep and the Backup daily
+  snapshot are worker-only.
 
-## Tickets
+Two cache fixes make the split work live: Introduction config now
+has a 60-second TTL (it used to cache forever, so a Helper-made
+setup change would not reach the main bot until restart), and
+WatchList reloads its store fresh from Postgres on every call (its
+old boot-time cache plus full-table DELETE + re-insert save could
+clobber the other bot's change). Other config reads were verified
+live at the time of the split (Logger, QOTD, GHLog, board config,
+`/perm` grants).
 
-| Command | What it does | Options | Who can run it | Scope |
-|---|---|---|---|---|
-| `/ticket panel` | Posts the ticket panel in this channel (members click it to open a ticket). | none | Manage Messages / Admin | Guild |
-| `/ticket config` | Sets the ticket settings for this server. | `staff_role` (Role, optional); `category` (CategoryChannel, optional); `log_channel` (TextChannel, optional); `panel_channel` (TextChannel, optional) | Manage Messages / Admin | Guild |
-| `/ticket show` | Shows the ticket settings for this server. | none | Manage Messages / Admin | Guild |
-| `/ticket open` | Opens a support ticket (one open ticket per user). | `topic` (string, optional) | No gate (everyone) | Guild |
-| `/ticket close` | Closes this ticket. | `reason` (string, optional) | Ticket opener or staff | Guild |
-| `/ticket reopen` | Reopens this closed ticket. | none | Ticket opener or staff | Guild |
-| `/ticket claim` | Claims (or releases) this ticket. | none | Staff only | Guild |
-| `/ticket delete` | Deletes this closed ticket's channel (only works on closed tickets). | none | Staff only | Guild |
-| `/ticket add` | Adds a member to this ticket channel. | `member` (Member, required) | Staff only | Guild |
-| `/ticket remove` | Removes a member from this ticket channel (cannot remove the opener). | `member` (Member, required) | Staff only | Guild |
-| `/ticket list` | Lists this server's open tickets. | none | Manage Messages / Admin | Guild |
+### Adding a command
 
-## Backup
+1. Decide which bot it goes on **first** — real-time user/mod
+   actions go on the main bot; setup/config and batch jobs go on
+   the Helper. If a cog has commands for both bots, gate each
+   command definition with a `WORKER_MODE` check at class level.
+2. Add the cog to `COGS` in `bot.py` — or to `WORKER_COGS` if the
+   cog belongs on the Helper.
+3. **Count before you add a top-level command.** Discord caps guild
+   application commands at 100 per guild. The main bot is at 54,
+   the Helper at 11 — count first, and verify the sync actually
+   registered the command (Discord API, not just a clean restart).
+4. Restart the bot that owns the new command and check it shows up
+   in Discord. (The Helper only syncs at startup.)
 
-| Command | What it does | Options | Who can run it | Scope |
-|---|---|---|---|---|
-| `/backup now` | Takes a backup snapshot right now. | none | Manage Messages / Admin | Guild |
-| `/backup status` | Shows the latest backup snapshot. | none | Manage Messages / Admin | Guild |
+## Custom permissions
 
-## Appeals
+The custom permission system (`/perm`, on the Helper) can grant a
+specific command to a specific role or user, **overriding** the
+command's default Discord-permission gate. The rules:
 
-| Command | What it does | Options | Who can run it | Scope |
-|---|---|---|---|---|
-| `/appeal submit` | Appeals a ban or timeout. (In DMs it redirects you to DM the bot the word `appeal`.) | `appeal_type` (string, required; choices: `ban`, `timeout`); `details` (string, required, max 1000 chars) | No gate (everyone); one pending appeal per user | Guild |
-| `/appeal list` | Lists appeals, newest first (max 20 shown). | `status` (string, optional, default `pending`; choices: `pending`, `approved`, `denied`, `all`) | Appeal staff (configured staff role, else Manage Messages / Admin; Admins always pass) | Guild |
-| `/appeal review` | Reviews one appeal (shows it with Approve/Deny buttons). | `appeal_id` (int, required — appeal number, e.g. 3) | Appeal staff (same as above) | Guild |
-| `/appeal config` | Sets the appeals channel / staff role (run with no options to view current settings). | `channel` (TextChannel, optional); `staff_role` (Role, optional) | Manage Server / Admin | Guild |
-| `/modnotes search` | Keyword search across mod notes, warns, and cases. | `keyword` (string, required); `user` (Member, optional — only search this member's records) | Manage Messages / Admin | Guild |
+- **REPLACE semantics** — a grant replaces the default Discord
+  check for any command it covers; it does not add to it.
+- **Server admins are always allowed.**
+- **Precedence:** admin > user deny > user allow > role deny >
+  role allow > default Discord check > deny when rules exist but
+  don't match.
+- Grants live in the shared `command_permissions` table in
+  Postgres, so they apply to **both** bots — which is why the
+  whole `/perm` group lives on the Helper while mods manage grants
+  for every command (including main-bot commands) from there. A
+  grant written by the Helper is visible to the main bot
+  immediately, no restart.
+- `/help` filters to only the commands the invoker can use
+  (fail-closed — if you can't run a command, it doesn't show up).
+  Because `/help` reads the bot's own registered command list,
+  each bot's `/help` naturally shows only its own commands.
 
-## Lockdown
+See [Permissions](./permissions.md) for the full system, and the
+README's [Custom permissions](https://github.com/poos241/Discord-Testing-Bot-Grounds-V1#custom-permissions)
+section for the command list.
 
-| Command | What it does | Options | Who can run it | Scope |
-|---|---|---|---|---|
-| `/lockdown lock` | Locks a channel so @everyone cannot send messages (restores the previous permission on unlock); a duration sets a timed lock that auto-unlocks. | `channel` (TextChannel, optional — defaults to current channel); `duration` (int, optional — minutes); `reason` (string, optional) | Manage Channels | Guild |
-| `/lockdown unlock` | Unlocks a channel, restoring its previous @everyone permission. | `channel` (TextChannel, optional — defaults to current channel) | Manage Channels | Guild |
-| `/lockdown lockall` | Locks every text channel in the server (skips forum channels and channels already bot-locked). | `duration` (int, optional — minutes); `reason` (string, optional) | Manage Channels | Guild |
-| `/lockdown unlockall` | Unlocks every channel the bot has locked in this server. | none | Manage Channels | Guild |
-| `/lockdown slowmode` | Sets slowmode on a channel (0 turns it off). | `seconds` (int, required, 0–21600); `channel` (TextChannel, optional — defaults to current channel); `reason` (string, optional) | Manage Channels | Guild |
-| `/lockdown status` | Shows every channel the bot currently has locked, with pending auto-unlocks. | none | Manage Channels | Guild |
+## System overview
 
-## Automod
+Every system, what it does, which bot runs it, and its command
+groups. The per-command reference (options, who can run it) is in
+the README's
+[Systems](https://github.com/poos241/Discord-Testing-Bot-Grounds-V1#systems)
+section — that is the canonical list.
 
-| Command | What it does | Options | Who can run it | Scope |
-|---|---|---|---|---|
-| `/automod status` | Shows the automod rules and spam settings for this server. | none | Manage Messages | Guild |
-| `/automod toggle` | Turns one automod rule on or off (leave `enabled` blank to flip it). | `rule` (string, required — `spam`, `invites`, `external_links`, `caps`); `enabled` (bool, optional) | Manage Messages | Guild |
-| `/automod config` | Sets the spam burst threshold and window. | `threshold` (int, optional, 1–50); `window` (int, optional, 5–300 seconds) | Manage Messages | Guild |
+| System | What it does | Bot | Command groups |
+| --- | --- | --- | --- |
+| Moderation | Time members out, purge a user's messages, look a member up, manage roles, rename users; owner-only process commands (`/restart_bot`, `/restart_web`, `/shutdown_bot`) | Main | `/timeout`, `/clear_user`, `/userinfo`, `/add_user_role`, `/remove_user_role`, `/rename_bot`, `/rename_user`, `/reset_user_name`, `/restart_bot`, `/restart_web`, `/shutdown_bot` |
+| Timeout board | The "Active Timeouts" embed (soonest first, cap 25, "+N more"), refreshed on change and every 5 minutes | Helper | `/timeout_board` |
+| Levels | Message/voice/game/daily XP, rank cards, leaderboard, role rewards, XP events — all 24 level commands | Main | `/level`, `/rank`, `/leaderboard`, `/daily`, `/cardcolor`, `/add_xp`, `/resetxp`, `/cleardata`, `/getxpsettings`, `/level_settings`, `/set_xp_rate`, `/set_cooldown`, `/set_level_channel`, `/set_level_role`, `/remove_level_role`, `/set_levelup_message`, `/toggle_levels`, `/toggle_level_messages`, `/toggle_thread_xp`, `/toggle_game_xp`, `/toggle_no_xp`, `/no_xp_bulk`, `/xp_event`, `/xp_event_end` |
+| Eat It or Yeet It | Party game: vote Eat It or Yeet It on a food, majority wins | Main | `/eatyeet`, `/eatyeet_end`, `/eatyeet_leaderboard`, `/eatyeet_stats`, `/eatyeet_suggest`, `/eatyeet_history` |
+| Question of the Day | Daily question, posted on schedule; members suggest, mods approve | Main, except config on Helper | `/qotd` (today, history, submit, post, skip, pending, approve, reject, remove) on Main; `/qotd config` on Helper |
+| Introduction tracking | Tracks whether members posted an intro; role on intro; backfill scan | Main for checks, Helper for setup + scan | `/intro check` + `Check Introduction` (context menu) on Main; `/intro set_channel`, `set_role`, `settings`, `toggle`, `scan` on Helper |
+| Modlogs | Searchable moderation-case record | Main for lookup, Helper for scan | `/modlogs list`, `recap`, `edit`, `actions` on Main; `/modlogs scan` on Helper |
+| GitHub ban log | Logs bans/kicks to a GitHub Project board, with a second-mod approval step (a mod can never approve their own entry) | Main for logging, Helper for setup + batch jobs | `/banlog log`, `approve`, `update`, `delete` on Main; `/banlog set_channel`, `collect`, `backfill_cases` on Helper |
+| Logger | Server event logging to per-category channels, 29 per-event toggles | Helper for config/toggles; main bot does the actual event logging | `/logs setup`, `change_channel`, `settings`; `/log_toggle message`, `member`, `voice`, `server`, `moderation` — all on Helper |
+| Watch List | Logs a watched member's messages to a channel | Main, except channel setup on Helper | `/watch add`, `remove`, `add_id`, `remove_id`, `list`, `status`, `info`, `clear` on Main; `/watch set_channel` on Helper |
+| Custom permissions | Per-command allow/deny grants (REPLACE semantics) | Helper | `/perm allow`, `remove`, `list`, `bulk`, `commands`, `overview`, `reset` |
+| Bot settings | Read-only overview of every system's on/off state and key config | Helper | `/bot_settings` |
+| Backup | Database snapshots (`pg_dump` + manifest, zipped); daily loop + manual commands | Helper | `/backup now`, `status` |
+| Lockdown | Lock/unlock channels in a hurry, with auto-unlock timer | Main | `/lockdown lock`, `unlock`, `lockall`, `unlockall`, `slowmode`, `status` |
+| Help & docs | In-Discord help, filtered to the commands you can use | Main | `/help`, `/show_tags`, `/show_categories`, `/diagnose_docs`, `/generate_tags` |
+| Debug | Owner-only verbose logging + test command | Main | `/debug on`, `off`, `status`, `test` |
 
-## AutoThreads
+## Deliberately disabled cogs
 
-| Command | What it does | Options | Who can run it | Scope |
-|---|---|---|---|---|
-| `/auto_thread` | Toggles auto-threads for the channel the command is run in (default 24h archive, no name prefix; does not work in threads or DMs). | none | Manage Channels | Guild |
-| `/set_auto_thread_channel` | Designates a channel for auto-threads, or updates its settings. | `channel` (TextChannel, required); `archive_minutes` (int, optional — 60, 1440, 4320, or 10080; blank keeps current); `name_prefix` (string, optional — text put in front of every thread name) | Manage Channels | Guild |
-| `/remove_auto_thread_channel` | Stops auto-threading a channel (existing threads are left alone). | `channel` (TextChannel, required) | Manage Channels | Guild |
-| `/auto_thread_status` | Lists every channel designated for auto-threads, with archive setting and name prefix. | none | Manage Channels | Guild |
+Seven cogs are commented out in `bot.py` and their commands are
+**not registered** on either bot. That is intentional (disabled
+2026-11-12) — do not uncomment them, and do not expect their
+commands to exist. Their files are still in `cogs/` for reference.
 
-## TimeCmd
+| Cog | Commands that do NOT exist |
+| --- | --- |
+| VoiceXP | `/voicexp optin`, `optout`, `status`, `leaderboard`, `config`, `setrate`, `setcap`, `enable`, `disable` |
+| Tickets | `/ticket panel`, `config`, `show`, `open`, `close`, `reopen`, `claim`, `delete`, `add`, `remove`, `list` |
+| Appeals | `/appeal submit`, `list`, `review`, `config`; `/modnotes search` |
+| Automod | `/automod status`, `toggle`, `config` |
+| AutoThreads | `/auto_thread`, `/set_auto_thread_channel`, `/remove_auto_thread_channel`, `/auto_thread_status` |
+| TimeCmd | `/time` |
+| CustomBadges | `/badge create`, `award`, `remove`, `delete`, `list` |
 
-| Command | What it does | Options | Who can run it | Scope |
-|---|---|---|---|---|
-| `/time` | Shows a member's local time from their profile timezone (blank = yourself; someone else's time only shows if they opted in to sharing local info). | `user` (Member, optional) | No gate (everyone) | Guild |
-
-## CustomBadges
-
-| Command | What it does | Options | Who can run it | Scope |
-|---|---|---|---|---|
-| `/badge create` | Creates a custom badge for this server (name becomes its per-server slug). | `name` (string, required); `icon` (string, optional, default medal emoji); `description` (string, optional — tooltip text) | Manage Messages | Guild |
-| `/badge award` | Awards a custom badge to a member (appears on their profile badge shelf + activity feed). | `badge_ref` (string, required, autocomplete — badge name/slug); `member` (Member, required) | Manage Messages | Guild |
-| `/badge remove` | Revokes a member's custom badge (the badge definition stays). | `badge_ref` (string, required, autocomplete); `member` (Member, required) | Manage Messages | Guild |
-| `/badge delete` | Deletes a custom badge and all of its awards (cannot be undone). | `badge_ref` (string, required, autocomplete) | Manage Messages | Guild |
-| `/badge list` | Lists this server's custom badges and award counts. | none | Manage Messages | Guild |
-
-## GHLog
-
-| Command | What it does | Options | Who can run it | Scope |
-|---|---|---|---|---|
-| `/testbanlog` | Posts a clearly-marked TEST draft item to the test GitHub project (proves the bot can reach GitHub Projects). | none | Administrator | Guild |
-| `/banlog` | Logs a ban or kick to the GitHub ban-log project (preview + confirm first; nothing posts until confirmed). | `action` (string, required; choices: `Ban`, `Kick`); `reason` (string, required); `member` (Member, optional — pick if still in server); `user_id` (string, optional — ID, mention, or username if they left); `status` (string, optional; choices: `Preds`, `Intolerance e.g. transphobia, racism etc`, `Trolls/Bullies`, `Advertisers/Scammers`, `Misc`); `tags` (string, optional; choices: `more info`, `Blacklist approved`); `ticket` (string, optional — support-ticket reference); `evidence` (string, optional — links separated by spaces); `screenshot`…`screenshot10` (Attachment, optional — up to 10 screenshots) | Manage Server / Admin (in-callback) | Guild |
-| `/log_approve` | Approves a logged case that is waiting for approval (the approver must be a different person than the logger). | `case` (int, required — the case number) | Manage Server / Admin (in-callback) | Guild |
-| `/banlog_collect` | Collects screenshots posted in this channel after the command ran and attaches them to the pending case. | none | Manage Server / Admin (in-callback) | Guild |
-| `/ghlog_set_channel` | Sets the channel screenshots are collected to for the ban log. | `channel` (TextChannel, required) | Manage Server / Admin (in-callback) | Guild |
-| `/ghlog_backfill_cases` | Numbers board items that are missing a case number and rewrites their titles. | none | Manage Server / Admin (in-callback) | Guild |
-| `/banlog_update` | Updates a logged case by case number (Status and/or tags and/or the Decision field, and/or appends a dated note). | `case` (int, required — the case number); `status` (string, optional; same choices as /banlog); `tags` (string, optional; same choices); `decision` (string, optional; choices: `Blacklist approved`, `more info`); `note` (string, optional) | Manage Server / Admin (in-callback) | Guild |
-| `/banlog_delete` | Deletes the most recent logged case for a user (type `DELETE` exactly to confirm; cannot be undone). | `member` (Member, optional); `user_id` (string, optional); `confirm` (string, optional in the form but enforced in code — anything other than `DELETE` refuses; kept optional because Discord rejects a command when a required option follows optional ones) | Manage Server / Admin (in-callback) | Guild |
-
-## Introduction
-
-| Command | What it does | Options | Who can run it | Scope |
-|---|---|---|---|---|
-| `/intro_set_channel` | Sets the introductions channel (and optional log channel). | `channel` (TextChannel, required); `log_channel` (TextChannel, optional) | Manage Server / Admin | Guild |
-| `/intro_set_role` | Sets the role given to members who post an introduction. | `role` (Role, required) | Manage Server / Admin | Guild |
-| `/intro_settings` | Shows the introduction tracking setup for this server. | none | Manage Server / Admin | Guild |
-| `/intro_toggle` | Turns an introduction tracking behaviour on or off (leave `value` blank to flip it). | `setting` (string, required; choices: `auto_assign_role`, `auto_remove_role`, `scan_on_message`); `value` (bool, optional) | Manage Server / Admin | Guild |
-| `/intro_scan` | Scans the intro channel and marks everyone who already posted (up to 1000 recent messages). | `limit` (int, optional, default 100, 1–1000); `add_role` (bool, optional, default true) | Manage Messages / Admin | Guild |
-| `/intro_check` | Checks whether a member has posted an introduction. | `member` (Member, optional); `user_id` (string, optional — raw user ID for members who left) | Manage Messages / Admin | Guild |
-| **Check Introduction** (user context-menu command — right-click a user → Apps) | Same check as `/intro_check` for that member. | (the clicked user) | Manage Messages / Admin | Guild |
-
-## Modlogs
-
-| Command | What it does | Options | Who can run it | Scope |
-|---|---|---|---|---|
-| `/modlogs` | Browses moderation cases, newest first (filter by user, type, or date). | `member` (Member, optional); `user_id` (string, optional — raw ID for users who left); `type` (string, optional; choices: `warn`, `timeout`, `untimeout`, `kick`, `ban`, `tempban`, `unban`, `clear`, `strip_roles`, `wipe`); `before` (string, optional — only cases before YYYY-MM-DD); `after` (string, optional — only cases from YYYY-MM-DD) | Manage Server / Admin | Guild |
-| `/modlogs_recap` | Counts by action type, most recent case, and tempban status for one user. | `member` (Member, optional); `user_id` (string, optional) | Manage Server / Admin | Guild |
-| `/modlogs_edit` | Picks one of a user's recent cases to edit its reason or delete it. | `member` (Member, optional); `user_id` (string, optional) | Manage Server / Admin | Guild |
-| `/mod_actions` | Lists every moderation action performed by one moderator. | `moderator` (Member, required) | Manage Server / Admin | Guild |
-
-## Logger
-
-| Command | What it does | Options | Who can run it | Scope |
-|---|---|---|---|---|
-| `/setup_logs` | Creates the log channels and configures the Logger system. | none | Administrator (`@commands.has_permissions(administrator=True)`) | Guild |
-| `/change_logchannel` | Points one log category at a different channel. | `log_type` (string, required; choices: `message`, `member`, `server`, `moderation`); `channel` (TextChannel, required) | Administrator (in-callback) | Guild |
-| `/log_settings` | Shows the Logger configuration (which channel each category logs to + disabled events). | none | **No gate — anyone can run it** (ephemeral reply) | Guild |
-| `/log_toggle message` | Toggles message event logging. | `event` (string, required; choices: `message_edit`, `message_delete`, `bulk_delete`); `enabled` (bool, required) | Administrator (in-callback) | Guild |
-| `/log_toggle member` | Toggles member event logging. | `event` (string, required; choices: `member_join`, `member_leave`, `member_kick`, `nickname`, `avatar`, `role_member`); `enabled` (bool, required) | Administrator (in-callback) | Guild |
-| `/log_toggle voice` | Toggles voice event logging. | `event` (string, required; choices: `voice_join`, `voice_leave`, `voice_move`, `voice_mute`); `enabled` (bool, required) | Administrator (in-callback) | Guild |
-| `/log_toggle server` | Toggles server event logging. | `event` (string, required; choices: `channel_create`, `channel_delete`, `channel_update`, `thread_create`, `thread_delete`, `emoji_create`, `emoji_delete`, `emoji_rename`, `role_create`, `role_delete`, `role_update`, `invite_create`, `invite_delete`); `enabled` (bool, required) | Administrator (in-callback) | Guild |
-| `/log_toggle moderation` | Toggles moderation event logging. | `event` (string, required; choices: `ban`, `unban`, `timeout`); `enabled` (bool, required) | Administrator (in-callback) | Guild |
-
-## Permissions
-
-| Command | What it does | Options | Who can run it | Scope |
-|---|---|---|---|---|
-| `/perm_allow` | Grants a command to a role or a single user (allow or explicit deny). | `command` (string, required, autocomplete); `role` (Role, optional); `user` (Member, optional); `rule` (string, optional; `allow` or `deny`, default allow) | Administrator | Guild |
-| `/perm_remove` | Removes a grant (role or user) for a command. | `command` (string, required, autocomplete); `role` (Role, optional); `user` (Member, optional) | Administrator | Guild |
-| `/perm_list` | Lists the grants for one command, or all grants. | `command` (string, optional, autocomplete) | Administrator | Guild |
-| `/perm_bulk` | Grants many commands to many roles at once (pick up to 25 roles, then pick commands). | none (role + command pickers) | Administrator | Guild |
-| `/perm_reset` | Removes grants — for one role, one user, one command, or everything (previews first, deletes only with confirm). | `role` (Role, optional); `user` (Member, optional); `command` (string, optional, autocomplete); `confirm` (bool, optional, default false) | Administrator | Guild |
-| `/perm_overview` | Shows what each role can do and what per-user grants exist. | none | Administrator | Guild |
-| `/perm_commands` | Shows, per command, which roles/users are granted it. | none | Administrator | Guild |
-
-## ServerSettings
-
-| Command | What it does | Options | Who can run it | Scope |
-|---|---|---|---|---|
-| `/bot_settings` | Shows every bot system's on/off state and key config in one place (levels, voice XP, automod, logger, lockdown, watchlist, tickets, QOTD, debug, introductions, appeals, ban log, timeout board, badges). Custom permissions are not shown here — see `/perm_overview`. | none | Administrator | Guild |
+Note `/auto_thread` in particular: it appears in older docs and in
+the 2026-11-11 merge history, but AutoThreads is disabled, so the
+command is not registered. Likewise `/testbanlog` was deleted in the
+2026-11-11 merge — it does not exist either.

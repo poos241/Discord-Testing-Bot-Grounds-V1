@@ -617,3 +617,17 @@ timeout_board_config = sqlalchemy.Table(
     sqlalchemy.Column("created_at", sqlalchemy.DateTime, server_default=func.now()),
     sqlalchemy.Column("updated_at", sqlalchemy.DateTime, server_default=func.now(), onupdate=func.now())
 )
+
+# VRChat linking (migrated from Little Haven 2026-11-08; the linking feature
+# itself comes later -- this table preserves the 373 linked accounts).
+# One row per Discord user: their VRChat user id + name + group membership.
+vrchat_accounts = sqlalchemy.Table(
+    "vrchat_accounts", metadata,
+    sqlalchemy.Column("user_id", sqlalchemy.String, primary_key=True),
+    sqlalchemy.Column("vrc_user_id", sqlalchemy.String, nullable=False),
+    sqlalchemy.Column("username", sqlalchemy.String, default=""),
+    sqlalchemy.Column("in_group", sqlalchemy.Boolean, default=False),
+    sqlalchemy.Column("linked_at", sqlalchemy.DateTime),
+    sqlalchemy.Column("created_at", sqlalchemy.DateTime, server_default=func.now()),
+    sqlalchemy.Column("updated_at", sqlalchemy.DateTime, server_default=func.now(), onupdate=func.now())
+)

@@ -1,11 +1,31 @@
-"""SQLite storage for the Logger: cached messages + per-guild log channels."""
-import os
-import sqlite3
-import threading
+"""Postgres storage for the Logger: cached messages + per-guild log
+channels + the queryable event history.
 
-DB_PATH = os.path.normpath(os.path.join(
-    os.path.dirname(os.path.abspath(__file__)), "..", "..", "data", "message_log.db"
-))
+(Same file, same class, same method names as the SQLite version --
+only the storage engine changed, so web/services/logger_db.py and
+the Logger cog need no changes.)
+
+Connection model: one lazily-created psycopg connection, serialised
+by a threading.Lock (the bot thread and the Flask web thread both
+use the shared ``db`` instance). The connection is opened on FIRST
+USE, not at import, and the schema is created once at that point,
+so importing this module never fails when Postgres is briefly down.
+The connection runs in autocommit: every single-statement write
+commits at once (matching the old per-statement SQLite commits),
+and the multi-statement prune runs inside one explicit transaction.
+
+IDs are BIGINT (Discord snowflakes exceed 32-bit int) and
+events.created_at is DOUBLE PRECISION (a REAL would lose ~7 bits of
+an epoch timestamp). messages.created_at stays TEXT (an ISO string,
+unchanged).
+"""
+import threading
+import time
+
+import psycopg
+from psycopg.rows import dict_row
+
+from data.DB.db import get_psycopg_conninfo
 
 
 def _like_escape(value):
@@ -14,59 +34,81 @@ def _like_escape(value):
             .replace("%", "\\%").replace("_", "\\_"))
 
 
+# Mirrors the old SQLite schema, with Postgres types. CREATE TABLE
+# IF NOT EXISTS never touches an existing table.
+_TABLE_DDL = (
+    """
+    CREATE TABLE IF NOT EXISTS messages(
+        message_id BIGINT PRIMARY KEY,
+        guild_id BIGINT,
+        channel_id BIGINT,
+        author_id BIGINT,
+        author_name TEXT,
+        content TEXT,
+        attachments TEXT,
+        created_at TEXT
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS guild_logs(
+        guild_id BIGINT,
+        log_type TEXT,
+        channel_id BIGINT,
+        PRIMARY KEY (guild_id, log_type)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS log_toggles(
+        guild_id BIGINT,
+        event_key TEXT,
+        enabled INTEGER,
+        PRIMARY KEY (guild_id, event_key)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS events(
+        id BIGSERIAL PRIMARY KEY,
+        guild_id BIGINT NOT NULL,
+        category TEXT NOT NULL,
+        event_type TEXT,
+        summary TEXT,
+        created_at DOUBLE PRECISION NOT NULL
+    )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_events_guild_time
+    ON events(guild_id, created_at DESC)
+    """,
+)
+
+
 class LoggerDatabase:
-    """Thread-safe wrapper around the logger SQLite database."""
+    """Thread-safe wrapper around the logger Postgres database."""
 
     def __init__(self):
         self._lock = threading.Lock()
-        os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
-        self._conn = sqlite3.connect(DB_PATH, check_same_thread=False)
-        self._conn.row_factory = sqlite3.Row
-        with self._lock:
+        self._conn = None
+        self._ready = False
+
+    def _ensure(self):
+        """Return a live connection, creating it (and the schema) on
+        first use. Caller must hold self._lock. A connection that was
+        closed (e.g. Postgres restarted) is reopened; the schema
+        step runs only once per process.
+        """
+        if self._conn is None or self._conn.closed:
+            self._conn = psycopg.connect(
+                get_psycopg_conninfo(), row_factory=dict_row,
+                autocommit=True,
+            )
+            self._ready = False
+        if not self._ready:
             cur = self._conn.cursor()
-            cur.execute("""
-                CREATE TABLE IF NOT EXISTS messages(
-                    message_id INTEGER PRIMARY KEY,
-                    guild_id INTEGER,
-                    channel_id INTEGER,
-                    author_id INTEGER,
-                    author_name TEXT,
-                    content TEXT,
-                    attachments TEXT,
-                    created_at TEXT
-                )
-            """)
-            cur.execute("""
-                CREATE TABLE IF NOT EXISTS guild_logs(
-                    guild_id INTEGER,
-                    log_type TEXT,
-                    channel_id INTEGER,
-                    PRIMARY KEY (guild_id, log_type)
-                )
-            """)
-            cur.execute("""
-                CREATE TABLE IF NOT EXISTS log_toggles(
-                    guild_id INTEGER,
-                    event_key TEXT,
-                    enabled INTEGER,
-                    PRIMARY KEY (guild_id, event_key)
-                )
-            """)
-            cur.execute("""
-                CREATE TABLE IF NOT EXISTS events(
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    guild_id INTEGER NOT NULL,
-                    category TEXT NOT NULL,
-                    event_type TEXT,
-                    summary TEXT,
-                    created_at REAL NOT NULL
-                )
-            """)
-            cur.execute("""
-                CREATE INDEX IF NOT EXISTS idx_events_guild_time
-                ON events(guild_id, created_at DESC)
-            """)
-            self._conn.commit()
+            for ddl in _TABLE_DDL:
+                cur.execute(ddl)
+            cur.close()
+            self._ready = True
+        return self._conn
 
     # ----- message cache -----
 
@@ -76,8 +118,17 @@ class LoggerDatabase:
             return
         attachments = ",".join(a.url for a in message.attachments)
         with self._lock:
-            self._conn.execute(
-                "INSERT OR REPLACE INTO messages VALUES (?,?,?,?,?,?,?,?)",
+            conn = self._ensure()
+            conn.execute(
+                "INSERT INTO messages VALUES (%s,%s,%s,%s,%s,%s,%s,%s) "
+                "ON CONFLICT (message_id) DO UPDATE SET "
+                "guild_id = EXCLUDED.guild_id, "
+                "channel_id = EXCLUDED.channel_id, "
+                "author_id = EXCLUDED.author_id, "
+                "author_name = EXCLUDED.author_name, "
+                "content = EXCLUDED.content, "
+                "attachments = EXCLUDED.attachments, "
+                "created_at = EXCLUDED.created_at",
                 (
                     message.id,
                     message.guild.id,
@@ -89,91 +140,117 @@ class LoggerDatabase:
                     message.created_at.isoformat(),
                 ),
             )
-            self._conn.commit()
 
     def get_message(self, message_id):
         with self._lock:
-            cur = self._conn.execute(
-                "SELECT * FROM messages WHERE message_id = ?", (message_id,)
-            )
-            row = cur.fetchone()
+            conn = self._ensure()
+            row = conn.execute(
+                "SELECT * FROM messages WHERE message_id = %s", (message_id,)
+            ).fetchone()
             return dict(row) if row else None
 
     def delete_message(self, message_id):
         with self._lock:
-            self._conn.execute(
-                "DELETE FROM messages WHERE message_id = ?", (message_id,)
+            conn = self._ensure()
+            conn.execute(
+                "DELETE FROM messages WHERE message_id = %s", (message_id,)
             )
-            self._conn.commit()
 
     # ----- log channel config -----
 
     def set_log_channel(self, guild_id, log_type, channel_id):
         with self._lock:
-            self._conn.execute(
-                "INSERT OR REPLACE INTO guild_logs (guild_id, log_type, channel_id)"
-                " VALUES (?, ?, ?)",
+            conn = self._ensure()
+            conn.execute(
+                "INSERT INTO guild_logs (guild_id, log_type, channel_id)"
+                " VALUES (%s, %s, %s) "
+                "ON CONFLICT (guild_id, log_type) DO UPDATE SET "
+                "channel_id = EXCLUDED.channel_id",
                 (guild_id, log_type, channel_id),
             )
-            self._conn.commit()
 
     def get_log_channel(self, guild_id, log_type):
         with self._lock:
-            cur = self._conn.execute(
-                "SELECT channel_id FROM guild_logs WHERE guild_id = ? AND log_type = ?",
+            conn = self._ensure()
+            row = conn.execute(
+                "SELECT channel_id FROM guild_logs WHERE guild_id = %s AND log_type = %s",
                 (guild_id, log_type),
-            )
-            row = cur.fetchone()
+            ).fetchone()
             return row["channel_id"] if row else None
 
     def is_enabled(self, guild_id, event_key):
         """True unless the guild explicitly disabled this event."""
         with self._lock:
-            cur = self._conn.execute(
-                "SELECT enabled FROM log_toggles WHERE guild_id = ? AND event_key = ?",
+            conn = self._ensure()
+            row = conn.execute(
+                "SELECT enabled FROM log_toggles WHERE guild_id = %s AND event_key = %s",
                 (guild_id, event_key),
-            )
-            row = cur.fetchone()
+            ).fetchone()
             return bool(row["enabled"]) if row else True
 
     def set_enabled(self, guild_id, event_key, enabled):
         with self._lock:
-            self._conn.execute(
-                "INSERT OR REPLACE INTO log_toggles (guild_id, event_key, enabled)"
-                " VALUES (?, ?, ?)",
+            conn = self._ensure()
+            conn.execute(
+                "INSERT INTO log_toggles (guild_id, event_key, enabled)"
+                " VALUES (%s, %s, %s) "
+                "ON CONFLICT (guild_id, event_key) DO UPDATE SET "
+                "enabled = EXCLUDED.enabled",
                 (guild_id, event_key, 1 if enabled else 0),
             )
-            self._conn.commit()
 
     def get_all_log_channels(self, guild_id):
         """Return {log_type: channel_id} for a guild."""
         with self._lock:
-            cur = self._conn.execute(
-                "SELECT log_type, channel_id FROM guild_logs WHERE guild_id = ?",
+            conn = self._ensure()
+            rows = conn.execute(
+                "SELECT log_type, channel_id FROM guild_logs WHERE guild_id = %s",
                 (guild_id,),
-            )
-            return {row["log_type"]: row["channel_id"] for row in cur.fetchall()}
+            ).fetchall()
+            return {row["log_type"]: row["channel_id"] for row in rows}
 
-
-# Shared instance. Created lazily on first import; uses an absolute path.
     # ----- event history (web dashboard) -----
 
     def record_event(self, guild_id, category, event_type, summary):
-        """Append to the queryable event history (last 5000 per guild kept)."""
-        import time
+        """Append to the queryable event history (last 5000 per guild kept).
+
+        P1-25: insert only. The per-event prune DELETE used to run here
+        on every logged event, scanning the events table on the gateway
+        loop. Retention is now enforced by the periodic sweep in
+        LoggerCommands._prune_event_history, which calls prune_events().
+        """
         with self._lock:
-            cur = self._conn.cursor()
-            cur.execute(
+            conn = self._ensure()
+            conn.execute(
                 "INSERT INTO events(guild_id, category, event_type, summary, created_at)"
-                " VALUES(?,?,?,?,?)",
+                " VALUES(%s,%s,%s,%s,%s)",
                 (guild_id, category, event_type, summary, time.time()),
             )
-            cur.execute(
-                "DELETE FROM events WHERE guild_id=? AND id NOT IN"
-                " (SELECT id FROM events WHERE guild_id=? ORDER BY id DESC LIMIT 5000)",
-                (guild_id, guild_id),
-            )
-            self._conn.commit()
+
+    def prune_events(self, keep=5000):
+        """Trim every guild's event history to the newest `keep` rows.
+
+        P1-25: called by the periodic sweep in LoggerCommands, not on
+        every event. Returns the number of rows deleted.
+        """
+        with self._lock:
+            conn = self._ensure()
+            with conn.transaction():
+                guild_ids = [
+                    row["guild_id"]
+                    for row in conn.execute(
+                        "SELECT DISTINCT guild_id FROM events"
+                    ).fetchall()
+                ]
+                deleted = 0
+                for guild_id in guild_ids:
+                    cur = conn.execute(
+                        "DELETE FROM events WHERE guild_id=%s AND id NOT IN"
+                        " (SELECT id FROM events WHERE guild_id=%s ORDER BY id DESC LIMIT %s)",
+                        (guild_id, guild_id, keep),
+                    )
+                    deleted += cur.rowcount
+            return deleted
 
     def _event_filter(self, guild_id, category=None, event_type=None, search=None,
                       user_id=None, channel_id=None, date_from=None, date_to=None):
@@ -186,28 +263,28 @@ class LoggerDatabase:
         a NULL summary never match a user/channel filter. date_from
         and date_to are epoch seconds (date_to is exclusive).
         """
-        q = "FROM events WHERE guild_id=?"
+        q = "FROM events WHERE guild_id=%s"
         args = [guild_id]
         if category:
-            q += " AND category=?"
+            q += " AND category=%s"
             args.append(category)
         if event_type:
-            q += " AND event_type=?"
+            q += " AND event_type=%s"
             args.append(event_type)
         if search:
-            q += " AND summary LIKE ? ESCAPE '\\'"
+            q += " AND summary LIKE %s ESCAPE '\\'"
             args.append(f"%{_like_escape(search)}%")
         if user_id and str(user_id).isdigit():
-            q += " AND summary LIKE ? ESCAPE '\\'"
+            q += " AND summary LIKE %s ESCAPE '\\'"
             args.append(f"%{user_id}%")
         if channel_id and str(channel_id).isdigit():
-            q += " AND summary LIKE ? ESCAPE '\\'"
+            q += " AND summary LIKE %s ESCAPE '\\'"
             args.append(f"%{channel_id}%")
         if date_from is not None:
-            q += " AND created_at >= ?"
+            q += " AND created_at >= %s"
             args.append(float(date_from))
         if date_to is not None:
-            q += " AND created_at < ?"
+            q += " AND created_at < %s"
             args.append(float(date_to))
         return q, args
 
@@ -221,13 +298,13 @@ class LoggerDatabase:
             date_from=date_from, date_to=date_to,
         )
         with self._lock:
-            cur = self._conn.cursor()
-            cur.execute(
+            conn = self._ensure()
+            rows = conn.execute(
                 f"SELECT id, guild_id, category, event_type, summary, created_at "
-                f"{filt} ORDER BY id DESC LIMIT ? OFFSET ?",
+                f"{filt} ORDER BY id DESC LIMIT %s OFFSET %s",
                 args + [limit, offset],
-            )
-            return [dict(r) for r in cur.fetchall()]
+            ).fetchall()
+            return [dict(r) for r in rows]
 
     def count_events(self, guild_id, category=None, event_type=None, search=None,
                      user_id=None, channel_id=None, date_from=None, date_to=None):
@@ -237,8 +314,11 @@ class LoggerDatabase:
             date_from=date_from, date_to=date_to,
         )
         with self._lock:
-            cur = self._conn.cursor()
-            cur.execute(f"SELECT COUNT(*) AS n {filt}", args)
-            return cur.fetchone()["n"]
+            conn = self._ensure()
+            row = conn.execute(f"SELECT COUNT(*) AS n {filt}", args).fetchone()
+            return row["n"]
 
+
+# Shared instance. Created lazily on first import; the Postgres
+# connection itself is opened on first use (see _ensure).
 db = LoggerDatabase()

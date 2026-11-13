@@ -10,7 +10,7 @@ reads its own store and is wrapped so one unreadable system shows as
 "couldn't read" instead of breaking the whole overview.
 
 The custom permissions system is intentionally left out -- it has its
-own /perm_overview and /perm_commands.
+own /perm overview and /perm commands.
 """
 import asyncio
 import os
@@ -141,6 +141,7 @@ async def _section_levels(guild):
             event),
         "Level-up message: %s" % (
             "Custom" if s.get("levelup_message") else "Default"),
+        "See /level_settings for the full channel list.",
     ]
     return ("Levels & XP", "\n".join(lines))
 
@@ -412,7 +413,7 @@ class ServerSettings(commands.Cog):
             "Bot settings for %s" % guild.name,
             discord.Color.blurple(),
             fields,
-            footer="Custom permissions are not shown here -- see /perm_overview.",
+            footer="Custom permissions are not shown here -- see /perm overview.",
         )
         # Discord caps the TOTAL characters across all embeds in one
         # message at 6000, so send one embed per message.

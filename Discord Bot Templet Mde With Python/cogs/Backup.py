@@ -10,13 +10,14 @@ where restores live — a restore is a deliberate, confirm-first action
 and belongs on the dashboard, not in a chat command.
 """
 
+import asyncio
 import datetime
 
 import discord
 from discord.ext import commands, tasks
 from discord.commands import SlashCommandGroup
 
-from config import GUILD_IDS
+from config import GUILD_IDS, WORKER_MODE
 from utils.backup import (
     create_snapshot,
     list_snapshots,
@@ -45,14 +46,28 @@ class Backup(commands.Cog):
 
     def __init__(self, bot):
         self.bot = bot
-        self.daily_loop.start()
+        # The daily snapshot is a background job: it runs ONLY on the
+        # worker (Havenly Helper). Since the 2026-11-12 command split
+        # (Option C) the whole cog is worker-only -- /backup now +
+        # /backup status moved to the Helper with it, so the main bot
+        # no longer loads this cog at all. Both bots sharing this loop
+        # would take two snapshots a day (create_snapshot's RLock is
+        # per-process).
+        if WORKER_MODE:
+            self.daily_loop.start()
 
     # ---------- scheduler ----------
 
     @tasks.loop(time=_BACKUP_TIME)
     async def daily_loop(self):
         try:
-            summary = create_snapshot("scheduled")
+            # P2-45: the snapshot (pg_dump + zipfile write) is
+            # synchronous and used to run on the event loop, stalling
+            # the gateway heartbeat for the whole zip. Run it in a
+            # worker thread; create_snapshot is already guarded by its
+            # own threading.RLock, so concurrent calls (e.g. a manual
+            # /backup now landing mid-snapshot) serialize.
+            summary = await asyncio.to_thread(create_snapshot, "scheduled")
             print(
                 "[Backup] Scheduled snapshot: %s (%d files)"
                 % (summary["name"], len(summary["files"]))
@@ -68,15 +83,19 @@ class Backup(commands.Cog):
 
     @backup.command(
         name="now",
-        description="Take a backup snapshot right now (mods only).",
+        description="Take a backup snapshot right now (Manage Server or admin only).",
     )
     async def backup_now(self, ctx):
-        from utils.permissions import check_slash_permission, _default_manage_messages_or_admin
-        if not await check_slash_permission(ctx, "backup_now", _default_manage_messages_or_admin):
+        from utils.permissions import check_slash_permission, _default_manage_or_admin
+        if not await check_slash_permission(ctx, "backup_now", _default_manage_or_admin):
             return
         await ctx.defer(ephemeral=True)
         try:
-            summary = create_snapshot("manual")
+            # P2-45: same as the daily loop — the snapshot is
+            # synchronous, so run it off the event loop (the
+            # interaction is already deferred, this keeps the
+            # heartbeat unblocked while the zip is built).
+            summary = await asyncio.to_thread(create_snapshot, "manual")
             names = ", ".join(f["name"] for f in summary["files"])
             await ctx.followup.send(
                 "Snapshot saved: `%s`\n%d files (%s). "

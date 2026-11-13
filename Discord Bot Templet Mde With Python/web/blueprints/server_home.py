@@ -63,7 +63,7 @@ SERVICES = [
     {
         "key": "bot",
         "name": "Bot Dashboard",
-        "desc": "Kush Bush bot + this dashboard. Slash commands, levels, mod panel.",
+        "desc": "Havenly Bot + this dashboard. Slash commands, levels, mod panel.",
         "url": "http://127.0.0.1:5000/",
         "port": 5000,
         "scheme": "http",

@@ -13,12 +13,16 @@ from datetime import datetime, timezone
 
 import discord
 from discord.ext import commands
+from discord.commands import SlashCommandGroup
 
 try:
-    from config import load_json, save_json, extra_help
+    from config import GUILD_IDS, WORKER_MODE, load_json, save_json, extra_help
     _HAS_CONFIG = True
 except ImportError:  # cog used outside this project
     _HAS_CONFIG = False
+    WORKER_MODE = False
+    # P2-2: no config, so no guild scoping (commands stay global, as before).
+    GUILD_IDS = None
 
     def load_json(filename):  # type: ignore
         import json, os
@@ -66,6 +70,14 @@ ORANGE = discord.Color.orange()
 def watch_admin():
     """commands.check: allow Manage Server or Administrator."""
     async def predicate(ctx):
+        # P3-12: in a DM ctx.author is a discord.User with no
+        # guild_permissions -- deny instead of raising AttributeError.
+        if ctx.guild is None:
+            await ctx.respond(
+                "❌ This command can only be used in a server.",
+                ephemeral=True,
+            )
+            return False
         perms = ctx.author.guild_permissions
         if perms.administrator or perms.manage_guild:
             return True
@@ -79,6 +91,8 @@ def watch_admin():
 
 class WatchList(commands.Cog):
     """Per-server watch list with message logging."""
+
+    watch = SlashCommandGroup("watch", "Manage the watch list.", guild_ids=GUILD_IDS)
 
     def __init__(self, bot):
         self.bot = bot
@@ -149,12 +163,26 @@ class WatchList(commands.Cog):
     def _guild_data(self, guild_id):
         """Get (creating if needed) this guild's watch-list data.
 
+        Cross-process safety (2026-11-12): the Helper can change
+        this store (via /watch set_channel) while the main bot runs,
+        and the main bot's commands can change it while the Helper
+        runs. The boot-time snapshot is never trusted -- reload from
+        Postgres on every use, so a Helper-made change is visible at
+        once and a save never clobbers the other bot's change. The
+        table is tiny (one row per guild), so this is one cheap SELECT.
+        (save_store replaces the whole table, so saving from a stale
+        snapshot would silently revert the other bot's change.)
+
         Raises WatchListUnavailable when the store cannot be read —
         callers must not operate on (or save) an empty fallback.
         """
-        if not self._ensure_loaded():
+        # Reload fresh, bypassing the _db_ok short-circuit in
+        # _ensure_loaded (which would return the stale snapshot).
+        fresh = self._load_db()
+        if not self._db_ok:
             raise WatchListUnavailable(
                 "watchlist_data could not be loaded")
+        self.db = fresh
         gid = str(guild_id)
         data = self.db.get(gid)
         if not isinstance(data, dict):
@@ -314,7 +342,7 @@ class WatchList(commands.Cog):
         )
 
     def _added_embed(self, member, added_by):
-        """Confirmation embed shared by /watch_add and /watch_add_id."""
+        """Confirmation embed shared by /watch add and /watch add_id."""
         embed = discord.Embed(
             title="👁️ User Added to Watch List",
             color=ORANGE,
@@ -342,17 +370,28 @@ class WatchList(commands.Cog):
 
     @commands.Cog.listener()
     async def on_message(self, message):
+        # Main bot only: the worker loads this cog for /watch set_channel
+        # (setup, worker-only since the 2026-11-12 command split). If the
+        # worker ran this listener too, every watched message would be
+        # logged twice.
+        if WORKER_MODE:
+            return
         if message.guild is None or message.author.bot:
             return
         # Never retry the load from the message path: a persistently
         # locked database would stall the event loop on every message.
         # Commands heal the store (via _ensure_loaded) when it recovers.
-        if not self._db_ok:
+        if not self._ensure_loaded():
             return
         guild = message.guild
-        if not self._is_watched(guild.id, message.author.id):
+        try:
+            if not self._is_watched(guild.id, message.author.id):
+                return
+            log_channel = self._get_log_channel(guild)
+        except WatchListUnavailable:
+            # The reload in _guild_data failed (DB briefly down): skip
+            # this message instead of an unhandled listener error.
             return
-        log_channel = self._get_log_channel(guild)
         if log_channel is None or message.channel.id == getattr(log_channel, "id", None):
             return
         try:
@@ -371,328 +410,377 @@ class WatchList(commands.Cog):
 
     # ----- commands -----
 
-    @discord.slash_command(name="watch_add", description="Add a user to the watch list.")
-    @extra_help("Add a user to the watch list. Their messages will be logged to the watch-list channel. Admins only (Manage Server or Administrator).")
-    async def watch_add(self, ctx: discord.ApplicationContext,
-                        user: discord.Option(discord.Member, "User to watch")):  # type: ignore
-        """Add a user via Discord's native member picker."""
-        from utils.permissions import check_slash_permission, _default_manage_or_admin
-        if not await check_slash_permission(ctx, "watch_add", _default_manage_or_admin):
-            return
-        guild_data = self._guild_data(ctx.guild.id)
-        if str(user.id) in guild_data["users"]:
-            await ctx.respond(f"⚠️ {user.mention} is already on the watch list.",
-                              ephemeral=True)
-            return
-        guild_data["users"][str(user.id)] = self._user_record(user, ctx.author)
-        if not self._save_db():
-            await ctx.respond("⚠️ The watch list could not be saved "
-                              "(database error) — the change did not stick. "
-                              "Try again in a moment.", ephemeral=True)
-            return
-        await ctx.respond(embed=self._added_embed(user, ctx.author), ephemeral=True)
-
-    @discord.slash_command(name="watch_remove", description="Remove a user from the watch list.")
-    @extra_help("Remove a user from the watch list. Their messages stop being logged. Admins only.")
-    async def watch_remove(self, ctx: discord.ApplicationContext,
-                           user: discord.Option(discord.Member, "User to remove")):  # type: ignore
-        """Remove a user via the member picker."""
-        from utils.permissions import check_slash_permission, _default_manage_or_admin
-        if not await check_slash_permission(ctx, "watch_remove", _default_manage_or_admin):
-            return
-        guild_data = self._guild_data(ctx.guild.id)
-        if str(user.id) not in guild_data["users"]:
-            await ctx.respond(f"❌ {user.mention} is not on the watch list.",
-                              ephemeral=True)
-            return
-        del guild_data["users"][str(user.id)]
-        if not self._save_db():
-            await ctx.respond("⚠️ The watch list could not be saved "
-                              "(database error) — the change did not stick. "
-                              "Try again in a moment.", ephemeral=True)
-            return
-        await ctx.respond(f"🗑️ Removed {user.mention} from the watch list.",
-                          ephemeral=True)
-
-    @discord.slash_command(name="watch_add_id", description="Add a user to the watch list by ID.")
-    @extra_help("Add a user to the watch list using their Discord ID (or mention). Useful when they aren't easy to find in the member picker. Admins only.")
-    async def watch_add_id(self, ctx: discord.ApplicationContext,
-                           user_id: discord.Option(str, "Discord user ID")):  # type: ignore
-        """Add a user by raw ID."""
-        from utils.permissions import check_slash_permission, _default_manage_or_admin
-        if not await check_slash_permission(ctx, "watch_add_id", _default_manage_or_admin):
-            return
-        numeric_id = self._parse_user_id(user_id)
-        if numeric_id is None:
-            await ctx.respond("❌ That doesn't look like a valid Discord user ID.",
-                              ephemeral=True)
-            return
-        member, error = await self._resolve_member(ctx.guild, numeric_id)
-        if error:
-            await ctx.respond(error, ephemeral=True)
-            return
-        guild_data = self._guild_data(ctx.guild.id)
-        if str(member.id) in guild_data["users"]:
-            await ctx.respond(f"⚠️ {member.mention} is already on the watch list.",
-                              ephemeral=True)
-            return
-        guild_data["users"][str(member.id)] = self._user_record(member, ctx.author)
-        if not self._save_db():
-            await ctx.respond("⚠️ The watch list could not be saved "
-                              "(database error) — the change did not stick. "
-                              "Try again in a moment.", ephemeral=True)
-            return
-        await ctx.respond(embed=self._added_embed(member, ctx.author), ephemeral=True)
-
-    @discord.slash_command(name="watch_remove_id", description="Remove a user from the watch list by ID.")
-    @extra_help("Remove a user from the watch list using their Discord ID. Admins only.")
-    async def watch_remove_id(self, ctx: discord.ApplicationContext,
-                              user_id: discord.Option(str, "Discord user ID")):  # type: ignore
-        """Remove a user by raw ID."""
-        from utils.permissions import check_slash_permission, _default_manage_or_admin
-        if not await check_slash_permission(ctx, "watch_remove_id", _default_manage_or_admin):
-            return
-        numeric_id = self._parse_user_id(user_id)
-        if numeric_id is None:
-            await ctx.respond("❌ That doesn't look like a valid Discord user ID.",
-                              ephemeral=True)
-            return
-        guild_data = self._guild_data(ctx.guild.id)
-        removed = guild_data["users"].pop(str(numeric_id), None)
-        if removed is None:
-            await ctx.respond(f"❌ User ID `{numeric_id}` is not on the watch list.",
-                              ephemeral=True)
-            return
-        if not self._save_db():
-            await ctx.respond("⚠️ The watch list could not be saved "
-                              "(database error) — the change did not stick. "
-                              "Try again in a moment.", ephemeral=True)
-            return
-        member = ctx.guild.get_member(numeric_id)
-        display = member.mention if member else f"`{removed.get('display_name', 'Unknown User')}`"
-        await ctx.respond(f"🗑️ Removed {display} from the watch list.\nID: `{numeric_id}`",
-                          ephemeral=True)
-
-    @discord.slash_command(name="watch_list", description="Show everyone on the watch list.")
-    @extra_help("Show everyone currently on the watch list, with the log channel status. Admins only.")
-    async def watch_list(self, ctx: discord.ApplicationContext):
-        """Show the current watch list."""
-        from utils.permissions import check_slash_permission, _default_manage_or_admin
-        if not await check_slash_permission(ctx, "watch_list", _default_manage_or_admin):
-            return
-        guild_data = self._guild_data(ctx.guild.id)
-        users = guild_data.get("users", {})
-        if not users:
-            await ctx.respond("👁️ The watch list is currently empty.", ephemeral=True)
-            return
-        embed = discord.Embed(
-            title="👁️ Watch List",
-            description=f"**{len(users)}** user(s) currently being watched.",
-            color=ORANGE,
+    if not WORKER_MODE:
+        @watch.command(
+            name="add",
+            description="Add a user to the watch list.",
         )
-        lines = [self._watched_line(ctx.guild, uid, data) for uid, data in users.items()]
-        for i, chunk in enumerate(self._chunk_lines(lines)[:25]):
-            embed.add_field(
-                name="Watched Users" if i == 0 else "Watched Users (continued)",
-                value=chunk,
-                inline=False,
+        @extra_help("Add a user to the watch list. Their messages will be logged to the watch-list channel. Admins only (Manage Server or Administrator).")
+        async def watch_add(self, ctx: discord.ApplicationContext,
+                            user: discord.Option(discord.Member, "User to watch")):  # type: ignore
+            """Add a user via Discord's native member picker."""
+            from utils.permissions import check_slash_permission, _default_manage_or_admin
+            if not await check_slash_permission(ctx, "watch_add", _default_manage_or_admin):
+                return
+            # P2-32: the watch list is a moderation tool -- no watching
+            # yourself, the bot, or the server owner.
+            from utils.permissions import mod_target_blocked
+            blocked = mod_target_blocked(ctx.guild, user.id, ctx.author.id)
+            if blocked:
+                await ctx.respond(f"❌ {blocked}", ephemeral=True)
+                return
+            guild_data = self._guild_data(ctx.guild.id)
+            if str(user.id) in guild_data["users"]:
+                await ctx.respond(f"⚠️ {user.mention} is already on the watch list.",
+                                  ephemeral=True)
+                return
+            guild_data["users"][str(user.id)] = self._user_record(user, ctx.author)
+            if not self._save_db():
+                await ctx.respond("⚠️ The watch list could not be saved "
+                                  "(database error) — the change did not stick. "
+                                  "Try again in a moment.", ephemeral=True)
+                return
+            await ctx.respond(embed=self._added_embed(user, ctx.author), ephemeral=True)
+
+    if not WORKER_MODE:
+        @watch.command(
+            name="remove",
+            description="Remove a user from the watch list.",
+        )
+        @extra_help("Remove a user from the watch list. Their messages stop being logged. Admins only.")
+        async def watch_remove(self, ctx: discord.ApplicationContext,
+                               user: discord.Option(discord.Member, "User to remove")):  # type: ignore
+            """Remove a user via the member picker."""
+            from utils.permissions import check_slash_permission, _default_manage_or_admin
+            if not await check_slash_permission(ctx, "watch_remove", _default_manage_or_admin):
+                return
+            guild_data = self._guild_data(ctx.guild.id)
+            if str(user.id) not in guild_data["users"]:
+                await ctx.respond(f"❌ {user.mention} is not on the watch list.",
+                                  ephemeral=True)
+                return
+            del guild_data["users"][str(user.id)]
+            if not self._save_db():
+                await ctx.respond("⚠️ The watch list could not be saved "
+                                  "(database error) — the change did not stick. "
+                                  "Try again in a moment.", ephemeral=True)
+                return
+            await ctx.respond(f"🗑️ Removed {user.mention} from the watch list.",
+                              ephemeral=True)
+
+    if not WORKER_MODE:
+        @watch.command(
+            name="add_id",
+            description="Add a user to the watch list by ID.",
+        )
+        @extra_help("Add a user to the watch list using their Discord ID (or mention). Useful when they aren't easy to find in the member picker. Admins only.")
+        async def watch_add_id(self, ctx: discord.ApplicationContext,
+                               user_id: discord.Option(str, "Discord user ID")):  # type: ignore
+            """Add a user by raw ID."""
+            from utils.permissions import check_slash_permission, _default_manage_or_admin
+            if not await check_slash_permission(ctx, "watch_add_id", _default_manage_or_admin):
+                return
+            numeric_id = self._parse_user_id(user_id)
+            if numeric_id is None:
+                await ctx.respond("❌ That doesn't look like a valid Discord user ID.",
+                                  ephemeral=True)
+                return
+            member, error = await self._resolve_member(ctx.guild, numeric_id)
+            if error:
+                await ctx.respond(error, ephemeral=True)
+                return
+            # P2-32: the watch list is a moderation tool -- no watching
+            # yourself, the bot, or the server owner.
+            from utils.permissions import mod_target_blocked
+            blocked = mod_target_blocked(ctx.guild, member.id, ctx.author.id)
+            if blocked:
+                await ctx.respond(f"❌ {blocked}", ephemeral=True)
+                return
+            guild_data = self._guild_data(ctx.guild.id)
+            if str(member.id) in guild_data["users"]:
+                await ctx.respond(f"⚠️ {member.mention} is already on the watch list.",
+                                  ephemeral=True)
+                return
+            guild_data["users"][str(member.id)] = self._user_record(member, ctx.author)
+            if not self._save_db():
+                await ctx.respond("⚠️ The watch list could not be saved "
+                                  "(database error) — the change did not stick. "
+                                  "Try again in a moment.", ephemeral=True)
+                return
+            await ctx.respond(embed=self._added_embed(member, ctx.author), ephemeral=True)
+
+    if not WORKER_MODE:
+        @watch.command(
+            name="remove_id",
+            description="Remove a user from the watch list by ID.",
+        )
+        @extra_help("Remove a user from the watch list using their Discord ID. Admins only.")
+        async def watch_remove_id(self, ctx: discord.ApplicationContext,
+                                  user_id: discord.Option(str, "Discord user ID")):  # type: ignore
+            """Remove a user by raw ID."""
+            from utils.permissions import check_slash_permission, _default_manage_or_admin
+            if not await check_slash_permission(ctx, "watch_remove_id", _default_manage_or_admin):
+                return
+            numeric_id = self._parse_user_id(user_id)
+            if numeric_id is None:
+                await ctx.respond("❌ That doesn't look like a valid Discord user ID.",
+                                  ephemeral=True)
+                return
+            guild_data = self._guild_data(ctx.guild.id)
+            removed = guild_data["users"].pop(str(numeric_id), None)
+            if removed is None:
+                await ctx.respond(f"❌ User ID `{numeric_id}` is not on the watch list.",
+                                  ephemeral=True)
+                return
+            if not self._save_db():
+                await ctx.respond("⚠️ The watch list could not be saved "
+                                  "(database error) — the change did not stick. "
+                                  "Try again in a moment.", ephemeral=True)
+                return
+            member = ctx.guild.get_member(numeric_id)
+            display = member.mention if member else f"`{removed.get('display_name', 'Unknown User')}`"
+            await ctx.respond(f"🗑️ Removed {display} from the watch list.\nID: `{numeric_id}`",
+                              ephemeral=True)
+
+    if not WORKER_MODE:
+        @watch.command(
+            name="list",
+            description="Show everyone on the watch list.",
+        )
+        @extra_help("Show everyone currently on the watch list, with the log channel status. Admins only.")
+        async def watch_list(self, ctx: discord.ApplicationContext):
+            """Show the current watch list."""
+            from utils.permissions import check_slash_permission, _default_manage_or_admin
+            if not await check_slash_permission(ctx, "watch_list", _default_manage_or_admin):
+                return
+            guild_data = self._guild_data(ctx.guild.id)
+            users = guild_data.get("users", {})
+            if not users:
+                await ctx.respond("👁️ The watch list is currently empty.", ephemeral=True)
+                return
+            embed = discord.Embed(
+                title="👁️ Watch List",
+                description=f"**{len(users)}** user(s) currently being watched.",
+                color=ORANGE,
             )
-        log_channel = self._get_log_channel(ctx.guild)
-        embed.add_field(
-            name="Log Channel",
-            value=log_channel.mention if log_channel else "❌ Not configured",
-            inline=False,
-        )
-        await ctx.respond(embed=embed, ephemeral=True)
-
-    @discord.slash_command(name="watch_status", description="Show the watch-list system status.")
-    @extra_help("Show watch-list status: user count, log channel, and logging state. Admins only.")
-    async def watch_status(self, ctx: discord.ApplicationContext):
-        """Show system status."""
-        from utils.permissions import check_slash_permission, _default_manage_or_admin
-        if not await check_slash_permission(ctx, "watch_status", _default_manage_or_admin):
-            return
-        guild_data = self._guild_data(ctx.guild.id)
-        users = guild_data.get("users", {})
-        log_channel = self._get_log_channel(ctx.guild)
-        embed = discord.Embed(
-            title="👁️ Watch List Status",
-            color=ORANGE,
-            timestamp=datetime.now(timezone.utc),
-        )
-        embed.add_field(name="Watched Users", value=f"`{len(users)}`", inline=True)
-        embed.add_field(
-            name="Log Channel",
-            value=log_channel.mention if log_channel else "❌ Not configured",
-            inline=True,
-        )
-        embed.add_field(
-            name="Logging",
-            value="🟢 Online" if log_channel else "🔴 Not configured",
-            inline=True,
-        )
-        if users:
             lines = [self._watched_line(ctx.guild, uid, data) for uid, data in users.items()]
             for i, chunk in enumerate(self._chunk_lines(lines)[:25]):
                 embed.add_field(
-                    name="Watched Users" if i == 0 else f"Watched Users {i + 1}",
+                    name="Watched Users" if i == 0 else "Watched Users (continued)",
                     value=chunk,
                     inline=False,
                 )
-        else:
-            embed.add_field(name="Watched Users",
-                            value="No users are currently being watched.",
-                            inline=False)
-        embed.set_footer(text="Watch List • Separate from the main Logger")
-        await ctx.respond(embed=embed, ephemeral=True)
+            log_channel = self._get_log_channel(ctx.guild)
+            embed.add_field(
+                name="Log Channel",
+                value=log_channel.mention if log_channel else "❌ Not configured",
+                inline=False,
+            )
+            await ctx.respond(embed=embed, ephemeral=True)
 
-    @discord.slash_command(name="watch_info", description="Show information about a watched user.")
-    @extra_help("Show details about one watched user: who added them and when. Admins only.")
-    async def watch_info(self, ctx: discord.ApplicationContext,
-                         user: discord.Option(discord.Member, "User to inspect")):  # type: ignore
-        """Show information about one watched user."""
-        from utils.permissions import check_slash_permission, _default_manage_or_admin
-        if not await check_slash_permission(ctx, "watch_info", _default_manage_or_admin):
-            return
-        data = self._get_watched_user(ctx.guild.id, user.id)
-        if data is None:
-            await ctx.respond(f"❌ {user.mention} is not on the watch list.",
-                              ephemeral=True)
-            return
-        embed = discord.Embed(title="👁️ Watch List User Information", color=ORANGE)
-        embed.set_thumbnail(url=user.display_avatar.url)
-        embed.add_field(
-            name="User",
-            value=f"{user.mention}\n`@{user.name}` • `{user.id}`",
-            inline=False,
+    if not WORKER_MODE:
+        @watch.command(
+            name="status",
+            description="Show the watch-list system status.",
         )
-        added_by_id = data.get("added_by")
-        added_by = ctx.guild.get_member(int(added_by_id)) if added_by_id else None
-        embed.add_field(
-            name="Added By",
-            value=f"{added_by.mention}\n`{added_by.id}`" if added_by else (
-                f"<@{added_by_id}>\n`{added_by_id}`" if added_by_id else "Unknown"),
-            inline=True,
+        @extra_help("Show watch-list status: user count, log channel, and logging state. Admins only.")
+        async def watch_status(self, ctx: discord.ApplicationContext):
+            """Show system status."""
+            from utils.permissions import check_slash_permission, _default_manage_or_admin
+            if not await check_slash_permission(ctx, "watch_status", _default_manage_or_admin):
+                return
+            guild_data = self._guild_data(ctx.guild.id)
+            users = guild_data.get("users", {})
+            log_channel = self._get_log_channel(ctx.guild)
+            embed = discord.Embed(
+                title="👁️ Watch List Status",
+                color=ORANGE,
+                timestamp=datetime.now(timezone.utc),
+            )
+            embed.add_field(name="Watched Users", value=f"`{len(users)}`", inline=True)
+            embed.add_field(
+                name="Log Channel",
+                value=log_channel.mention if log_channel else "❌ Not configured",
+                inline=True,
+            )
+            embed.add_field(
+                name="Logging",
+                value="🟢 Online" if log_channel else "🔴 Not configured",
+                inline=True,
+            )
+            if users:
+                lines = [self._watched_line(ctx.guild, uid, data) for uid, data in users.items()]
+                for i, chunk in enumerate(self._chunk_lines(lines)[:25]):
+                    embed.add_field(
+                        name="Watched Users" if i == 0 else f"Watched Users {i + 1}",
+                        value=chunk,
+                        inline=False,
+                    )
+            else:
+                embed.add_field(name="Watched Users",
+                                value="No users are currently being watched.",
+                                inline=False)
+            embed.set_footer(text="Watch List • Separate from the main Logger")
+            await ctx.respond(embed=embed, ephemeral=True)
+
+    if not WORKER_MODE:
+        @watch.command(
+            name="info",
+            description="Show information about a watched user.",
         )
-        added_at = data.get("added_at")
-        if added_at:
-            try:
-                ts = int(datetime.fromisoformat(
-                    added_at.replace("Z", "+00:00")).timestamp())
-                added_value = f"<t:{ts}:F>\n<t:{ts}:R>"
-            except Exception:
-                added_value = f"`{added_at}`"
-        else:
-            added_value = "Unknown"
-        embed.add_field(name="Added", value=added_value, inline=True)
-        await ctx.respond(embed=embed, ephemeral=True)
-
-    @discord.slash_command(name="watch_set_channel",
-                           description="Set the watch-list log channel.")
-    @extra_help("Set the channel where watched users' messages are logged. Admins only.")
-    async def watch_set_channel(self, ctx: discord.ApplicationContext,
-                                channel: discord.Option(discord.TextChannel, "Channel for watch-list logs")):  # type: ignore
-        """Set the logging channel."""
-        from utils.permissions import check_slash_permission, _default_manage_or_admin
-        if not await check_slash_permission(ctx, "watch_set_channel", _default_manage_or_admin):
-            return
-        self._guild_data(ctx.guild.id)["log_channel_id"] = str(channel.id)
-        if not self._save_db():
-            await ctx.respond("⚠️ The watch list could not be saved "
-                              "(database error) — the change did not stick. "
-                              "Try again in a moment.", ephemeral=True)
-            return
-        embed = discord.Embed(
-            title="👁️ Watch List Log Channel Updated",
-            color=discord.Color.green(),
-        )
-        embed.add_field(name="Log Channel", value=channel.mention, inline=True)
-        embed.add_field(name="Status", value="🟢 Enabled", inline=True)
-        await ctx.respond(embed=embed, ephemeral=True)
-
-    @discord.slash_command(name="watch_clear", description="Remove everyone from the watch list.")
-    @extra_help("Remove every user from the watch list (with confirmation). Already-sent logs are kept. Admins only.")
-    async def watch_clear(self, ctx: discord.ApplicationContext):
-        """Clear the entire watch list after confirmation."""
-        from utils.permissions import check_slash_permission, _default_manage_or_admin
-        if not await check_slash_permission(ctx, "watch_clear", _default_manage_or_admin):
-            return
-        guild_data = self._guild_data(ctx.guild.id)
-        users = guild_data.get("users", {})
-        if not users:
-            await ctx.respond("👁️ The watch list is already empty.", ephemeral=True)
-            return
-
-        class ConfirmView(discord.ui.View):
-            def __init__(self, cog, author_id):
-                super().__init__(timeout=30)
-                self.cog = cog
-                self.author_id = author_id
-
-            async def interaction_check(self, interaction: discord.Interaction):
-                if interaction.user.id != self.author_id:
-                    await interaction.response.send_message(
-                        "❌ You cannot use this confirmation.", ephemeral=True)
-                    return False
-                return True
-
-            @discord.ui.button(label="Clear Watch List",
-                               style=discord.ButtonStyle.danger, emoji="🗑️")
-            async def confirm(self, button, interaction):
+        @extra_help("Show details about one watched user: who added them and when. Admins only.")
+        async def watch_info(self, ctx: discord.ApplicationContext,
+                             user: discord.Option(discord.Member, "User to inspect")):  # type: ignore
+            """Show information about one watched user."""
+            from utils.permissions import check_slash_permission, _default_manage_or_admin
+            if not await check_slash_permission(ctx, "watch_info", _default_manage_or_admin):
+                return
+            data = self._get_watched_user(ctx.guild.id, user.id)
+            if data is None:
+                await ctx.respond(f"❌ {user.mention} is not on the watch list.",
+                                  ephemeral=True)
+                return
+            embed = discord.Embed(title="👁️ Watch List User Information", color=ORANGE)
+            embed.set_thumbnail(url=user.display_avatar.url)
+            embed.add_field(
+                name="User",
+                value=f"{user.mention}\n`@{user.name}` • `{user.id}`",
+                inline=False,
+            )
+            added_by_id = data.get("added_by")
+            added_by = ctx.guild.get_member(int(added_by_id)) if added_by_id else None
+            embed.add_field(
+                name="Added By",
+                value=f"{added_by.mention}\n`{added_by.id}`" if added_by else (
+                    f"<@{added_by_id}>\n`{added_by_id}`" if added_by_id else "Unknown"),
+                inline=True,
+            )
+            added_at = data.get("added_at")
+            if added_at:
                 try:
-                    data = self.cog._guild_data(interaction.guild.id)
-                except WatchListUnavailable:
-                    for child in self.children:
-                        child.disabled = True
-                    await interaction.response.edit_message(
-                        content="⚠️ The watch list is temporarily unavailable "
-                                "(the database could not be read). Nothing was "
-                                "changed — try again in a moment.",
-                        embed=None, view=self)
-                    self.stop()
-                    return
-                count = len(data.get("users", {}))
-                data["users"] = {}
-                if not self.cog._save_db():
-                    for child in self.children:
-                        child.disabled = True
-                    await interaction.response.edit_message(
-                        content="⚠️ The watch list could not be saved "
-                                "(database error) — the change did not stick. "
-                                "Try again in a moment.",
-                        embed=None, view=self)
-                    self.stop()
-                    return
-                for child in self.children:
-                    child.disabled = True
-                await interaction.response.edit_message(
-                    content=f"🗑️ Cleared **{count}** user(s) from the watch list.",
-                    embed=None, view=self)
-                self.stop()
+                    ts = int(datetime.fromisoformat(
+                        added_at.replace("Z", "+00:00")).timestamp())
+                    added_value = f"<t:{ts}:F>\n<t:{ts}:R>"
+                except Exception:
+                    added_value = f"`{added_at}`"
+            else:
+                added_value = "Unknown"
+            embed.add_field(name="Added", value=added_value, inline=True)
+            await ctx.respond(embed=embed, ephemeral=True)
 
-            @discord.ui.button(label="Cancel",
-                               style=discord.ButtonStyle.secondary, emoji="❌")
-            async def cancel(self, button, interaction):
-                for child in self.children:
-                    child.disabled = True
-                await interaction.response.edit_message(
-                    content="❌ Watch-list clear cancelled.", embed=None, view=self)
-                self.stop()
-
-            async def on_timeout(self):
-                for child in self.children:
-                    child.disabled = True
-
-        embed = discord.Embed(
-            title="⚠️ Clear Watch List",
-            description=(f"This will remove **{len(users)}** user(s) from the watch list.\n\n"
-                         "This does **not** delete message logs already sent to Discord.\n\n"
-                         "Are you sure?"),
-            color=discord.Color.red(),
+    if WORKER_MODE:
+        @watch.command(
+            name="set_channel",
+            description="Set the watch-list log channel.",
         )
-        await ctx.respond(embed=embed,
-                          view=ConfirmView(self, ctx.author.id),
-                          ephemeral=True)
+        @extra_help("Set the channel where watched users' messages are logged. Admins only.")
+        async def watch_set_channel(self, ctx: discord.ApplicationContext,
+                                    channel: discord.Option(discord.TextChannel, "Channel for watch-list logs")):  # type: ignore
+            """Set the logging channel."""
+            from utils.permissions import check_slash_permission, _default_manage_or_admin
+            if not await check_slash_permission(ctx, "watch_set_channel", _default_manage_or_admin):
+                return
+            self._guild_data(ctx.guild.id)["log_channel_id"] = str(channel.id)
+            if not self._save_db():
+                await ctx.respond("⚠️ The watch list could not be saved "
+                                  "(database error) — the change did not stick. "
+                                  "Try again in a moment.", ephemeral=True)
+                return
+            embed = discord.Embed(
+                title="👁️ Watch List Log Channel Updated",
+                color=discord.Color.green(),
+            )
+            embed.add_field(name="Log Channel", value=channel.mention, inline=True)
+            embed.add_field(name="Status", value="🟢 Enabled", inline=True)
+            await ctx.respond(embed=embed, ephemeral=True)
+
+    if not WORKER_MODE:
+        @watch.command(
+            name="clear",
+            description="Remove everyone from the watch list.",
+        )
+        @extra_help("Remove every user from the watch list (with confirmation). Already-sent logs are kept. Admins only.")
+        async def watch_clear(self, ctx: discord.ApplicationContext):
+            """Clear the entire watch list after confirmation."""
+            from utils.permissions import check_slash_permission, _default_manage_or_admin
+            if not await check_slash_permission(ctx, "watch_clear", _default_manage_or_admin):
+                return
+            guild_data = self._guild_data(ctx.guild.id)
+            users = guild_data.get("users", {})
+            if not users:
+                await ctx.respond("👁️ The watch list is already empty.", ephemeral=True)
+                return
+
+            class ConfirmView(discord.ui.View):
+                def __init__(self, cog, author_id):
+                    super().__init__(timeout=30)
+                    self.cog = cog
+                    self.author_id = author_id
+
+                async def interaction_check(self, interaction: discord.Interaction):
+                    if interaction.user.id != self.author_id:
+                        await interaction.response.send_message(
+                            "❌ You cannot use this confirmation.", ephemeral=True)
+                        return False
+                    return True
+
+                @discord.ui.button(label="Clear Watch List",
+                                   style=discord.ButtonStyle.danger, emoji="🗑️")
+                async def confirm(self, button, interaction):
+                    try:
+                        data = self.cog._guild_data(interaction.guild.id)
+                    except WatchListUnavailable:
+                        for child in self.children:
+                            child.disabled = True
+                        await interaction.response.edit_message(
+                            content="⚠️ The watch list is temporarily unavailable "
+                                    "(the database could not be read). Nothing was "
+                                    "changed — try again in a moment.",
+                            embed=None, view=self)
+                        self.stop()
+                        return
+                    count = len(data.get("users", {}))
+                    data["users"] = {}
+                    if not self.cog._save_db():
+                        for child in self.children:
+                            child.disabled = True
+                        await interaction.response.edit_message(
+                            content="⚠️ The watch list could not be saved "
+                                    "(database error) — the change did not stick. "
+                                    "Try again in a moment.",
+                            embed=None, view=self)
+                        self.stop()
+                        return
+                    for child in self.children:
+                        child.disabled = True
+                    await interaction.response.edit_message(
+                        content=f"🗑️ Cleared **{count}** user(s) from the watch list.",
+                        embed=None, view=self)
+                    self.stop()
+
+                @discord.ui.button(label="Cancel",
+                                   style=discord.ButtonStyle.secondary, emoji="❌")
+                async def cancel(self, button, interaction):
+                    for child in self.children:
+                        child.disabled = True
+                    await interaction.response.edit_message(
+                        content="❌ Watch-list clear cancelled.", embed=None, view=self)
+                    self.stop()
+
+                async def on_timeout(self):
+                    for child in self.children:
+                        child.disabled = True
+
+            embed = discord.Embed(
+                title="⚠️ Clear Watch List",
+                description=(f"This will remove **{len(users)}** user(s) from the watch list.\n\n"
+                             "This does **not** delete message logs already sent to Discord.\n\n"
+                             "Are you sure?"),
+                color=discord.Color.red(),
+            )
+            await ctx.respond(embed=embed,
+                              view=ConfirmView(self, ctx.author.id),
+                              ephemeral=True)
 
     @commands.Cog.listener()
     async def on_application_command_error(self, ctx, error):

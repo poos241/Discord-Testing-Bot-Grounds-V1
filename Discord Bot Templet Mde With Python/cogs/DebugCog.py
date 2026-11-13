@@ -74,6 +74,10 @@ def _dlog(category: str, message: str):
 
 
 def _is_admin(ctx):
+    # P3-1: in a DM ctx.author is a discord.User with no
+    # guild_permissions -- deny instead of raising AttributeError.
+    if ctx.guild is None:
+        return False
     perms = ctx.author.guild_permissions
     return perms.administrator or perms.manage_guild
 

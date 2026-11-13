@@ -1,6 +1,7 @@
 # Eat It or Yeet It internals
 
-Source: `cogs/fun_cog.py`.
+Source: `cogs/fun_cog.py`. The game runs on the **main bot only** —
+if the Helper ran it too, rounds and XP would double.
 
 ## Round lifecycle
 
@@ -19,10 +20,10 @@ results, awards game XP, and attaches the 🔁 rematch button.
 - Views use `timeout=None` and stable `custom_id`s, and are re-registered
   in `on_ready` (`_ensure_view()`) — see the
   [boot gotcha](./boot-sequence.md#gotcha-views-need-a-running-loop).
-- Active rounds persist in the `eatyeet_active` table (SQLite); an expiry
+- Active rounds persist in the `eatyeet_active` table (Postgres); an expiry
   loop tallies anything that ended while the bot was down.
 - Rematch settings persist per channel in the `eatyeet_rematch` table
-  (SQLite), so 🔁 **Run it back** replays the same duration + food source
+  (Postgres), so 🔁 **Run it back** replays the same duration + food source
   even after a restart.
 
 ## Food sources
@@ -44,5 +45,8 @@ and results name every voter on each side.
 
 `eatyeet_stats` (points, streaks), `eatyeet_suggestions` (community
 pool), `eatyeet_active` (live rounds), `eatyeet_rematch` (per-channel
-rematch settings) — all in SQLite since the October 2026 migration. The
-old `data/eatyeet_*.json` files are kept as rollback copies.
+rematch settings) — all in **Postgres** since the November 2026 cutover
+(they moved from JSON to SQLite in October 2026, then to Postgres on
+2026-11-12 with the rest of the data, 0 mismatches). The old
+`data/eatyeet_*.json` files are kept as rollback copies, and the SQLite
+`bot.db` is a frozen legacy copy — neither is live.

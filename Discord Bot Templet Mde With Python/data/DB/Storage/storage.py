@@ -1,8 +1,61 @@
 from data.DB.db import database
 import asyncio
-from data.DB.models import welcome_data, main_vc_map, xp_timestamps, threads_settings, levels, ticket_config, active_tickets, ticket_records, profiles, profile_activity, qotd_questions, qotd_config, qotd_history, qotd_guild_exclusions, ticket_guild_config, support_tickets, appeal_guild_config, appeals, friendships, friend_settings, voice_xp_config, voice_xp_users, lockdown_channels, automod_config, auto_thread_channels, custom_badges, custom_badge_awards, ghlog_items, ghlog_settings, command_permissions, introduction_status, introduction_config, timeout_board_config
+
+from sqlalchemy.exc import IntegrityError as SQLAlchemyIntegrityError
+from data.DB.models import welcome_data, main_vc_map, xp_timestamps, threads_settings, levels, ticket_config, active_tickets, ticket_records, profiles, profile_activity, qotd_questions, qotd_config, qotd_history, qotd_guild_exclusions, ticket_guild_config, support_tickets, appeal_guild_config, appeals, friendships, friend_settings, voice_xp_config, voice_xp_users, lockdown_channels, automod_config, auto_thread_channels, custom_badges, custom_badge_awards, ghlog_items, ghlog_settings, command_permissions, introduction_status, introduction_config, timeout_board_config, vrchat_accounts
 from datetime import datetime
 import time
+
+from sqlalchemy import func as _sa_func
+from sqlalchemy.dialects.postgresql import insert as _pg_insert
+
+
+def _upsert(table, values):
+    """Postgres upsert: INSERT ... ON CONFLICT (primary key)
+    DO UPDATE SET <non-PK values>.
+
+    Replaces SQLite INSERT OR REPLACE. Returns the statement; callers
+    run it with ``await database.execute(_upsert(...))`` (the same
+    shape the old inline INSERT OR REPLACE had). On conflict, every
+    non-PK column the caller supplied is set to the incoming value.
+    Columns the caller did NOT supply keep their old value (unlike
+    OR REPLACE, which reset them to their defaults) -- every caller
+    here merges with the existing row first or writes whole rows, so
+    nothing depends on the reset behaviour. A table's ``updated_at``
+    column is refreshed to now() on conflict when the caller did not
+    supply it (matching the column's onupdate=func.now() intent);
+    ``created_at`` is left alone, so the original creation time
+    survives an upsert.
+    """
+    stmt = _pg_insert(table).values(**values)
+    pk_names = {c.name for c in table.primary_key.columns}
+    set_ = {
+        name: value
+        for name, value in values.items()
+        if name not in pk_names
+    }
+    if "updated_at" in table.c and "updated_at" not in set_:
+        set_["updated_at"] = _sa_func.now()
+    if set_:
+        stmt = stmt.on_conflict_do_update(
+            index_elements=list(table.primary_key.columns),
+            set_=set_,
+        )
+    else:
+        stmt = stmt.on_conflict_do_nothing(
+            index_elements=list(table.primary_key.columns)
+        )
+    return stmt
+
+
+def _insert_ignore(table, values):
+    """Postgres insert-or-ignore: INSERT ... ON CONFLICT (primary key)
+    DO NOTHING. Replaces SQLite INSERT OR IGNORE. Returns the
+    statement; callers run it with ``await database.execute(...)``."""
+    stmt = _pg_insert(table).values(**values).on_conflict_do_nothing(
+        index_elements=list(table.primary_key.columns)
+    )
+    return stmt
 
 async def get_welcome(guild_id: str):
     row = await database.fetch_one(welcome_data.select().where(welcome_data.c.guild_id == guild_id))
@@ -10,9 +63,7 @@ async def get_welcome(guild_id: str):
 
 async def save_welcome(guild_id: str, payload: dict):
     await database.execute(
-        welcome_data.insert()
-        .values(guild_id=guild_id, **payload)
-        .prefix_with("OR REPLACE")
+        _upsert(welcome_data, dict(guild_id=guild_id, **payload))
     )
 
 async def get_mainvc(guild_id: str):
@@ -21,9 +72,7 @@ async def get_mainvc(guild_id: str):
 
 async def save_mainvc(guild_id: str, payload: dict):
     await database.execute(
-        main_vc_map.insert()
-        .values(guild_id=guild_id, **payload)
-        .prefix_with("OR REPLACE")
+        _upsert(main_vc_map, dict(guild_id=guild_id, **payload))
     )
 
 async def get_xp(guild_id: str):
@@ -32,9 +81,7 @@ async def get_xp(guild_id: str):
 
 async def save_xp(guild_id: str, data: dict):
     await database.execute(
-        xp_timestamps.insert()
-        .values(guild_id=guild_id, data=data)
-        .prefix_with("OR REPLACE")
+        _upsert(xp_timestamps, dict(guild_id=guild_id, data=data))
     )
 
 async def get_threads_settings(guild_id: str):
@@ -54,9 +101,7 @@ async def get_threads_settings(guild_id: str):
 
 async def save_threads_settings(guild_id: str, payload: dict):
     await database.execute(
-        threads_settings.insert()
-        .values(guild_id=guild_id, **payload)
-        .prefix_with("OR REPLACE")
+        _upsert(threads_settings, dict(guild_id=guild_id, **payload))
     )
 
 async def get_levels(guild_id: str):
@@ -66,11 +111,9 @@ async def get_levels(guild_id: str):
 async def save_levels(guild_id: str, data: dict):
     from discord.utils import get  # just in case you use it
     guild_name = data.get("settings", {}).get("guild_name", "Unknown")
-    query = levels.insert().values(
-        guild_id=guild_id,
+    query = _upsert(levels, dict(guild_id=guild_id,
         guild_name=guild_name,
-        data=data
-    ).prefix_with("OR REPLACE")
+        data=data))
     await database.execute(query)
     
     
@@ -84,11 +127,9 @@ async def get_ticket_config(gid: str):
 
 async def save_ticket_config(gid: str, config: dict):
     await database.execute(
-        ticket_config.insert().values(
-            guild_id=str(gid),
+        _upsert(ticket_config, dict(guild_id=str(gid),
             guild_name=config.get("guild_name", ""),
-            config=config
-        ).prefix_with("OR REPLACE")
+            config=config))
     )
 
 async def get_active_tickets(gid: str):
@@ -97,11 +138,9 @@ async def get_active_tickets(gid: str):
 
 async def save_active_tickets(gid: str, active: dict):
     await database.execute(
-        active_tickets.insert().values(
-            guild_id=str(gid),
+        _upsert(active_tickets, dict(guild_id=str(gid),
             guild_name=active.get("guild_name", ""),
-            active=active
-        ).prefix_with("OR REPLACE")
+            active=active))
     )
 
 async def get_ticket_records(gid: str):
@@ -110,10 +149,8 @@ async def get_ticket_records(gid: str):
 
 async def save_ticket_records(gid: str, records: dict):
     await database.execute(
-        ticket_records.insert().values(
-            guild_id=str(gid),
-            records=records
-        ).prefix_with("OR REPLACE")
+        _upsert(ticket_records, dict(guild_id=str(gid),
+            records=records))
     )
     
     
@@ -127,9 +164,7 @@ async def get_profile(user_id: str):
 
 async def save_profile(user_id: str, data: dict):
     await database.execute(
-        profiles.insert()
-        .values(user_id=str(user_id), **data)
-        .prefix_with("OR REPLACE")
+        _upsert(profiles, dict(user_id=str(user_id), **data))
     )
 
 
@@ -141,7 +176,13 @@ async def list_public_profiles():
 
 
 async def log_activity(user_id, guild_id, kind, detail):
-    """Append one activity-feed event. Never raises to callers."""
+    """Append one activity-feed event. Never raises to callers.
+
+    Failures are printed, not swallowed (P3-37): a broken
+    profile_activity table used to drop every feed event silently, so
+    the feed just stopped updating with zero signal. Callers still
+    never see the exception -- the print is the only signal.
+    """
     try:
         await database.execute(
             profile_activity.insert().values(
@@ -152,8 +193,12 @@ async def log_activity(user_id, guild_id, kind, detail):
                 ts=int(time.time()),
             )
         )
-    except Exception:
-        pass
+    except Exception as e:
+        print(
+            f"[WARN] log_activity failed (user={user_id} guild={guild_id} "
+            f"kind={kind}): {e!r}",
+            flush=True,
+        )
 
 
 async def get_activity(user_id: str, limit: int = 20):
@@ -207,11 +252,32 @@ async def get_qotd_config(guild_id: str):
     return dict(row) if row else {}
 
 
+# Merge rule (same as save_ticket_guild_config): partial payloads merge
+# with the existing row first and None values are dropped, so a
+# partial save never resets the other columns to defaults/NULL and
+# a legacy NULL (e.g. channel_id) heals to the column default on
+# the next save instead of being written back as NULL.
+_QOTD_CONFIG_COLUMNS = ("channel_id", "post_time", "timezone", "enabled")
+
+
 async def save_qotd_config(guild_id: str, payload: dict):
+    current = await get_qotd_config(guild_id)
+    merged = {k: current.get(k) for k in _QOTD_CONFIG_COLUMNS}
+    merged.update({k: v for k, v in payload.items()
+                   if k in _QOTD_CONFIG_COLUMNS})
+    values = {k: v for k, v in merged.items() if v is not None}
+    # P3-36: channel_id has no NOT NULL default in the merge, so a
+    # legacy NULL row (or an explicit None payload) would be dropped
+    # from the INSERT and land as NULL again on upsert -- the
+    # "<#None>" leak. "" is this codebase's unset sentinel (the
+    # model default, and what the QOTD cog / /bot_settings treat as
+    # "not set"), so a missing channel_id heals to "" here instead.
+    values.setdefault("channel_id", "")
+    values.setdefault("post_time", "09:00")
+    values.setdefault("timezone", "America/Chicago")
+    values.setdefault("enabled", True)
     await database.execute(
-        qotd_config.insert()
-        .values(guild_id=str(guild_id), **payload)
-        .prefix_with("OR REPLACE")
+        _upsert(qotd_config, dict(guild_id=str(guild_id), **values))
     )
 
 
@@ -256,7 +322,7 @@ async def count_qotd_by_source(source: str):
 
 async def add_qotd_exclusion(guild_id: str, qid: int):
     await database.execute(
-        qotd_guild_exclusions.insert().values(guild_id=str(guild_id), question_id=int(qid)).prefix_with("OR IGNORE")
+        _insert_ignore(qotd_guild_exclusions, dict(guild_id=str(guild_id), question_id=int(qid)))
     )
 
 
@@ -303,25 +369,42 @@ async def mark_qotd_history_skipped(history_id: int):
 
 
 async def get_qotd_history(guild_id: str, limit: int = 25):
-    """Newest-first history rows with their question text attached."""
+    """Newest-first history rows with their question text attached.
+
+    The question texts come from ONE batched IN (...) fetch, not one
+    query per history row: /qotd history with limit=10000 used to
+    fire a question query for every row (P3-38). A history row whose
+    question is gone still gets text "" exactly as before."""
     rows = await database.fetch_all(
         qotd_history.select()
         .where(qotd_history.c.guild_id == str(guild_id))
         .order_by(qotd_history.c.id.desc())
         .limit(limit)
     )
+    qids = []
+    seen = set()
+    for r in rows:
+        qid = r["question_id"]
+        if qid not in seen:
+            seen.add(qid)
+            qids.append(qid)
+    texts = {}
+    if qids:
+        qrows = await database.fetch_all(
+            qotd_questions.select().where(qotd_questions.c.id.in_(qids))
+        )
+        texts = {q["id"]: q["text"] for q in qrows}
     out = []
     for r in rows:
         row = dict(r)
-        q = await get_qotd_question(row["question_id"])
-        row["text"] = q.get("text", "") if q else ""
+        row["text"] = texts.get(row["question_id"], "")
         out.append(row)
     return out
 
 
 # Support tickets (built new 2026-10-27; see cogs/Tickets.py).
 # NOTE on save_ticket_guild_config: it MERGES with the existing row
-# before writing. A plain INSERT OR REPLACE with a partial payload
+# before writing. A plain upsert with a partial payload
 # would silently reset every other setting (including next_number)
 # to its default, so partial updates must never go straight to the
 # table. This helper is the only writer for ticket_guild_config.
@@ -348,9 +431,7 @@ async def save_ticket_guild_config(guild_id: str, payload: dict):
     values.setdefault("next_number", 1)
     values.setdefault("enabled", True)
     await database.execute(
-        ticket_guild_config.insert()
-        .values(guild_id=str(guild_id), **values)
-        .prefix_with("OR REPLACE")
+        _upsert(ticket_guild_config, dict(guild_id=str(guild_id), **values))
     )
 
 
@@ -435,9 +516,7 @@ async def save_appeal_guild_config(guild_id: str, payload: dict):
     values = {k: v for k, v in merged.items() if v is not None}
     values.setdefault("enabled", True)
     await database.execute(
-        appeal_guild_config.insert()
-        .values(guild_id=str(guild_id), **values)
-        .prefix_with("OR REPLACE")
+        _upsert(appeal_guild_config, dict(guild_id=str(guild_id), **values))
     )
 
 
@@ -507,9 +586,7 @@ async def get_friend_settings(user_id: str):
 
 async def save_friend_settings(user_id: str, allow_requests: bool):
     await database.execute(
-        friend_settings.insert()
-        .values(user_id=str(user_id), allow_requests=bool(allow_requests))
-        .prefix_with("OR REPLACE")
+        _upsert(friend_settings, dict(user_id=str(user_id), allow_requests=bool(allow_requests)))
     )
 
 
@@ -613,7 +690,7 @@ async def decline_pending_for_user(user_id: str, decided_ts: int):
 
 # Voice time XP + VC leaderboard (built 2026-10-28; see cogs/VoiceXP.py).
 # Config saves MERGE with the existing row (same rule as tickets /
-# appeals): a plain INSERT OR REPLACE with a partial payload would
+# appeals): a plain upsert with a partial payload would
 # silently reset the other settings. User rows are always written
 # whole by the cog, so save_voice_xp_user is a straight upsert.
 
@@ -644,9 +721,7 @@ async def save_voice_xp_config(guild_id: str, payload: dict):
     values.setdefault("daily_cap_xp", 100)
     values.setdefault("enabled", True)
     await database.execute(
-        voice_xp_config.insert()
-        .values(guild_id=str(guild_id), **values)
-        .prefix_with("OR REPLACE")
+        _upsert(voice_xp_config, dict(guild_id=str(guild_id), **values))
     )
 
 
@@ -671,9 +746,7 @@ async def save_voice_xp_user(guild_id: str, user_id: str, payload: dict):
     values.setdefault("xp_today", 0)
     values.setdefault("xp_day", "")
     await database.execute(
-        voice_xp_users.insert()
-        .values(guild_id=str(guild_id), user_id=str(user_id), **values)
-        .prefix_with("OR REPLACE")
+        _upsert(voice_xp_users, dict(guild_id=str(guild_id), user_id=str(user_id), **values))
     )
 
 
@@ -724,9 +797,7 @@ async def save_lockdown(guild_id: str, channel_id: str, payload: dict):
     values.setdefault("reason", "")
     values.setdefault("scope", "channel")
     await database.execute(
-        lockdown_channels.insert()
-        .values(guild_id=str(guild_id), channel_id=str(channel_id), **values)
-        .prefix_with("OR REPLACE")
+        _upsert(lockdown_channels, dict(guild_id=str(guild_id), channel_id=str(channel_id), **values))
     )
 
 
@@ -754,7 +825,7 @@ async def list_due_lockdowns(now_ts: int):
 
 # Automod basics (built 2026-10-28; see cogs/Automod.py). Config saves
 # MERGE with the existing row (same rule as tickets / appeals /
-# voice XP): a plain INSERT OR REPLACE with a partial payload would
+# voice XP): a plain upsert with a partial payload would
 # silently reset every other rule to OFF, so partial updates must
 # never go straight to the table. get_automod_config always returns
 # a full dict with defaults filled in, so a guild with no row yet
@@ -787,9 +858,7 @@ async def save_automod_config(guild_id: str, payload: dict):
     current.update({k: v for k, v in payload.items()
                     if k in _AUTOMOD_DEFAULTS})
     await database.execute(
-        automod_config.insert()
-        .values(guild_id=str(guild_id), **current)
-        .prefix_with("OR REPLACE")
+        _upsert(automod_config, dict(guild_id=str(guild_id), **current))
     )
 
 # Auto-threads (built 2026-10-28; see cogs/AutoThreads.py). One row
@@ -817,9 +886,7 @@ async def save_auto_thread_channel(guild_id: str, channel_id: str, payload: dict
     values.setdefault("archive_minutes", 1440)
     values.setdefault("name_prefix", "")
     await database.execute(
-        auto_thread_channels.insert()
-        .values(guild_id=str(guild_id), channel_id=str(channel_id), **values)
-        .prefix_with("OR REPLACE")
+        _upsert(auto_thread_channels, dict(guild_id=str(guild_id), channel_id=str(channel_id), **values))
     )
 
 
@@ -847,18 +914,30 @@ async def list_auto_thread_channels(guild_id: str):
 
 async def create_custom_badge(guild_id, slug, name, icon, description, created_by):
     """Insert a badge definition; returns the row, or None if the
-    slug is already taken in this guild."""
+    slug is already taken in this guild. Two concurrent creates of
+    the same slug race past the check above; the (guild_id, slug)
+    UNIQUE constraint keeps only the first, and the loser returns
+    None (already taken) instead of raising IntegrityError."""
     existing = await database.fetch_one(
         custom_badges.select().where(
             (custom_badges.c.guild_id == str(guild_id))
             & (custom_badges.c.slug == slug)))
     if existing:
         return None
-    badge_id = await database.execute(
-        custom_badges.insert().values(
-            guild_id=str(guild_id), slug=slug, name=name,
-            icon=icon or "", description=description or "",
-            created_by=str(created_by)))
+    try:
+        badge_id = await database.execute(
+            custom_badges.insert().values(
+                guild_id=str(guild_id), slug=slug, name=name,
+                icon=icon or "", description=description or "",
+                created_by=str(created_by)))
+    except SQLAlchemyIntegrityError:
+        # The slug is taken now (the race winner's row exists), so
+        # return the already-exists result. If no row exists, this
+        # was some other integrity failure -- re-raise it rather
+        # than hiding it behind "already taken".
+        if await get_custom_badge(guild_id, slug):
+            return None
+        raise
     row = await database.fetch_one(
         custom_badges.select().where(custom_badges.c.id == badge_id))
     return dict(row) if row else {"id": badge_id, "slug": slug, "name": name}
@@ -897,25 +976,43 @@ async def list_custom_badges(guild_id):
 
 async def delete_custom_badge(guild_id, slug):
     """Delete a badge definition and all its awards. Returns the
-    number of awards removed, or None when the badge is not found."""
+    number of awards removed, or None when the badge is not found.
+
+    Both deletes run inside one transaction, so a failure between
+    them rolls the whole delete back instead of leaving orphaned
+    awards (or a deleted badge with its awards still present).
+    Each delete uses RETURNING, so the count is the number of award
+    rows this call actually deleted, and a badge delete that
+    removes no row reports the badge as already gone instead of
+    claiming a second deletion. The transaction holds no read lock
+    before its first write, so two simultaneous deletes serialize
+    on the write lock instead of colliding on a lock upgrade.
+    """
     badge = await get_custom_badge(guild_id, slug)
     if not badge:
         return None
-    awards = await database.fetch_all(
-        custom_badge_awards.select().where(
-            custom_badge_awards.c.badge_id == badge["id"]))
-    await database.execute(
-        custom_badge_awards.delete().where(
-            custom_badge_awards.c.badge_id == badge["id"]))
-    await database.execute(
-        custom_badges.delete().where(custom_badges.c.id == badge["id"]))
-    return len(awards)
+    async with database.transaction():
+        deleted_awards = await database.fetch_all(
+            custom_badge_awards.delete().where(
+                custom_badge_awards.c.badge_id == badge["id"]).returning(
+                    custom_badge_awards.c.id))
+        deleted_badge = await database.fetch_all(
+            custom_badges.delete().where(
+                custom_badges.c.id == badge["id"]).returning(
+                    custom_badges.c.id))
+        if not deleted_badge:
+            return None
+    return len(deleted_awards)
 
 
 async def award_custom_badge(badge_id, guild_id, user_id, awarded_by):
     """Award a badge to a member. Returns True on a new award,
     False when the member already has it (or the badge id is not
-    from this guild, so a stale id cannot award across servers)."""
+    from this guild, so a stale id cannot award across servers).
+    Two concurrent awards of the same badge race past the check
+    above; the (badge_id, user_id) UNIQUE constraint keeps only the
+    first, and the loser returns False (already has it) instead of
+    raising IntegrityError."""
     badge = await database.fetch_one(
         custom_badges.select().where(custom_badges.c.id == badge_id))
     if not badge or str(badge["guild_id"]) != str(guild_id):
@@ -926,10 +1023,23 @@ async def award_custom_badge(badge_id, guild_id, user_id, awarded_by):
             & (custom_badge_awards.c.user_id == str(user_id))))
     if existing:
         return False
-    await database.execute(
-        custom_badge_awards.insert().values(
-            badge_id=badge_id, guild_id=str(guild_id),
-            user_id=str(user_id), awarded_by=str(awarded_by)))
+    try:
+        await database.execute(
+            custom_badge_awards.insert().values(
+                badge_id=badge_id, guild_id=str(guild_id),
+                user_id=str(user_id), awarded_by=str(awarded_by)))
+    except SQLAlchemyIntegrityError:
+        # The member has the badge now (the race winner's row exists),
+        # so return the already-has-it result. If no award row exists,
+        # this was some other integrity failure -- re-raise it rather
+        # than hiding it behind "already has it".
+        existing = await database.fetch_one(
+            custom_badge_awards.select().where(
+                (custom_badge_awards.c.badge_id == badge_id)
+                & (custom_badge_awards.c.user_id == str(user_id))))
+        if existing:
+            return False
+        raise
     return True
 
 
@@ -962,16 +1072,32 @@ async def list_custom_badge_awards_for_user(user_id):
     rows only (id, icon, name, description). Deliberately no guild
     id: the web profile shelf renders these on own AND public
     pages, and a public page must never reveal which servers a
-    member is in."""
+    member is in.
+
+    The badge definitions come from ONE batched IN (...) fetch, not
+    one query per award (P3-38). Award order (by awarded_at) is
+    preserved, and an award whose badge is gone is still skipped,
+    exactly as before."""
     awards = await database.fetch_all(
         custom_badge_awards.select().where(
             custom_badge_awards.c.user_id == str(user_id))
         .order_by(custom_badge_awards.c.awarded_at))
+    badge_ids = []
+    seen = set()
+    for award in awards:
+        bid = award["badge_id"]
+        if bid not in seen:
+            seen.add(bid)
+            badge_ids.append(bid)
+    badges = {}
+    if badge_ids:
+        brows = await database.fetch_all(
+            custom_badges.select().where(custom_badges.c.id.in_(badge_ids))
+        )
+        badges = {b["id"]: b for b in brows}
     out = []
     for award in awards:
-        badge = await database.fetch_one(
-            custom_badges.select().where(
-                custom_badges.c.id == award["badge_id"]))
+        badge = badges.get(award["badge_id"])
         if badge:
             out.append({
                 "id": badge["id"],
@@ -983,8 +1109,8 @@ async def list_custom_badge_awards_for_user(user_id):
 
 
 # GitHub ban log item tracking (built 2026-10-29; see cogs/GHLog.py).
-# One row per posted board item, so /banlog can warn about duplicates
-# and /banlog_update / /banlog_delete can find the item again. Rows also
+# One row per posted board item, so /banlog log can warn about duplicates
+# and /banlog log update / /banlog log delete can find the item again. Rows also
 # record which board they live on, so an update never fires at the wrong
 # board after the target is switched from test to real.
 async def get_ghlog_item(row_id: int):
@@ -1039,6 +1165,13 @@ async def list_ghlog_items(guild_id: str, user_id: str):
 
 
 async def update_ghlog_item(row_id: int, payload: dict):
+    """Update one tracked board item.
+
+    Postgres has no SQLite-style "database is locked" transient:
+    concurrent writers serialize on row locks instead, so the old
+    retry loop (P1-26, written for the SQLite GHLog create flow) is
+    gone -- a plain UPDATE is all this needs.
+    """
     await database.execute(
         ghlog_items.update().where(ghlog_items.c.id == int(row_id)).values(**payload)
     )
@@ -1051,10 +1184,10 @@ async def delete_ghlog_item(row_id: int):
 
 
 # Ban-log settings (built 2026-11-04): one row per guild holding the
-# evidence channel -- the channel /banlog re-uploads attached
-# screenshots to. Set with /ghlog_set_channel; an empty
+# evidence channel -- the channel /banlog log re-uploads attached
+# screenshots to. Set with /banlog log set_channel; an empty
 # evidence_channel_id means "not set" (fall back to the channel the
-# command ran in). Upserts use OR REPLACE like the other config
+# command ran in). Upserts use _upsert like the other config
 # helpers in this file.
 async def get_ghlog_settings(guild_id: str):
     row = await database.fetch_one(
@@ -1063,17 +1196,25 @@ async def get_ghlog_settings(guild_id: str):
     return dict(row) if row else {}
 
 
+# Same merge rule as save_qotd_config above: partial payloads merge
+# with the existing row first and None values are dropped.
+_GHLOG_SETTINGS_COLUMNS = ("evidence_channel_id", "updated_by")
+
+
 async def save_ghlog_settings(guild_id: str, payload: dict):
+    current = await get_ghlog_settings(guild_id)
+    merged = {k: current.get(k) for k in _GHLOG_SETTINGS_COLUMNS}
+    merged.update({k: v for k, v in payload.items()
+                   if k in _GHLOG_SETTINGS_COLUMNS})
+    values = {k: v for k, v in merged.items() if v is not None}
     await database.execute(
-        ghlog_settings.insert()
-        .values(guild_id=str(guild_id), **payload)
-        .prefix_with("OR REPLACE")
+        _upsert(ghlog_settings, dict(guild_id=str(guild_id), **values))
     )
 
 
 # Custom per-command permissions (built 2026-11-05; see
 # utils/permissions.py and cogs/Permissions.py). One row per grant.
-# Upserts use OR REPLACE like the other config helpers in this file.
+# Upserts use _upsert like the other config helpers in this file.
 async def get_command_permissions(guild_id: str, command: str):
     """All grants for one command in one guild. Returns a list of
     dicts with target_type, target_id, allowed, created_by."""
@@ -1105,31 +1246,20 @@ async def save_command_permission(
     allowed: bool, created_by: str = "",
 ):
     """Grant (or deny) one command to one role or user. Replaces any
-    existing grant for the same guild/command/target. Retries briefly
-    when SQLite reports the database is locked (another process or
-    task is writing at the same moment) instead of failing the grant."""
-    last_error = None
-    for attempt in range(5):
-        try:
-            await database.execute(
-                command_permissions.insert()
-                .values(
-                    guild_id=str(guild_id),
-                    command=command,
-                    target_type=target_type,
-                    target_id=str(target_id),
-                    allowed=1 if allowed else 0,
-                    created_by=str(created_by or ""),
-                )
-                .prefix_with("OR REPLACE")
-            )
-            return
-        except Exception as e:
-            last_error = e
-            if "database is locked" not in str(e).lower():
-                raise
-            await asyncio.sleep(0.2 * (attempt + 1))
-    raise last_error
+    existing grant for the same guild/command/target.
+
+    Postgres has no SQLite-style "database is locked" transient:
+    concurrent writers serialize on row locks instead, so the old
+    retry loop is gone -- a plain upsert is all this needs.
+    """
+    await database.execute(
+        _upsert(command_permissions, dict(guild_id=str(guild_id),
+            command=command,
+            target_type=target_type,
+            target_id=str(target_id),
+            allowed=1 if allowed else 0,
+            created_by=str(created_by or "")))
+    )
 
 
 async def delete_command_permission(
@@ -1187,9 +1317,92 @@ async def delete_all_command_permissions(guild_id: str):
     return int(result or 0)
 
 
+# Command-merge grant rename (2026-11-11). The families merged into
+# slash groups got new grantable keys (group + subcommand, "_" for the
+# space), so stored grants under the old key must move to the new one
+# or the grant silently stops applying (the gate falls back to the
+# command's default Discord check). Idempotent: after the first run
+# no old-key rows remain, so later runs rename nothing. Rows whose
+# new key already has a grant for the same guild/target are dropped
+# (the grant already exists under the new name) instead of colliding
+# on the (guild_id, command, target_type, target_id) primary key.
+_RENAMED_COMMAND_KEYS = {
+    "modlogs": "modlogs_list",
+    "mod_actions": "modlogs_actions",
+    "modlog_scan": "modlogs_scan",
+    "banlog": "banlog_log",
+    "log_approve": "banlog_approve",
+    "ghlog_set_channel": "banlog_set_channel",
+    "ghlog_backfill_cases": "banlog_backfill_cases",
+    "auto_thread": "auto_thread_toggle",
+    "set_auto_thread_channel": "auto_thread_set_channel",
+    "remove_auto_thread_channel": "auto_thread_remove_channel",
+    "setup_logs": "logs_setup",
+    "change_logchannel": "logs_change_channel",
+    "log_settings": "logs_settings",
+}
+
+
+async def migrate_renamed_command_permissions():
+    """Rename stored command-permission grants for merged commands.
+
+    Returns how many rows were renamed. Safe to call on every boot;
+    connects the DB first if needed (same pattern as the cogs'
+    _ensure_db helpers) and never raises -- a failure only logs.
+    """
+    try:
+        if not database.is_connected:
+            await database.connect()
+        renamed = 0
+        for old_key, new_key in _RENAMED_COMMAND_KEYS.items():
+            rows = await database.fetch_all(
+                command_permissions.select().where(
+                    command_permissions.c.command == old_key
+                )
+            )
+            for row in rows:
+                row = dict(row)
+                existing = await database.fetch_one(
+                    command_permissions.select().where(
+                        (command_permissions.c.guild_id == row["guild_id"])
+                        & (command_permissions.c.command == new_key)
+                        & (command_permissions.c.target_type == row["target_type"])
+                        & (command_permissions.c.target_id == row["target_id"])
+                    )
+                )
+                if existing is not None:
+                    await database.execute(
+                        command_permissions.delete().where(
+                            (command_permissions.c.guild_id == row["guild_id"])
+                            & (command_permissions.c.command == old_key)
+                            & (command_permissions.c.target_type == row["target_type"])
+                            & (command_permissions.c.target_id == row["target_id"])
+                        )
+                    )
+                    continue
+                await database.execute(
+                    command_permissions.update().where(
+                        (command_permissions.c.guild_id == row["guild_id"])
+                        & (command_permissions.c.command == old_key)
+                        & (command_permissions.c.target_type == row["target_type"])
+                        & (command_permissions.c.target_id == row["target_id"])
+                    ).values(command=new_key)
+                )
+                renamed += 1
+        if renamed:
+            print(
+                "[OK] Migrated %d command-permission grant(s) to merged "
+                "command names." % renamed
+            )
+        return renamed
+    except Exception as exc:  # noqa: BLE001
+        print("[WARN] command-permission rename migration failed: %r" % (exc,))
+        return 0
+
+
 # Introduction tracking (built 2026-11-02; see cogs/Introduction.py).
 # Per-guild config is one row; per-member status is one row per
-# (guild, user). Upserts use OR REPLACE like the other config
+# (guild, user). Upserts use _upsert like the other config
 # helpers in this file.
 async def get_introduction_config(guild_id: str):
     row = await database.fetch_one(
@@ -1198,11 +1411,27 @@ async def get_introduction_config(guild_id: str):
     return dict(row) if row else {}
 
 
+# Same merge rule as save_qotd_config above: partial payloads merge
+# with the existing row first and None values are dropped.
+_INTRODUCTION_CONFIG_COLUMNS = (
+    "channel_id", "role_id", "log_channel_id",
+    "auto_assign_role", "auto_remove_role", "scan_on_message",
+    "scan_limit",
+)
+
+
 async def save_introduction_config(guild_id: str, payload: dict):
+    current = await get_introduction_config(guild_id)
+    merged = {k: current.get(k) for k in _INTRODUCTION_CONFIG_COLUMNS}
+    merged.update({k: v for k, v in payload.items()
+                   if k in _INTRODUCTION_CONFIG_COLUMNS})
+    values = {k: v for k, v in merged.items() if v is not None}
+    values.setdefault("auto_assign_role", True)
+    values.setdefault("auto_remove_role", True)
+    values.setdefault("scan_on_message", True)
+    values.setdefault("scan_limit", 100)
     await database.execute(
-        introduction_config.insert()
-        .values(guild_id=str(guild_id), **payload)
-        .prefix_with("OR REPLACE")
+        _upsert(introduction_config, dict(guild_id=str(guild_id), **values))
     )
 
 
@@ -1214,11 +1443,45 @@ async def get_introduction_status(guild_id: str, user_id: str):
     return dict(row) if row else {}
 
 
+async def get_introduction_statuses(guild_id: str, user_ids):
+    """Batch lookup: one query for many members' introduction rows.
+
+    Returns {user_id (str): row dict} for the members that have a
+    row; members with no row are simply absent from the dict. An
+    empty input list returns {} without touching the database.
+    Added for P2-19 so /intro scan does one lookup per scan instead
+    of one per message.
+    """
+    ids = [str(u) for u in dict.fromkeys(user_ids)]
+    if not ids:
+        return {}
+    rows = await database.fetch_all(
+        introduction_status.select().where(
+            (introduction_status.c.guild_id == str(guild_id))
+            & (introduction_status.c.user_id.in_(ids))))
+    return {str(r["user_id"]): dict(r) for r in rows}
+
+
+# Same merge rule as save_qotd_config above: partial payloads merge
+# with the existing row first and None values are dropped. Note an
+# explicit None in the payload still clears the column: the merge
+# keeps the None, the filter drops it from the INSERT, and the
+# column (no default) lands as NULL -- so the cog's
+# introduced_at=None "un-introduce" clears keep working.
+_INTRODUCTION_STATUS_COLUMNS = (
+    "has_introduced", "introduced_at", "message_url",
+)
+
+
 async def save_introduction_status(guild_id: str, user_id: str, payload: dict):
+    current = await get_introduction_status(guild_id, user_id)
+    merged = {k: current.get(k) for k in _INTRODUCTION_STATUS_COLUMNS}
+    merged.update({k: v for k, v in payload.items()
+                   if k in _INTRODUCTION_STATUS_COLUMNS})
+    values = {k: v for k, v in merged.items() if v is not None}
+    values.setdefault("has_introduced", False)
     await database.execute(
-        introduction_status.insert()
-        .values(guild_id=str(guild_id), user_id=str(user_id), **payload)
-        .prefix_with("OR REPLACE")
+        _upsert(introduction_status, dict(guild_id=str(guild_id), user_id=str(user_id), **values))
     )
 
 
@@ -1247,11 +1510,19 @@ async def get_timeout_board_config(guild_id: str):
     return dict(row) if row else {}
 
 
+# Same merge rule as save_qotd_config above: partial payloads merge
+# with the existing row first and None values are dropped.
+_TIMEOUT_BOARD_CONFIG_COLUMNS = ("channel_id", "message_id")
+
+
 async def save_timeout_board_config(guild_id: str, payload: dict):
+    current = await get_timeout_board_config(guild_id)
+    merged = {k: current.get(k) for k in _TIMEOUT_BOARD_CONFIG_COLUMNS}
+    merged.update({k: v for k, v in payload.items()
+                   if k in _TIMEOUT_BOARD_CONFIG_COLUMNS})
+    values = {k: v for k, v in merged.items() if v is not None}
     await database.execute(
-        timeout_board_config.insert()
-        .values(guild_id=str(guild_id), **payload)
-        .prefix_with("OR REPLACE")
+        _upsert(timeout_board_config, dict(guild_id=str(guild_id), **values))
     )
 
 
@@ -1265,3 +1536,23 @@ async def delete_timeout_board_config(guild_id: str):
 async def list_timeout_board_configs():
     rows = await database.fetch_all(timeout_board_config.select())
     return [dict(r) for r in rows]
+
+# VRChat accounts (migrated from Little Haven 2026-11-08; linking feature
+# comes later -- these helpers just read/write the preserved rows).
+async def get_vrchat_account(user_id: str):
+    row = await database.fetch_one(
+        vrchat_accounts.select().where(
+            vrchat_accounts.c.user_id == str(user_id)))
+    return dict(row) if row else {}
+
+
+async def save_vrchat_account(user_id: str, payload: dict):
+    await database.execute(
+        _upsert(vrchat_accounts, dict(user_id=str(user_id), **payload))
+    )
+
+
+async def list_vrchat_accounts():
+    rows = await database.fetch_all(vrchat_accounts.select())
+    return [dict(r) for r in rows]
+

@@ -1,6 +1,9 @@
 # Logger internals
 
-Source: `cogs/Logger/`. State: `data/message_log.db` (SQLite).
+Source: `cogs/Logger/`. State: the shared Postgres database (`havenly`,
+PostgreSQL 17 in Docker). The old SQLite files (`data/message_log.db`,
+`bot.db`) are frozen legacy copies from the 2026-11-12 cutover — nothing
+writes to them any more.
 
 The Logger records server events to dedicated log channels — one channel
 per category, configured per guild. It is separate from the Watch List
@@ -23,7 +26,7 @@ server-wide events.
 | `__init__.py` | `setup(bot)` — registers nine cogs (8 loggers +
   `LoggerCommands`) and the `log_toggle` application command group |
 | `config.py` | Category keys, embed colors, default channel names |
-| `database.py` | SQLite: `messages` (message cache), `guild_logs` (per-guild channel config), `log_toggles` (per-event toggles), `events` (history for the web History page + export) |
+| `database.py` | Postgres: `messages` (message cache), `guild_logs` (per-guild channel config), `log_toggles` (per-event toggles), `events` (history for the web History page + export) |
 | `logger.py` | `Logger.send(guild, category, embed)` — resolves the channel, swallows send errors |
 | `base.py` | `BaseLogger` cog — every logger cog extends this for `send()` + `audit_entry()` |
 | `embeds.py` | `LoggerEmbed` — shared embed builders (base, author, field, footer) |
@@ -32,7 +35,7 @@ server-wide events.
 | `channels.py` | `ChannelLogger` — channel + thread events |
 | `emoji.py` | `EmojiLogger` — emoji create/delete/rename |
 | `moderation.py` | `ModerationLogger` — bans, unbans, timeouts |
-| `commands.py` | `/setup_logs`, `/change_logchannel`, `/log_settings`, `/log_toggle` |
+| `commands.py` | `/logs setup`, `/logs change_channel`, `/logs settings`, `/log_toggle` |
 | `voice.py` | `VoiceLogger` — voice state changes |
 | `invites.py` | `InviteLogger` — invite create/delete |
 | `roles.py` | `RoleLogger` — role create/delete/update |
@@ -40,16 +43,29 @@ server-wide events.
 
 ## Commands
 
+All Logger commands run on **Havenly Helper** — the setup and the
+toggles live there. The event logging itself is done by the main bot
+(see [Which bot does the logging](#which-bot-does-the-logging) below).
+
 | Command | What it does | Who can use it |
 |---|---|---|
-| `/setup_logs` | Creates the 📜 Server Logs category + 4 staff-only log channels, wires them up | Administrator |
-| `/change_logchannel` | Point one category at a different channel (picker for category + channel) | Administrator |
-| `/log_settings` | Show which channel each category logs to, plus disabled events | Everyone |
+| `/logs setup` | Binds up to 4 existing log channels (or creates them with the opt-in `create_channels` flag, default off), validated for bot send first | Administrator |
+| `/logs change_channel` | Point one category at a different channel (picker for category + channel) | Administrator |
+| `/logs settings` | Show which channel each category logs to, plus disabled events | Everyone |
 | `/log_toggle message` | Toggle `message_edit`, `message_delete`, `bulk_delete` | Administrator |
 | `/log_toggle member` | Toggle `member_join`, `member_leave`, `member_kick`, `nickname`, `avatar`, `role_member` | Administrator |
 | `/log_toggle voice` | Toggle `voice_join`, `voice_leave`, `voice_move`, `voice_mute` | Administrator |
 | `/log_toggle server` | Toggle channel/thread/emoji/role/invite events (13) | Administrator |
 | `/log_toggle moderation` | Toggle `ban`, `unban`, `timeout` | Administrator |
+
+## Which bot does the logging
+
+The Logger package loads on **both** bots, but its 8 listener cogs are
+gated to the main bot only — the worker loads the package just for the
+`/logs` and `/log_toggle` commands. The prune loop is main-only too.
+So events are logged exactly once: the Helper never sees them, and
+nothing double-logs. (The worker journal shows zero Logger lines since
+the 2026-11-13 split.)
 
 ## How sending works
 
@@ -66,10 +82,10 @@ goes through `Logger.send()`, which:
 ## Message cache
 
 `MessageLogger.on_message` stores every guild message in the `messages`
-table. On delete, the logger prefers the live `Message` object but falls
-back to the cached row, so deletes show the original content even for
-uncached messages. Bulk deletes use `on_raw_bulk_message_delete` and log
-a count.
+table in Postgres. On delete, the logger prefers the live `Message`
+object but falls back to the cached row, so deletes show the original
+content even for uncached messages. Bulk deletes use
+`on_raw_bulk_message_delete` and log a count.
 
 ## Audit log matching
 
@@ -85,8 +101,8 @@ Every log event has a toggle key (see `EVENT_GROUPS` in `config.py` —
 with per-category subcommands (`/log_toggle voice`, etc.) because Discord
 caps option choices at 25 — one flat list wouldn't fit. Each subcommand flips one;
 `db.is_enabled(guild_id, key)` is checked at the top of every handler,
-and `/log_settings` lists what's currently disabled. The state lives in
-the `log_toggles` table, keyed by `(guild_id, event_key)`.
+and `/logs settings` lists what's currently disabled. The state lives in
+the `log_toggles` table in Postgres, keyed by `(guild_id, event_key)`.
 
 ## History + export (web)
 
@@ -117,5 +133,6 @@ last 15 seconds. Kicks go to the 🚨 moderation channel as
 - **Two `on_member_update` listeners.** `MemberLogger` (nick/avatar/roles)
   and `ModerationLogger` (timeouts) both listen; they check disjoint
   conditions, so nothing double-logs.
-- **Setup is per guild.** Each server runs `/setup_logs` once; the config
-  lives in `guild_logs`, keyed by `(guild_id, log_type)`.
+- **Setup is per guild.** Each server runs `/logs setup` once (on the
+  Helper); the config lives in `guild_logs`, keyed by
+  `(guild_id, log_type)`.

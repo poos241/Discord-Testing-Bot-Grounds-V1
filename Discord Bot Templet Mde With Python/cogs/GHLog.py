@@ -1,11 +1,10 @@
 """GitHub ban-log commands (manual log, v2 + approval flow).
 
-/testbanlog posts one clearly-marked TEST draft item to prove the bot
-can reach GitHub Projects at all. /banlog posts a real case: a member
+/banlog log posts a real case: a member
 (or a user ID for someone who already left), the action, the reason,
 optional evidence links, up to 10 screenshot attachments, and a ticket
 number, plus a short summary of the bot's own case history for that
-user. Nothing posts blind: both /banlog and the /userinfo panel button
+user. Nothing posts blind: both /banlog log and the /userinfo panel button
 show an ephemeral preview first, and only post when staff tap Post.
 
 Approval flow: a new log does NOT go straight to its category. It
@@ -14,17 +13,17 @@ posts with Status "Needs approval", the Approval field set to
 gets a case/log number (the tracking row id) in its title and body.
 The bot OWNS the tags field for the approval state: the logger does
 not pick a tag at log time. A second staff member then runs
-/log_approve with that case number; the bot moves the item to the
+/banlog log approve with that case number; the bot moves the item to the
 category the logger picked (no override -- approve always uses the
 logger's category), flips Approval to "Log approved", and flips the
 tag to "approved". The approver must be someone other than the
 logger. A tag is a single-select field, so it holds only ONE value at
 a time: the approval state lives in "tags", and a separate "Decision"
 field holds a human decision marker such as "Blacklist approved" or
-"more info" (set it with /banlog_update). /banlog_update can still
+"more info" (set it with /banlog log update). /banlog log update can still
 change tags or append a note on a pending case, but it will not move
-a pending case out of the holding column (use /log_approve for that).
-/banlog_delete removes an item (type DELETE to confirm). Every posted
+a pending case out of the holding column (use /banlog log approve for that).
+/banlog log delete removes an item (type DELETE to confirm). Every posted
 item is tracked in the ghlog_items table, so updates, deletes,
 approvals, and duplicate warnings can find it again.
 
@@ -33,23 +32,23 @@ attachments are ephemeral-attachments links that expire after 24
 hours, so the bot does NOT rely on them. When a log posts, it
 re-uploads each attached screenshot to the evidence channel and uses
 that permanent link in the board item. Which channel: the server's
-stored evidence channel (set with /ghlog_set_channel), else the
+stored evidence channel (set with /banlog log set_channel), else the
 channel the command ran in. There is no per-log channel picker --
 the stored channel is the one place evidence goes. Evidence renders
 as embedded Markdown images in the body, so the photos show inline
 on the board like a hand-made log. Discord caps a command at 10
 attachments, so for more photos the logger sends them as chat
 messages in the channel instead: the preview has a "Collect
-screenshots" button (and /banlog_collect does the same thing if the
+screenshots" button (and /banlog log collect does the same thing if the
 button fails) that scans the channel for the logger's recent
 screenshots, downloads them, posts them to the evidence channel as a
 captioned message plus a thread holding the images, then deletes the
 originals from the log channel. Only screenshots sent after the log
-started (/banlog ran) are pulled, so old images already in the
-channel are never grabbed by mistake. /banlog_update also takes up
+started (/banlog log ran) are pulled, so old images already in the
+channel are never grabbed by mistake. /banlog log update also takes up
 to 10 more screenshots to append when a log has more than 10 photos,
 and takes a case number as well as a member/user to say which log
-to update. /ghlog_backfill_cases scans the whole board for items
+to update. /banlog log backfill_cases scans the whole board for items
 whose title has no case number (hand-made logs and logs from before
 the case-number flow), gives each one the next free case number, and
 rewrites its board title and body to carry it, then reports an embed
@@ -57,17 +56,14 @@ with how many were scanned and fixed.
 
 Target board defaults to the test board; switch it with
 GITHUB_PROJECT_OWNER / GITHUB_PROJECT_NUMBER when the real board is
-wired up. Rows record which board they live on, so an update never
+wired up. The owner may be a personal account or an organization;
+the board link in replies is resolved live so it points at
+/users/ or /orgs/ as appropriate. Rows record which board they live on, so an update never
 fires at the wrong board after a switch. The board needs the Approval
 field (Needs approval / Log approved), a "Needs approval" Status
 option, "pending approval" / "approved" tags options, and a Decision
 field (Blacklist approved / more info);
 utils.github_projects.ensure_approval_setup creates them.
-
-Testing bypass: GHLOG_ALLOW_SELF_APPROVE=1 in .env lets a logger
-approve their own log (for testing when only one person is around).
-The bot logs a loud warning at startup whenever it is on. REMOVE it
-after testing -- it is not meant to stay.
 """
 
 import datetime
@@ -78,8 +74,9 @@ import re
 import aiohttp
 import discord
 from discord.ext import commands
+from discord.commands import SlashCommandGroup
 
-from config import GUILD_IDS, admin_required, extra_help, load_json
+from config import GUILD_IDS, WORKER_MODE, admin_required, extra_help, load_json
 from data.DB.Storage.storage import (
     delete_ghlog_item,
     get_ghlog_item,
@@ -92,20 +89,36 @@ from data.DB.Storage.storage import (
     update_ghlog_item,
 )
 from utils.github_projects import (
-    PROJECT_NUMBER,
-    PROJECT_OWNER,
     create_draft_issue,
     create_logged_case,
     delete_project_item,
+    get_board_url,
     get_project_fields,
     get_project_id,
+    get_project_number,
+    get_project_owner,
     list_project_items,
     resolve_draft_issue_id,
     set_single_select,
     update_draft_issue,
 )
 
-BOARD_URL = "https://github.com/users/%s/projects/%s" % (PROJECT_OWNER, PROJECT_NUMBER)
+
+async def _board_url(token):
+    """Board link for staff replies.
+
+    Resolved live so an org-owned board links to /orgs/ instead of
+    /users/ (the old module-level constant hardcoded /users/ at
+    import). Falls back to the /users/ form when GitHub cannot be reached to
+    confirm the owner type — no worse than the old hardcoded link,
+    and the command already proved GitHub reachable moments earlier.
+    """
+    try:
+        return await get_board_url(token)
+    except Exception:
+        return "https://github.com/users/%s/projects/%s" % (
+            get_project_owner(), get_project_number()
+        )
 
 STATUS_CHOICES = [
     "Preds",
@@ -124,11 +137,11 @@ TAG_CHOICES = [
 
 # Approval flow markers. A new log posts with Status and Approval both
 # set to APPROVAL_PENDING and the tags field set to TAG_PENDING;
-# /log_approve flips Approval to APPROVAL_APPROVED, moves Status to
+# /banlog log approve flips Approval to APPROVAL_APPROVED, moves Status to
 # the category the logger picked, and flips the tag to TAG_APPROVED.
 # The bot owns the tags field for the approval state -- the logger does
 # not pick a tag at log time. Staff set another tag (for example
-# "Blacklist approved") later with /banlog_update.
+# "Blacklist approved") later with /banlog log update.
 APPROVAL_FIELD = "Approval"
 APPROVAL_PENDING = "Needs approval"
 APPROVAL_APPROVED = "Log approved"
@@ -138,7 +151,7 @@ TAG_APPROVED = "approved"
 # A single-select field holds only ONE value, so the approval state
 # (tags) and a human decision marker cannot share one field. The
 # Decision field holds the decision marker ("Blacklist approved",
-# "more info") and is set by staff with /banlog_update -- the bot
+# "more info") and is set by staff with /banlog log update -- the bot
 # never sets it at post or approve time.
 DECISION_FIELD = "Decision"
 DECISION_CHOICES = [
@@ -147,7 +160,7 @@ DECISION_CHOICES = [
 ]
 
 # Screenshot collection from chat (the button on the preview, and the
-# /banlog_collect fallback command). Discord caps a slash command at
+# /banlog log collect fallback command). Discord caps a slash command at
 # 10 attachments, but screenshots sent as chat messages have no such
 # cap, so the collect flow scans the channel instead. COLLECT_LIMIT
 # caps how many it takes in one pass so one tap cannot flood the
@@ -189,20 +202,6 @@ STATUS_ALIASES = {
     "scammers": "Advertisers/Scammers",
     "misc": "Misc",
 }
-
-
-def _self_approve_bypass():
-    """Temporary test bypass for the approve-must-be-someone-else rule.
-
-    Set GHLOG_ALLOW_SELF_APPROVE=1 in .env while testing, then REMOVE
-    it. The bot logs a loud warning at startup whenever it is on.
-    """
-    return os.getenv("GHLOG_ALLOW_SELF_APPROVE", "").strip().lower() in (
-        "1",
-        "true",
-        "yes",
-        "on",
-    )
 
 
 def _utc_now():
@@ -269,7 +268,7 @@ def format_case_history(guild_id, user_id):
 
 
 def build_case_body(action, server, logger, reason, evidence_links, guild_id, user_id):
-    """Shared body builder for /banlog and the panel modal."""
+    """Shared body builder for /banlog log and the panel modal."""
     evidence_block = (
         "\n".join(_evidence_lines(evidence_links))
         if evidence_links
@@ -299,7 +298,7 @@ def build_case_body(action, server, logger, reason, evidence_links, guild_id, us
     )
 
 
-def build_preview_embed(title, body, status, tags, prior_items, ticket=None, evidence_channel=None):
+def build_preview_embed(title, body, status, tags, prior_items, ticket=None, evidence_channel=None, prior_failed=False):
     """Ephemeral preview shown before anything posts (never the body raw:
     embeds cap at 4096 chars, so long histories are truncated here).
     The Status shown is the INTENDED category; the item itself posts
@@ -327,10 +326,21 @@ def build_preview_embed(title, body, status, tags, prior_items, ticket=None, evi
     embed.add_field(
         name="Approval",
         value="Posts as Needs approval -- a second staff member must "
-        "approve it with /log_approve before it moves to its category.",
+        "approve it with /banlog log approve before it moves to its category.",
         inline=False,
     )
-    if prior_items:
+    if prior_failed:
+        # P2-23: the log index could not be read -- say so instead of
+        # showing no "Already logged" field, which would read as "no
+        # prior logs" when the logs may well exist.
+        embed.add_field(
+            name="Already logged for this user",
+            value="Could not read the log index -- prior logs could not "
+            "be listed. Check the board before assuming this user has "
+            "no logs.",
+            inline=False,
+        )
+    elif prior_items:
         lines = [
             "- %s -- %s" % (row.get("action", "?"), _short_date(row.get("created_at")))
             for row in prior_items[:3]
@@ -344,7 +354,7 @@ def build_preview_embed(title, body, status, tags, prior_items, ticket=None, evi
 async def _resolve_evidence_channel(guild, fallback):
     """Where to re-upload evidence screenshots for a log.
 
-    The server's stored evidence channel (/ghlog_set_channel) wins;
+    The server's stored evidence channel (/banlog log set_channel) wins;
     otherwise the channel the command ran in. There is no per-log
     channel picker -- the stored channel is the one place evidence
     goes. A stored channel id that no longer resolves (the channel
@@ -455,7 +465,7 @@ async def _collect_channel_screenshots(channel, author_id, limit=COLLECT_LIMIT,
     image attachments sent by author_id, oldest first, up to limit.
     Messages whose ids are in exclude_ids (already collected on an
     earlier tap) are skipped, so tapping Collect twice only picks up
-    the new ones. `after` is when the log started (/banlog ran): only
+    the new ones. `after` is when the log started (/banlog log ran): only
     screenshots sent after that are pulled, so old images already in
     the channel are never grabbed by mistake. Returns a list of
     (url, filename, message).
@@ -569,8 +579,165 @@ async def _post_evidence_thread(evidence_channel, caption, shots, thread_name):
     return new_urls, warnings, thread_url
 
 
+async def _link_posted_case(row_id, item_id, title, body):
+    """Save a posted board item's id onto its reserved tracking row.
+
+    Returns None on success, else an error string. The update itself
+    retries a locked database (see storage.update_ghlog_item); a
+    verify read then proves the row actually carries the item id --
+    an update that touches zero rows raises no error, so without the
+    read a lost row would look like a success. A failure here means
+    the case IS on the board but /banlog log update, /banlog log approve and
+    /banlog log delete can never find it, so the caller must report it
+    loudly (console log + user-facing warning) instead of swallowing
+    it. Note /banlog log backfill_cases does NOT heal this: it skips any
+    board item whose title already carries a case number.
+    """
+    try:
+        await update_ghlog_item(
+            row_id, {"item_id": item_id, "title": title, "body": body}
+        )
+    except Exception as exc:
+        return "tracking update failed: %s" % exc
+    try:
+        row = await get_ghlog_item(row_id)
+    except Exception as exc:
+        return "tracking verify read failed: %s" % exc
+    if not row or (row.get("item_id") or "") != item_id:
+        return (
+            "tracking row #%d does not carry item id %s after update"
+            % (row_id, item_id)
+        )
+    return None
+
+
+# P2-22: board field label -> ghlog_items column (None = board-only,
+# no column to sync). The tracking row is a cache of the board: after
+# a failed update/approve the reconcile below re-reads the board and
+# syncs the row to what actually applied, so the next note-append
+# rebuilds from the true board body instead of losing a note that
+# did land.
+_RECONCILE_COLUMNS = {
+    "Status": "status",
+    "Approval": "approval",
+    "tags": "tags",
+    "Decision": None,
+}
+
+
+def _reconcile_summary(applied, not_applied):
+    """One clause naming which board fields applied and which did not."""
+    if applied and not_applied:
+        return "%s applied on the board; %s not applied" % (
+            ", ".join(applied),
+            ", ".join(not_applied),
+        )
+    if applied:
+        return "%s applied on the board" % ", ".join(applied)
+    if not_applied:
+        return "nothing applied on the board (%s not applied)" % (
+            ", ".join(not_applied)
+        )
+    return "nothing was attempted on the board"
+
+
+async def _reconcile_ghlog_row(token, row, attempted, intended_body):
+    """Re-read the board item after a failed update/approve and sync
+    the tracking row to what the board actually shows.
+
+    attempted is [(field label, wanted option)] for every board field
+    set this command tried -- recorded BEFORE the call, so a call that
+    raised after applying server-side still gets checked. intended_body
+    is the full draft body the command last tried to write, or None
+    when it wrote no body.
+
+    Returns a one-line summary for the failure reply. The row is only
+    ever synced TOWARD the board: a field is written to the row only
+    when the board value already equals the wanted value, and the body
+    only when the board body is readable and differs from the row's
+    (the board is authoritative -- the bot is its only writer, and a
+    previous partial failure is the only way the two diverge).
+    """
+    try:
+        items = await list_project_items(token)
+    except Exception as exc:
+        return (
+            "Board check failed too (%s): could not tell which fields "
+            "applied -- check the board; the tracking row was left "
+            "unchanged." % exc
+        )
+    item = None
+    for candidate in items or []:
+        if candidate.get("item_id") == row.get("item_id"):
+            item = candidate
+            break
+    if item is None:
+        return (
+            "Board check: the item was not found on the board (it may "
+            "have been deleted, or the board has more than 100 items) "
+            "-- check the board; the tracking row was left unchanged."
+        )
+    board_fields = item.get("fields") or {}
+    applied = []
+    not_applied = []
+    sync = {}
+    for field_name, wanted in attempted:
+        if board_fields.get(field_name) == wanted:
+            applied.append(field_name)
+            column = _RECONCILE_COLUMNS.get(field_name)
+            if column and (row.get(column) or "") != wanted:
+                sync[column] = wanted
+        else:
+            not_applied.append(field_name)
+    if item.get("is_draft"):
+        board_body = item.get("body") or ""
+        if intended_body is not None:
+            if board_body == intended_body:
+                applied.append("body")
+            else:
+                not_applied.append("body")
+        # Adopt the board body whenever it differs: it is the text
+        # staff see, so the next note-append must build on it.
+        if board_body and board_body != (row.get("body") or ""):
+            sync["body"] = board_body
+    elif intended_body is not None:
+        not_applied.append("body (not a draft item -- body unreadable)")
+    summary = _reconcile_summary(applied, not_applied)
+    if not sync:
+        return "Board check: %s. The tracking row is unchanged." % summary
+    try:
+        await update_ghlog_item(row["id"], sync)
+    except Exception as exc:
+        return (
+            "Board check: %s -- but the tracking row could not be "
+            "updated to match (%s), so it still holds the old values; "
+            "the next update will re-check the board." % (summary, exc)
+        )
+    return (
+        "Board check: %s. The tracking row was updated to match the "
+        "board." % summary
+    )
+
+
+async def _board_item_gone(token, item_id, exc):
+    """Best-effort check whether a board item is gone after a failed
+    delete. A GitHub "could not resolve to a node" error says so
+    directly; otherwise re-read the board -- absence proves it only
+    when the item list is complete (under the 100-item page cap of
+    list_project_items), so a full page means "cannot tell"."""
+    if "Could not resolve to a node" in str(exc):
+        return True
+    try:
+        items = await list_project_items(token)
+    except Exception:
+        return False
+    if len(items or []) >= 100:
+        return False
+    return not any(i.get("item_id") == item_id for i in items)
+
+
 class GHLogConfirmView(discord.ui.View):
-    """Preview confirm step shared by /banlog and the panel modal.
+    """Preview confirm step shared by /banlog log and the panel modal.
 
     Non-persistent on purpose: it only has to live until staff tap Post
     or Cancel (or the 5-minute timeout disables it). The done flag stops
@@ -582,13 +749,13 @@ class GHLogConfirmView(discord.ui.View):
 
     The "Collect screenshots" button is the chat-message route for
     evidence: the logger sends screenshots as chat messages in the
-    channel where /banlog ran (easier on mobile, and no 10-attachment
+    channel where /banlog log ran (easier on mobile, and no 10-attachment
     cap), then taps Collect. The bot scans that channel for the
     logger's recent screenshots, downloads them, posts them to the
     evidence channel as a captioned message plus a thread holding the
     images, deletes the originals from the log channel, and adds the
     permanent thread links to the preview body. Tapping Collect again
-    only picks up screenshots sent since the last tap. /banlog_collect
+    only picks up screenshots sent since the last tap. /banlog log collect
     does the same thing as a command, in case the button fails.
     """
 
@@ -632,7 +799,7 @@ class GHLogConfirmView(discord.ui.View):
             )
         logger_id = p.get("logger_id") or interaction.user.id
         collected_ids = set(p.get("collected_message_ids") or [])
-        # Only screenshots sent after the log started (/banlog ran) --
+        # Only screenshots sent after the log started (/banlog log ran) --
         # old images already in the channel are never grabbed.
         after = _parse_dt(p.get("invoke_at"))
         found = await _collect_channel_screenshots(
@@ -703,18 +870,25 @@ class GHLogConfirmView(discord.ui.View):
         )
         p.setdefault("collected_urls", []).extend(new_urls)
         # Re-render the preview so the logger sees what was collected.
+        prior_failed = False
         try:
             prior = await list_ghlog_items(
                 int(p["guild_id"]), p.get("user_id")
             ) if p.get("guild_id") else []
-        except Exception:
+        except Exception as exc:
             prior = []
+            prior_failed = True
+            print(
+                "[GHLOG] Collect: could not list prior logs for %s (%s)"
+                % (p.get("user_id"), exc)
+            )
         embed = build_preview_embed(
             p["title"],
             p["body"],
             p.get("status"),
             TAG_PENDING,
             prior,
+            prior_failed=prior_failed,
             ticket=p.get("ticket") or "",
             evidence_channel=(
                 evidence_channel.mention if evidence_channel else None
@@ -738,6 +912,22 @@ class GHLogConfirmView(discord.ui.View):
             return
         self.done = True
         p = self.payload
+        # P2-1: re-check the banlog grant at click time -- the preview
+        # lives 5 minutes, and a demoted logger must not be able to
+        # post. Only the staff member who started the log may post it.
+        from utils.permissions import check_interaction_permission, _default_manage_or_admin
+        if not await check_interaction_permission(
+            interaction, "banlog", _default_manage_or_admin
+        ):
+            return
+        logger_id = p.get("logger_id")
+        if logger_id is not None and interaction.user.id != int(logger_id):
+            await interaction.response.send_message(
+                "Only the staff member who started this log (%s) can post it."
+                % (p.get("logger_name") or "the logger"),
+                ephemeral=True,
+            )
+            return
         if p.get("test_mode"):
             await interaction.response.edit_message(
                 content="TEST -- nothing was posted.\n\nWould have posted:\n**%s**\n%s"
@@ -772,11 +962,11 @@ class GHLogConfirmView(discord.ui.View):
                     "intended_status": p.get("status") or "",
                     "ticket": p.get("ticket") or "",
                     "approval": APPROVAL_PENDING,
-                    "project_owner": PROJECT_OWNER,
-                    "project_number": PROJECT_NUMBER,
+                    "project_owner": get_project_owner(),
+                    "project_number": get_project_number(),
                     "logged_by": p["logger_name"],
                     "logged_by_id": str(p.get("logger_id") or ""),
-                    # When /banlog ran (not when Post was tapped): the
+                    # When /banlog log ran (not when Post was tapped): the
                     # Collect flow only pulls screenshots sent after this.
                     "invoke_at": p.get("invoke_at"),
                 }
@@ -860,20 +1050,35 @@ class GHLogConfirmView(discord.ui.View):
                 content="GitHub post failed: %s" % exc, embed=None, view=None
             )
             return
-        try:
-            await update_ghlog_item(
-                row_id, {"item_id": item_id, "title": title, "body": body}
+        tracking_error = await _link_posted_case(row_id, item_id, title, body)
+        if tracking_error:
+            # The board post already succeeded, so this stays a
+            # success message -- but the case is orphaned on the
+            # board until someone re-links row #row_id by hand, so
+            # say so loudly here and in the console instead of
+            # swallowing it (P1-26). The item id is the only link
+            # back to the board item, so it goes in both places.
+            print(
+                "[GHLOG] TRACKING LOST: Case #%d posted to GitHub "
+                "(item_id=%s) but %s -- /banlog log update, /banlog log approve "
+                "and /banlog log delete cannot find this case until "
+                "tracking row #%d is fixed."
+                % (case_no, item_id, tracking_error, row_id)
             )
-        except Exception:
-            # The board post already succeeded; tracking is best-effort
-            # and must never turn a success into a failure message.
-            pass
         reply = (
             "Case #%d posted to the GitHub project: %s\n"
             "It is waiting in the Needs approval column -- a second staff "
-            "member has to approve it with /log_approve before it moves to "
-            "its category." % (case_no, BOARD_URL)
+            "member has to approve it with /banlog log approve before it moves to "
+            "its category." % (case_no, await _board_url(token))
         )
+        if tracking_error:
+            reply += (
+                "\nWARNING: the case posted, but the bot could not save "
+                "its tracking link (%s). /banlog log update, /banlog log approve "
+                "and /banlog log delete will not find Case #%d until this "
+                "is fixed -- keep this item id and tell Emily: %s"
+                % (tracking_error, case_no, item_id)
+            )
         if warnings:
             reply += "\nNotes: " + " ".join(warnings)
         if rehost_warnings:
@@ -911,7 +1116,7 @@ class GHLogModal(discord.ui.Modal):
 
     Discord modals cap at 5 text inputs, so the modal carries Action,
     Reason, Evidence links, Status, and Ticket. Tags are not in the
-    modal (set them later with /banlog_update if needed).
+    modal (set them later with /banlog log update if needed).
     """
 
     def __init__(self, panel):
@@ -969,6 +1174,13 @@ class GHLogModal(discord.ui.Modal):
         )
 
     async def callback(self, interaction: discord.Interaction):
+        # P2-1: re-check the banlog grant -- the modal can sit open
+        # after the opener lost the grant.
+        from utils.permissions import check_interaction_permission, _default_manage_or_admin
+        if not await check_interaction_permission(
+            interaction, "banlog", _default_manage_or_admin
+        ):
+            return
         action = (self.children[0].value or "").strip().lower()
         if action == "ban":
             action = "Ban"
@@ -998,10 +1210,16 @@ class GHLogModal(discord.ui.Modal):
             self.guild.id,
             self.target_id,
         )
+        prior_failed = False
         try:
             prior = await list_ghlog_items(self.guild.id, self.target_id)
-        except Exception:
+        except Exception as exc:
             prior = []
+            prior_failed = True
+            print(
+                "[GHLOG] Panel log: could not list prior logs for %s (%s)"
+                % (self.target_id, exc)
+            )
         # The Collect button needs to know where to scan (the channel
         # the panel lives in) and where the evidence goes.
         evidence_channel = await _resolve_evidence_channel(
@@ -1033,7 +1251,8 @@ class GHLogModal(discord.ui.Modal):
         view = GHLogConfirmView(payload)
         await interaction.response.send_message(
             embed=build_preview_embed(
-                title, body, status, TAG_PENDING, prior, ticket=ticket
+                title, body, status, TAG_PENDING, prior, ticket=ticket,
+                prior_failed=prior_failed,
             ),
             view=view,
             ephemeral=True,
@@ -1045,1342 +1264,1435 @@ class GHLogModal(discord.ui.Modal):
 
 
 class GHLog(commands.Cog):
+    banlog_group = SlashCommandGroup("banlog", "Ban log (GitHub) commands.", guild_ids=GUILD_IDS)
+
     def __init__(self, bot):
         self.bot = bot
-        if _self_approve_bypass():
-            print(
-                "[GHLOG] WARNING: self-approve bypass is ON "
-                "(GHLOG_ALLOW_SELF_APPROVE) -- /log_approve will let a logger "
-                "approve their own log. Remove it from .env after testing."
-            )
 
-    @discord.slash_command(
-        name="testbanlog",
-        description="TEST: post a test entry to the GitHub ban-log project.",
-        guild_ids=GUILD_IDS,
-    )
-    @admin_required()
-    @extra_help(
-        "Posts a clearly-marked TEST draft item to the test GitHub project. "
-        "Proves the bot can reach GitHub Projects before any real case is logged."
-    )
-    async def testbanlog(self, ctx):
-        await ctx.defer(ephemeral=True)
-        token = os.getenv("GITHUB_PROJECT_TOKEN")
-        if not token:
-            return await ctx.followup.send(
-                "GitHub token is not set. Add GITHUB_PROJECT_TOKEN to .env "
-                "and restart the bot, then try again.",
-                ephemeral=True,
-            )
-        try:
-            project_id = await get_project_id(token)
-            body = (
-                "TEST ENTRY - please delete.\n\n"
-                "This is a connectivity probe from the bot's manual ban-log "
-                "command. No real case is attached.\n\n"
-                "Posted by: %s\n"
-                "Server: %s\n"
-                "Time (UTC): %s"
-                % (
-                    ctx.user.display_name,
-                    ctx.guild.name if ctx.guild else "DM",
-                    _utc_now(),
-                )
-            )
-            await create_draft_issue(token, project_id, "TEST - GitHub ban log probe", body)
-        except Exception as exc:
-            return await ctx.followup.send(
-                "GitHub post failed: %s" % exc,
-                ephemeral=True,
-            )
-        await ctx.followup.send(
-            "Test entry posted to the GitHub project (%s project %s). "
-            "Check the board, then delete the TEST item."
-            % (PROJECT_OWNER, PROJECT_NUMBER),
-            ephemeral=True,
+    if WORKER_MODE:
+        @banlog_group.command(
+            name="set_channel",
+            description="Set the channel evidence screenshots are re-uploaded to for this server.",
         )
-
-    @discord.slash_command(
-        name="ghlog_set_channel",
-        description="Set the channel evidence screenshots are re-uploaded to for this server.",
-        guild_ids=GUILD_IDS,
-    )
-    @extra_help(
-        "Sets the evidence channel for this server: the channel /banlog "
-        "re-uploads attached screenshots to, and where collected "
-        "screenshots go as a thread, so the board links are permanent. "
-        "Pick a channel to set it; pass clear to remove the setting "
-        "(logs then use the channel the command runs in); run it with "
-        "nothing to see the current setting. There is no per-log channel "
-        "picker -- this stored channel is the one place evidence goes. "
-        "Manage Server or Administrator only."
-    )
-    async def ghlog_set_channel(
-        self,
-        ctx,
-        channel: discord.Option(
-            discord.TextChannel,
-            "Channel to re-upload evidence screenshots to",
-            required=False,
-            default=None,
-        ),
-        clear: discord.Option(
-            bool,
-            "Clear the stored channel (back to the channel the command runs in)",
-            required=False,
-            default=False,
-        ),
-    ):
-        from utils.permissions import check_slash_permission, _default_manage_or_admin
-        if not await check_slash_permission(ctx, "ghlog_set_channel", _default_manage_or_admin):
-            return
-        await ctx.defer(ephemeral=True)
-        if channel is not None:
-            try:
-                await save_ghlog_settings(
-                    str(ctx.guild.id),
-                    {
-                        "evidence_channel_id": str(channel.id),
-                        "updated_by": ctx.user.display_name,
-                    },
-                )
-            except Exception as exc:
-                return await ctx.followup.send(
-                    "Could not save the evidence channel: %s" % exc,
-                    ephemeral=True,
-                )
-            return await ctx.followup.send(
-                "Evidence channel set to %s. /banlog will re-upload "
-                "screenshots there unless a different channel is picked on "
-                "the log itself." % channel.mention,
-                ephemeral=True,
-            )
-        if clear:
-            try:
-                await save_ghlog_settings(
-                    str(ctx.guild.id),
-                    {
-                        "evidence_channel_id": "",
-                        "updated_by": ctx.user.display_name,
-                    },
-                )
-            except Exception as exc:
-                return await ctx.followup.send(
-                    "Could not clear the evidence channel: %s" % exc,
-                    ephemeral=True,
-                )
-            return await ctx.followup.send(
-                "Evidence channel cleared. /banlog will use the channel the "
-                "command runs in unless a channel is picked on the log itself.",
-                ephemeral=True,
-            )
-        try:
-            settings = await get_ghlog_settings(str(ctx.guild.id))
-        except Exception:
-            settings = {}
-        channel_id = (settings or {}).get("evidence_channel_id") or ""
-        if not channel_id:
-            return await ctx.followup.send(
-                "No evidence channel is set for this server. /banlog uses "
-                "the channel the command runs in unless a channel is picked "
-                "on the log itself. Run this command with a channel to set one.",
-                ephemeral=True,
-            )
-        stored = None
-        try:
-            stored = ctx.guild.get_channel(int(channel_id))
-        except Exception:
-            stored = None
-        if stored is None:
-            return await ctx.followup.send(
-                "The stored evidence channel (<#%s>) no longer exists or "
-                "the bot can no longer see it. /banlog will use the channel "
-                "the command runs in until a new channel is set here."
-                % channel_id,
-                ephemeral=True,
-            )
-        await ctx.followup.send(
-            "Evidence channel for this server: %s (set by %s)."
-            % (stored.mention, (settings or {}).get("updated_by") or "unknown"),
-            ephemeral=True,
+        @extra_help(
+            "Sets the evidence channel for this server: the channel /banlog log "
+            "re-uploads attached screenshots to, and where collected "
+            "screenshots go as a thread, so the board links are permanent. "
+            "Pick a channel to set it; pass clear to remove the setting "
+            "(logs then use the channel the command runs in); run it with "
+            "nothing to see the current setting. There is no per-log channel "
+            "picker -- this stored channel is the one place evidence goes. "
+            "Manage Server or Administrator only."
         )
-
-    @discord.slash_command(
-        name="banlog",
-        description="Log a ban or kick to the GitHub ban-log project.",
-        guild_ids=GUILD_IDS,
-    )
-    @extra_help(
-        "Posts a case to the GitHub ban-log project: title is the user plus "
-        "their ID, body carries action, server, logger, date, reason, "
-        "evidence links and up to 10 screenshots, a ticket number, and a "
-        "short case-history summary. The Status you pick is the category "
-        "the log belongs in, but the item posts with Status and Approval "
-        "both set to Needs approval and a case number in its title; a "
-        "second staff member approves it with /log_approve before it "
-        "moves to its category. Nothing posts until you confirm the "
-        "preview. Pick a member if they are still in the server, otherwise "
-        "paste an ID, mention, or username. For more than 10 screenshots, "
-        "send them as chat messages in this channel instead and tap "
-        "Collect screenshots on the preview (or run /banlog_collect) -- "
-        "the bot posts them to the evidence channel in a thread and "
-        "removes the originals. Manage Server or Administrator only."
-    )
-    async def banlog(
-        self,
-        ctx,
-        action: discord.Option(str, "What happened", choices=["Ban", "Kick"]),
-        reason: discord.Option(str, "Why are they being logged?"),
-        member: discord.Option(
-            discord.Member,
-            "Member to log (pick if they are still in the server)",
-            required=False,
-            default=None,
-        ),
-        user_id: discord.Option(
-            str,
-            "User ID, mention, or username (use when they already left)",
-            required=False,
-            default=None,
-        ),
-        status: discord.Option(
-            str, "Board status", required=False, default=None, choices=STATUS_CHOICES
-        ),
-        evidence: discord.Option(
-            str, "Evidence links, separated by spaces", required=False, default=None
-        ),
-        ticket: discord.Option(
-            str, "Ticket number for this log", required=False, default=None
-        ),
-        screenshot: discord.Option(
-            discord.Attachment,
-            "Screenshot evidence 1 of 10 (its link is added to the case)",
-            required=False,
-            default=None,
-        ),
-        screenshot2: discord.Option(
-            discord.Attachment,
-            "Screenshot evidence 2 of 10",
-            required=False,
-            default=None,
-        ),
-        screenshot3: discord.Option(
-            discord.Attachment,
-            "Screenshot evidence 3 of 10",
-            required=False,
-            default=None,
-        ),
-        screenshot4: discord.Option(
-            discord.Attachment,
-            "Screenshot evidence 4 of 10",
-            required=False,
-            default=None,
-        ),
-        screenshot5: discord.Option(
-            discord.Attachment,
-            "Screenshot evidence 5 of 10",
-            required=False,
-            default=None,
-        ),
-        screenshot6: discord.Option(
-            discord.Attachment,
-            "Screenshot evidence 6 of 10",
-            required=False,
-            default=None,
-        ),
-        screenshot7: discord.Option(
-            discord.Attachment,
-            "Screenshot evidence 7 of 10",
-            required=False,
-            default=None,
-        ),
-        screenshot8: discord.Option(
-            discord.Attachment,
-            "Screenshot evidence 8 of 10",
-            required=False,
-            default=None,
-        ),
-        screenshot9: discord.Option(
-            discord.Attachment,
-            "Screenshot evidence 9 of 10",
-            required=False,
-            default=None,
-        ),
-        screenshot10: discord.Option(
-            discord.Attachment,
-            "Screenshot evidence 10 of 10",
-            required=False,
-            default=None,
-        ),
-    ):
-        from utils.permissions import check_slash_permission, _default_manage_or_admin
-        if not await check_slash_permission(ctx, "banlog", _default_manage_or_admin):
-            return
-        target_id, display = await self._resolve_target(ctx, member, user_id)
-        if display is None:
-            return await ctx.respond(
-                "Pick a member, or give a user ID, mention, or username I can find.",
-                ephemeral=True,
-            )
-        await ctx.defer(ephemeral=True)
-        token = os.getenv("GITHUB_PROJECT_TOKEN")
-        if not token:
-            return await ctx.followup.send(
-                "GitHub token is not set. Add GITHUB_PROJECT_TOKEN to .env "
-                "and restart the bot, then try again.",
-                ephemeral=True,
-            )
-        links = (evidence or "").split()
-        shots = [
-            s
-            for s in (
-                screenshot,
-                screenshot2,
-                screenshot3,
-                screenshot4,
-                screenshot5,
-                screenshot6,
-                screenshot7,
-                screenshot8,
-                screenshot9,
-                screenshot10,
-            )
-            if s is not None
-        ]
-        shot_pairs = [(s.url, s.filename) for s in shots]
-        if shots:
-            links = [s.url for s in shots] + links
-        # Where the screenshots get re-uploaded for a permanent link:
-        # the server's stored evidence channel (/ghlog_set_channel),
-        # else the channel this command ran in. There is no per-log
-        # channel picker -- the stored channel is the one place
-        # evidence goes.
-        rehost_channel = await _resolve_evidence_channel(ctx.guild, ctx.channel)
-        rehost_channel_id = rehost_channel.id if rehost_channel else None
-        title = "%s (%s)" % (display, target_id) if target_id else "%s (ID unknown)" % display
-        body = build_case_body(
-            action,
-            ctx.guild.name if ctx.guild else "DM",
-            ctx.user.display_name,
-            reason,
-            links,
-            ctx.guild.id if ctx.guild else None,
-            target_id,
-        )
-        try:
-            prior = await list_ghlog_items(ctx.guild.id, target_id) if ctx.guild else []
-        except Exception:
-            prior = []
-        payload = {
-            "title": title,
-            "body": body,
-            "action": action,
-            "guild_id": ctx.guild.id if ctx.guild else None,
-            "user_id": target_id,
-            "display_name": display,
-            "status": status,
-            "ticket": (ticket or "").strip(),
-            "logger_name": ctx.user.display_name,
-            "logger_id": ctx.user.id,
-            "channel_id": rehost_channel_id,
-            "invoke_channel_id": ctx.channel.id if ctx.channel else None,
-            # When /banlog ran: the Collect flow only pulls screenshots
-            # sent after this, so old images in the channel are ignored.
-            # (pycord's ApplicationContext has no created_at -- the
-            # Interaction does, but the context does not -- so the
-            # time is taken here, when the command actually runs.)
-            "invoke_at": datetime.datetime.now(datetime.timezone.utc),
-            "screenshot_urls": shot_pairs,
-            "collected_message_ids": [],
-            "collected_urls": [],
-            "test_mode": False,
-        }
-        view = GHLogConfirmView(payload)
-        msg = await ctx.followup.send(
-            embed=build_preview_embed(
-                title,
-                body,
-                status,
-                TAG_PENDING,
-                prior,
-                ticket=(ticket or "").strip(),
-                evidence_channel=(
-                    rehost_channel.mention if (shots and rehost_channel) else None
-                ),
+        async def ghlog_set_channel(
+            self,
+            ctx,
+            channel: discord.Option(
+                discord.TextChannel,
+                "Channel to re-upload evidence screenshots to",
+                required=False,
+                default=None,
             ),
-            view=view,
-            ephemeral=True,
-        )
-        try:
-            view.message = msg
-        except Exception:
-            pass
-
-    @discord.slash_command(
-        name="log_approve",
-        description="Approve a pending GitHub log and move it to its category.",
-        guild_ids=GUILD_IDS,
-    )
-    @extra_help(
-        "Approves a log that is waiting in the Needs approval column: "
-        "moves it to the category the logger picked, flips its Approval "
-        "field to Log approved and its tag to approved, and appends an "
-        "approval note to the board item. There is no category override "
-        "here on purpose -- approve always moves it to the category the "
-        "logger logged it under, so it lands in the right spot. If the "
-        "category itself is wrong, fix it first with /banlog_update. "
-        "Give a case number, or a member/user to approve their most recent "
-        "pending log. The approver must be a different staff member than "
-        "the logger (unless the temporary GHLOG_ALLOW_SELF_APPROVE test "
-        "bypass is on). Manage Server or Administrator only."
-    )
-    async def log_approve(
-        self,
-        ctx,
-        case: discord.Option(
-            int, "Case/log number to approve", required=False, default=None
-        ),
-        member: discord.Option(
-            discord.Member,
-            "Member whose most recent pending log to approve",
-            required=False,
-            default=None,
-        ),
-        user_id: discord.Option(
-            str,
-            "User ID, mention, or username (most recent pending log)",
-            required=False,
-            default=None,
-        ),
-    ):
-        from utils.permissions import check_slash_permission, _default_manage_or_admin
-        if not await check_slash_permission(ctx, "log_approve", _default_manage_or_admin):
-            return
-        if case is None and member is None and not user_id:
-            return await ctx.respond(
-                "Give a case number, or a member/user to approve their "
-                "most recent pending log.",
-                ephemeral=True,
-            )
-        await ctx.defer(ephemeral=True)
-        token = os.getenv("GITHUB_PROJECT_TOKEN")
-        if not token:
-            return await ctx.followup.send(
-                "GitHub token is not set. Add GITHUB_PROJECT_TOKEN to .env "
-                "and restart the bot, then try again.",
-                ephemeral=True,
-            )
-        row = None
-        if case is not None:
-            try:
-                row = await get_ghlog_item(case)
-            except Exception:
-                row = None
-            if row is None:
-                return await ctx.followup.send(
-                    "No log on file with case number #%d." % case,
-                    ephemeral=True,
-                )
-            if str(row.get("guild_id")) != str(ctx.guild.id):
-                return await ctx.followup.send(
-                    "Case #%d belongs to a different server." % case,
-                    ephemeral=True,
-                )
-        else:
-            target_id, display = await self._resolve_target(ctx, member, user_id)
-            if display is None:
-                return await ctx.followup.send(
-                    "Pick a member, or give a user ID, mention, or username I can find.",
-                    ephemeral=True,
-                )
-            try:
-                rows = await list_ghlog_items(ctx.guild.id, target_id)
-            except Exception:
-                rows = []
-            pending = [r for r in rows if (r.get("approval") or "") == APPROVAL_PENDING]
-            if not pending:
-                return await ctx.followup.send(
-                    "No pending log for %s -- nothing waiting for approval." % display,
-                    ephemeral=True,
-                )
-            row = pending[0]
-        if row.get("project_owner") != PROJECT_OWNER or row.get("project_number") != PROJECT_NUMBER:
-            return await ctx.followup.send(
-                "That item lives on the %s board (project %s), but the bot is "
-                "now pointed at %s project %s. Switch the target back to "
-                "approve it."
-                % (
-                    row.get("project_owner"),
-                    row.get("project_number"),
-                    PROJECT_OWNER,
-                    PROJECT_NUMBER,
-                ),
-                ephemeral=True,
-            )
-        if (row.get("approval") or "") != APPROVAL_PENDING:
-            return await ctx.followup.send(
-                "Case #%d is not waiting for approval (approval: %s)."
-                % (row["id"], row.get("approval") or "already final"),
-                ephemeral=True,
-            )
-        bypass = _self_approve_bypass()
-        logger_id = (row.get("logged_by_id") or "").strip()
-        if logger_id:
-            same_person = str(ctx.user.id) == logger_id
-        else:
-            same_person = (row.get("logged_by") or "").strip().lower() == (
-                ctx.user.display_name.strip().lower()
-            )
-        if same_person and not bypass:
-            return await ctx.followup.send(
-                "You logged Case #%d -- a different staff member has to "
-                "approve it." % row["id"],
-                ephemeral=True,
-            )
-        # Approve always moves the item to the category the logger
-        # picked (intended_status). There is no override here on
-        # purpose: an override once sent a log to the wrong column
-        # instead of the logger's category. If the category itself is
-        # wrong, fix it first with /banlog_update.
-        dest = row.get("intended_status") or ""
-        if not dest:
-            return await ctx.followup.send(
-                "Case #%d has no category logged for it -- set one with "
-                "/banlog_update first, then approve it." % row["id"],
-                ephemeral=True,
-            )
-        try:
-            project_id, fields = await get_project_fields(token)
-            for field_name, option_name in (
-                ("Status", dest),
-                (APPROVAL_FIELD, APPROVAL_APPROVED),
-                ("tags", TAG_APPROVED),
-            ):
-                field = fields.get(field_name)
-                option_id = field["options"].get(option_name) if field else None
-                if not option_id:
+            clear: discord.Option(
+                bool,
+                "Clear the stored channel (back to the channel the command runs in)",
+                required=False,
+                default=False,
+            ),
+        ):
+            from utils.permissions import check_slash_permission, _default_manage_or_admin
+            if not await check_slash_permission(ctx, "banlog_set_channel", _default_manage_or_admin):
+                return
+            await ctx.defer(ephemeral=True)
+            if channel is not None:
+                try:
+                    await save_ghlog_settings(
+                        str(ctx.guild.id),
+                        {
+                            "evidence_channel_id": str(channel.id),
+                            "updated_by": ctx.user.display_name,
+                        },
+                    )
+                except Exception as exc:
                     return await ctx.followup.send(
-                        "Board %s has no option %r -- check the board setup."
-                        % (field_name, option_name),
+                        "Could not save the evidence channel: %s" % exc,
                         ephemeral=True,
                     )
-                await set_single_select(
-                    token, project_id, row["item_id"], field["id"], option_id
+                return await ctx.followup.send(
+                    "Evidence channel set to %s. /banlog log will re-upload "
+                    "screenshots there unless a different channel is picked on "
+                    "the log itself." % channel.mention,
+                    ephemeral=True,
                 )
-            draft_id = row.get("draft_id") or await resolve_draft_issue_id(
-                token, row["item_id"]
-            )
-            new_body = "%s\n\n### Approved -- %s by %s\nMoved to %s." % (
-                row.get("body") or "",
-                _utc_now(),
-                ctx.user.display_name,
-                dest,
-            )
-            await update_draft_issue(token, draft_id, row["title"], new_body)
-            await update_ghlog_item(
-                row["id"],
-                {
-                    "status": dest,
-                    "approval": APPROVAL_APPROVED,
-                    "tags": TAG_APPROVED,
-                    "body": new_body,
-                    "draft_id": draft_id,
-                },
-            )
-        except Exception as exc:
-            return await ctx.followup.send(
-                "Approve failed: %s (any fields applied before the failure stay applied)."
-                % exc,
-                ephemeral=True,
-            )
-        reply = (
-            "Approved Case #%d -- moved to %s and marked Log approved: %s"
-            % (row["id"], dest, BOARD_URL)
-        )
-        if bypass and same_person:
-            reply += (
-                "\n(Note: the self-approve bypass is ON for testing -- "
-                "remove GHLOG_ALLOW_SELF_APPROVE from .env when testing is done.)"
-            )
-        await ctx.followup.send(reply, ephemeral=True)
-
-    @discord.slash_command(
-        name="banlog_update",
-        description="Update a logged case on the GitHub board.",
-        guild_ids=GUILD_IDS,
-    )
-    @extra_help(
-        "Finds a board item and changes its Status and/or tags, sets the "
-        "Decision field (for example Blacklist approved -- the tags field "
-        "holds only one value, so the decision marker lives in its own "
-        "field), appends a dated note to its body, and/or appends up to "
-        "10 more screenshots (for logs with more than 10 photos in total "
-        "-- the new screenshots are re-uploaded to the server's evidence "
-        "channel so their board links are permanent). Give a case number "
-        "to update that log, or a member/user to update their most recent "
-        "log. Give at least one of status, tags, decision, note, or a "
-        "screenshot. A case still waiting for approval keeps its Status "
-        "until /log_approve moves it; tags, decision, notes, and "
-        "screenshots can still be updated here. Only touches items logged "
-        "while the bot pointed at the current board. Manage Server or "
-        "Administrator only."
-    )
-    async def banlog_update(
-        self,
-        ctx,
-        case: discord.Option(
-            int, "Case/log number to update", required=False, default=None
-        ),
-        member: discord.Option(
-            discord.Member,
-            "Member to update (pick if they are still in the server)",
-            required=False,
-            default=None,
-        ),
-        user_id: discord.Option(
-            str,
-            "User ID, mention, or username (use when they already left)",
-            required=False,
-            default=None,
-        ),
-        status: discord.Option(
-            str, "New board status", required=False, default=None, choices=STATUS_CHOICES
-        ),
-        tags: discord.Option(
-            str, "New board tag", required=False, default=None, choices=TAG_CHOICES
-        ),
-        decision: discord.Option(
-            str,
-            "Decision marker (Blacklist approved, more info)",
-            required=False,
-            default=None,
-            choices=DECISION_CHOICES,
-        ),
-        note: discord.Option(
-            str, "Note to append to the board item", required=False, default=None
-        ),
-        screenshot: discord.Option(
-            discord.Attachment,
-            "Screenshot to add 1 of 10",
-            required=False,
-            default=None,
-        ),
-        screenshot2: discord.Option(
-            discord.Attachment,
-            "Screenshot to add 2 of 10",
-            required=False,
-            default=None,
-        ),
-        screenshot3: discord.Option(
-            discord.Attachment,
-            "Screenshot to add 3 of 10",
-            required=False,
-            default=None,
-        ),
-        screenshot4: discord.Option(
-            discord.Attachment,
-            "Screenshot to add 4 of 10",
-            required=False,
-            default=None,
-        ),
-        screenshot5: discord.Option(
-            discord.Attachment,
-            "Screenshot to add 5 of 10",
-            required=False,
-            default=None,
-        ),
-        screenshot6: discord.Option(
-            discord.Attachment,
-            "Screenshot to add 6 of 10",
-            required=False,
-            default=None,
-        ),
-        screenshot7: discord.Option(
-            discord.Attachment,
-            "Screenshot to add 7 of 10",
-            required=False,
-            default=None,
-        ),
-        screenshot8: discord.Option(
-            discord.Attachment,
-            "Screenshot to add 8 of 10",
-            required=False,
-            default=None,
-        ),
-        screenshot9: discord.Option(
-            discord.Attachment,
-            "Screenshot to add 9 of 10",
-            required=False,
-            default=None,
-        ),
-        screenshot10: discord.Option(
-            discord.Attachment,
-            "Screenshot to add 10 of 10",
-            required=False,
-            default=None,
-        ),
-    ):
-        from utils.permissions import check_slash_permission, _default_manage_or_admin
-        if not await check_slash_permission(ctx, "banlog_update", _default_manage_or_admin):
-            return
-        if case is None and member is None and not user_id:
-            return await ctx.respond(
-                "Give a case number, or a member/user to update their "
-                "most recent log.",
-                ephemeral=True,
-            )
-        shots = [
-            s
-            for s in (
-                screenshot,
-                screenshot2,
-                screenshot3,
-                screenshot4,
-                screenshot5,
-                screenshot6,
-                screenshot7,
-                screenshot8,
-                screenshot9,
-                screenshot10,
-            )
-            if s is not None
-        ]
-        if not status and not tags and not decision and not note and not shots:
-            return await ctx.respond(
-                "Give at least one of status, tags, decision, note, or a screenshot to update.",
-                ephemeral=True,
-            )
-        await ctx.defer(ephemeral=True)
-        token = os.getenv("GITHUB_PROJECT_TOKEN")
-        if not token:
-            return await ctx.followup.send(
-                "GitHub token is not set. Add GITHUB_PROJECT_TOKEN to .env "
-                "and restart the bot, then try again.",
-                ephemeral=True,
-            )
-        # A case number picks the log directly; otherwise the most
-        # recent log for the member/user.
-        row = None
-        if case is not None:
+            if clear:
+                try:
+                    await save_ghlog_settings(
+                        str(ctx.guild.id),
+                        {
+                            "evidence_channel_id": "",
+                            "updated_by": ctx.user.display_name,
+                        },
+                    )
+                except Exception as exc:
+                    return await ctx.followup.send(
+                        "Could not clear the evidence channel: %s" % exc,
+                        ephemeral=True,
+                    )
+                return await ctx.followup.send(
+                    "Evidence channel cleared. /banlog log will use the channel the "
+                    "command runs in unless a channel is picked on the log itself.",
+                    ephemeral=True,
+                )
             try:
-                row = await get_ghlog_item(case)
+                settings = await get_ghlog_settings(str(ctx.guild.id))
             except Exception:
-                row = None
-            if row is None:
+                settings = {}
+            channel_id = (settings or {}).get("evidence_channel_id") or ""
+            if not channel_id:
                 return await ctx.followup.send(
-                    "No log on file with case number #%d." % case,
+                    "No evidence channel is set for this server. /banlog log uses "
+                    "the channel the command runs in unless a channel is picked "
+                    "on the log itself. Run this command with a channel to set one.",
                     ephemeral=True,
                 )
-            if str(row.get("guild_id")) != str(ctx.guild.id):
+            stored = None
+            try:
+                stored = ctx.guild.get_channel(int(channel_id))
+            except Exception:
+                stored = None
+            if stored is None:
                 return await ctx.followup.send(
-                    "Case #%d belongs to a different server." % case,
+                    "The stored evidence channel (<#%s>) no longer exists or "
+                    "the bot can no longer see it. /banlog log will use the channel "
+                    "the command runs in until a new channel is set here."
+                    % channel_id,
                     ephemeral=True,
                 )
-            display = row.get("display_name") or ""
-            target_id = row.get("user_id") or ""
-        else:
+            await ctx.followup.send(
+                "Evidence channel for this server: %s (set by %s)."
+                % (stored.mention, (settings or {}).get("updated_by") or "unknown"),
+                ephemeral=True,
+            )
+
+    if not WORKER_MODE:
+        @banlog_group.command(
+            name="log",
+            description="Log a ban or kick to the GitHub ban-log project.",
+        )
+        @extra_help(
+            "Posts a case to the GitHub ban-log project: title is the user plus "
+            "their ID, body carries action, server, logger, date, reason, "
+            "evidence links and up to 10 screenshots, a ticket number, and a "
+            "short case-history summary. The Status you pick is the category "
+            "the log belongs in, but the item posts with Status and Approval "
+            "both set to Needs approval and a case number in its title; a "
+            "second staff member approves it with /banlog log approve before it "
+            "moves to its category. Nothing posts until you confirm the "
+            "preview. Pick a member if they are still in the server, otherwise "
+            "paste an ID, mention, or username. For more than 10 screenshots, "
+            "send them as chat messages in this channel instead and tap "
+            "Collect screenshots on the preview (or run /banlog log collect) -- "
+            "the bot posts them to the evidence channel in a thread and "
+            "removes the originals. Manage Server or Administrator only."
+        )
+        async def banlog(
+            self,
+            ctx,
+            action: discord.Option(str, "What happened", choices=["Ban", "Kick"]),
+            reason: discord.Option(str, "Why are they being logged?"),
+            member: discord.Option(
+                discord.Member,
+                "Member to log (pick if they are still in the server)",
+                required=False,
+                default=None,
+            ),
+            user_id: discord.Option(
+                str,
+                "User ID, mention, or username (use when they already left)",
+                required=False,
+                default=None,
+            ),
+            status: discord.Option(
+                str, "Board status", required=False, default=None, choices=STATUS_CHOICES
+            ),
+            evidence: discord.Option(
+                str, "Evidence links, separated by spaces", required=False, default=None
+            ),
+            ticket: discord.Option(
+                str, "Ticket number for this log", required=False, default=None
+            ),
+            screenshot: discord.Option(
+                discord.Attachment,
+                "Screenshot evidence 1 of 10 (its link is added to the case)",
+                required=False,
+                default=None,
+            ),
+            screenshot2: discord.Option(
+                discord.Attachment,
+                "Screenshot evidence 2 of 10",
+                required=False,
+                default=None,
+            ),
+            screenshot3: discord.Option(
+                discord.Attachment,
+                "Screenshot evidence 3 of 10",
+                required=False,
+                default=None,
+            ),
+            screenshot4: discord.Option(
+                discord.Attachment,
+                "Screenshot evidence 4 of 10",
+                required=False,
+                default=None,
+            ),
+            screenshot5: discord.Option(
+                discord.Attachment,
+                "Screenshot evidence 5 of 10",
+                required=False,
+                default=None,
+            ),
+            screenshot6: discord.Option(
+                discord.Attachment,
+                "Screenshot evidence 6 of 10",
+                required=False,
+                default=None,
+            ),
+            screenshot7: discord.Option(
+                discord.Attachment,
+                "Screenshot evidence 7 of 10",
+                required=False,
+                default=None,
+            ),
+            screenshot8: discord.Option(
+                discord.Attachment,
+                "Screenshot evidence 8 of 10",
+                required=False,
+                default=None,
+            ),
+            screenshot9: discord.Option(
+                discord.Attachment,
+                "Screenshot evidence 9 of 10",
+                required=False,
+                default=None,
+            ),
+            screenshot10: discord.Option(
+                discord.Attachment,
+                "Screenshot evidence 10 of 10",
+                required=False,
+                default=None,
+            ),
+        ):
+            from utils.permissions import check_slash_permission, _default_manage_or_admin
+            if not await check_slash_permission(ctx, "banlog_log", _default_manage_or_admin):
+                return
             target_id, display = await self._resolve_target(ctx, member, user_id)
             if display is None:
-                return await ctx.followup.send(
+                return await ctx.respond(
                     "Pick a member, or give a user ID, mention, or username I can find.",
                     ephemeral=True,
                 )
-            try:
-                rows = await list_ghlog_items(ctx.guild.id, target_id)
-            except Exception:
-                rows = []
-            if not rows:
+            await ctx.defer(ephemeral=True)
+            token = os.getenv("GITHUB_PROJECT_TOKEN")
+            if not token:
                 return await ctx.followup.send(
-                    "No board item on file for %s -- log them with /banlog first."
-                    % display,
+                    "GitHub token is not set. Add GITHUB_PROJECT_TOKEN to .env "
+                    "and restart the bot, then try again.",
                     ephemeral=True,
                 )
-            row = rows[0]
-        if row.get("project_owner") != PROJECT_OWNER or row.get("project_number") != PROJECT_NUMBER:
-            return await ctx.followup.send(
-                "That item lives on the %s board (project %s), but the bot is "
-                "now pointed at %s project %s. Switch the target back to "
-                "update it."
-                % (
-                    row.get("project_owner"),
-                    row.get("project_number"),
-                    PROJECT_OWNER,
-                    PROJECT_NUMBER,
+            links = (evidence or "").split()
+            shots = [
+                s
+                for s in (
+                    screenshot,
+                    screenshot2,
+                    screenshot3,
+                    screenshot4,
+                    screenshot5,
+                    screenshot6,
+                    screenshot7,
+                    screenshot8,
+                    screenshot9,
+                    screenshot10,
+                )
+                if s is not None
+            ]
+            shot_pairs = [(s.url, s.filename) for s in shots]
+            if shots:
+                links = [s.url for s in shots] + links
+            # Where the screenshots get re-uploaded for a permanent link:
+            # the server's stored evidence channel (/banlog log set_channel),
+            # else the channel this command ran in. There is no per-log
+            # channel picker -- the stored channel is the one place
+            # evidence goes.
+            rehost_channel = await _resolve_evidence_channel(ctx.guild, ctx.channel)
+            rehost_channel_id = rehost_channel.id if rehost_channel else None
+            title = "%s (%s)" % (display, target_id) if target_id else "%s (ID unknown)" % display
+            body = build_case_body(
+                action,
+                ctx.guild.name if ctx.guild else "DM",
+                ctx.user.display_name,
+                reason,
+                links,
+                ctx.guild.id if ctx.guild else None,
+                target_id,
+            )
+            prior_failed = False
+            try:
+                prior = await list_ghlog_items(ctx.guild.id, target_id) if ctx.guild else []
+            except Exception as exc:
+                prior = []
+                prior_failed = True
+                print(
+                    "[GHLOG] /banlog log: could not list prior logs for %s (%s)"
+                    % (target_id, exc)
+                )
+            payload = {
+                "title": title,
+                "body": body,
+                "action": action,
+                "guild_id": ctx.guild.id if ctx.guild else None,
+                "user_id": target_id,
+                "display_name": display,
+                "status": status,
+                "ticket": (ticket or "").strip(),
+                "logger_name": ctx.user.display_name,
+                "logger_id": ctx.user.id,
+                "channel_id": rehost_channel_id,
+                "invoke_channel_id": ctx.channel.id if ctx.channel else None,
+                # When /banlog log ran: the Collect flow only pulls screenshots
+                # sent after this, so old images in the channel are ignored.
+                # (pycord's ApplicationContext has no created_at -- the
+                # Interaction does, but the context does not -- so the
+                # time is taken here, when the command actually runs.)
+                "invoke_at": datetime.datetime.now(datetime.timezone.utc),
+                "screenshot_urls": shot_pairs,
+                "collected_message_ids": [],
+                "collected_urls": [],
+                "test_mode": False,
+            }
+            view = GHLogConfirmView(payload)
+            msg = await ctx.followup.send(
+                embed=build_preview_embed(
+                    title,
+                    body,
+                    status,
+                    TAG_PENDING,
+                    prior,
+                    prior_failed=prior_failed,
+                    ticket=(ticket or "").strip(),
+                    evidence_channel=(
+                        rehost_channel.mention if (shots and rehost_channel) else None
+                    ),
                 ),
+                view=view,
                 ephemeral=True,
             )
-        warnings = []
-        if status and (row.get("approval") or "") == APPROVAL_PENDING:
-            if not tags and not decision and not note and not shots:
-                return await ctx.followup.send(
-                    "That case is still waiting for approval -- use "
-                    "/log_approve to move it to its category. Tags, decision, "
-                    "notes, and screenshots can still be updated here.",
+            try:
+                view.message = msg
+            except Exception:
+                pass
+
+    if not WORKER_MODE:
+        @banlog_group.command(
+            name="approve",
+            description="Approve a pending GitHub log and move it to its category.",
+        )
+        @extra_help(
+            "Approves a log that is waiting in the Needs approval column: "
+            "moves it to the category the logger picked, flips its Approval "
+            "field to Log approved and its tag to approved, and appends an "
+            "approval note to the board item. There is no category override "
+            "here on purpose -- approve always moves it to the category the "
+            "logger logged it under, so it lands in the right spot. If the "
+            "category itself is wrong, fix it first with /banlog log update. "
+            "Give a case number, or a member/user to approve their most recent "
+            "pending log. The approver must be a different staff member than "
+            "the logger. Manage Server or Administrator only."
+        )
+        async def log_approve(
+            self,
+            ctx,
+            case: discord.Option(
+                int, "Case/log number to approve", required=False, default=None
+            ),
+            member: discord.Option(
+                discord.Member,
+                "Member whose most recent pending log to approve",
+                required=False,
+                default=None,
+            ),
+            user_id: discord.Option(
+                str,
+                "User ID, mention, or username (most recent pending log)",
+                required=False,
+                default=None,
+            ),
+        ):
+            from utils.permissions import check_slash_permission, _default_manage_or_admin
+            if not await check_slash_permission(ctx, "banlog_approve", _default_manage_or_admin):
+                return
+            if case is None and member is None and not user_id:
+                return await ctx.respond(
+                    "Give a case number, or a member/user to approve their "
+                    "most recent pending log.",
                     ephemeral=True,
                 )
-            warnings.append(
-                "Status was not changed: this case is still waiting for "
-                "approval (use /log_approve)."
-            )
-            status = None
-        try:
-            project_id, fields = await get_project_fields(token)
-            updates = {}
-            for field_name, option_name in (
-                ("Status", status),
-                ("tags", tags),
-                (DECISION_FIELD, decision),
-            ):
-                if not option_name:
-                    continue
-                field = fields.get(field_name)
-                option_id = field["options"].get(option_name) if field else None
-                if not option_id:
-                    warnings.append(
-                        "Board %s has no option %r; left unchanged."
-                        % (field_name, option_name)
-                    )
-                    continue
-                await set_single_select(
-                    token, project_id, row["item_id"], field["id"], option_id
+            await ctx.defer(ephemeral=True)
+            token = os.getenv("GITHUB_PROJECT_TOKEN")
+            if not token:
+                return await ctx.followup.send(
+                    "GitHub token is not set. Add GITHUB_PROJECT_TOKEN to .env "
+                    "and restart the bot, then try again.",
+                    ephemeral=True,
                 )
-            # The Decision field is a board-only marker (no column in
-            # ghlog_items), so it is set on the board and reported, but
-            # not stored in the row.
-            if status:
-                updates["status"] = status
-            if tags:
-                updates["tags"] = tags
-            if note:
+            row = None
+            if case is not None:
+                try:
+                    row = await get_ghlog_item(case)
+                except Exception as exc:
+                    # P2-23: a read failure is not "no such case" -- say
+                    # the index could not be read instead of telling staff
+                    # the case does not exist.
+                    print(
+                        "[GHLOG] /banlog log approve: could not read case #%d (%s)"
+                        % (case, exc)
+                    )
+                    return await ctx.followup.send(
+                        "Could not read the log index -- I cannot tell whether "
+                        "case #%d exists. Try again, and check the board if it "
+                        "keeps failing." % case,
+                        ephemeral=True,
+                    )
+                if row is None:
+                    return await ctx.followup.send(
+                        "No log on file with case number #%d." % case,
+                        ephemeral=True,
+                    )
+                if str(row.get("guild_id")) != str(ctx.guild.id):
+                    return await ctx.followup.send(
+                        "Case #%d belongs to a different server." % case,
+                        ephemeral=True,
+                    )
+            else:
+                target_id, display = await self._resolve_target(ctx, member, user_id)
+                if display is None:
+                    return await ctx.followup.send(
+                        "Pick a member, or give a user ID, mention, or username I can find.",
+                        ephemeral=True,
+                    )
+                try:
+                    rows = await list_ghlog_items(ctx.guild.id, target_id)
+                except Exception as exc:
+                    # P2-23: a read failure is not "nothing pending" -- a
+                    # locked/corrupt index must not tell staff there is
+                    # nothing waiting for approval.
+                    print(
+                        "[GHLOG] /banlog log approve: could not read the log index "
+                        "for %s (%s)" % (target_id, exc)
+                    )
+                    return await ctx.followup.send(
+                        "Could not read the log index -- I cannot tell whether "
+                        "%s has a pending log. Try again, and check the board "
+                        "if it keeps failing." % display,
+                        ephemeral=True,
+                    )
+                pending = [r for r in rows if (r.get("approval") or "") == APPROVAL_PENDING]
+                if not pending:
+                    return await ctx.followup.send(
+                        "No pending log for %s -- nothing waiting for approval." % display,
+                        ephemeral=True,
+                    )
+                row = pending[0]
+            if row.get("project_owner") != get_project_owner() or row.get("project_number") != get_project_number():
+                return await ctx.followup.send(
+                    "That item lives on the %s board (project %s), but the bot is "
+                    "now pointed at %s project %s. Switch the target back to "
+                    "approve it."
+                    % (
+                        row.get("project_owner"),
+                        row.get("project_number"),
+                        get_project_owner(),
+                        get_project_number(),
+                    ),
+                    ephemeral=True,
+                )
+            if (row.get("approval") or "") != APPROVAL_PENDING:
+                return await ctx.followup.send(
+                    "Case #%d is not waiting for approval (approval: %s)."
+                    % (row["id"], row.get("approval") or "already final"),
+                    ephemeral=True,
+                )
+            logger_id = (row.get("logged_by_id") or "").strip()
+            if logger_id:
+                same_person = str(ctx.user.id) == logger_id
+            else:
+                same_person = (row.get("logged_by") or "").strip().lower() == (
+                    ctx.user.display_name.strip().lower()
+                )
+            if same_person:
+                return await ctx.followup.send(
+                    "You logged Case #%d -- a different staff member has to "
+                    "approve it." % row["id"],
+                    ephemeral=True,
+                )
+            # Approve always moves the item to the category the logger
+            # picked (intended_status). There is no override here on
+            # purpose: an override once sent a log to the wrong column
+            # instead of the logger's category. If the category itself is
+            # wrong, fix it first with /banlog log update.
+            dest = row.get("intended_status") or ""
+            if not dest:
+                return await ctx.followup.send(
+                    "Case #%d has no category logged for it -- set one with "
+                    "/banlog log update first, then approve it." % row["id"],
+                    ephemeral=True,
+                )
+            # P2-22: every board write is recorded before it runs, so a
+            # failure mid-sequence can be reconciled against the board
+            # instead of leaving board and row diverged.
+            attempted = []
+            intended_body = None
+            try:
+                project_id, fields = await get_project_fields(token)
+                for field_name, option_name in (
+                    ("Status", dest),
+                    (APPROVAL_FIELD, APPROVAL_APPROVED),
+                    ("tags", TAG_APPROVED),
+                ):
+                    field = fields.get(field_name)
+                    option_id = field["options"].get(option_name) if field else None
+                    if not option_id:
+                        # Fields already set stay set on the board; sync
+                        # the row to them instead of leaving it stale.
+                        detail = await _reconcile_ghlog_row(
+                            token, row, attempted, None
+                        )
+                        return await ctx.followup.send(
+                            "Board %s has no option %r -- check the board "
+                            "setup. %s" % (field_name, option_name, detail),
+                            ephemeral=True,
+                        )
+                    attempted.append((field_name, option_name))
+                    await set_single_select(
+                        token, project_id, row["item_id"], field["id"], option_id
+                    )
                 draft_id = row.get("draft_id") or await resolve_draft_issue_id(
                     token, row["item_id"]
                 )
-                new_body = "%s\n\n### Update -- %s by %s\n%s" % (
+                new_body = "%s\n\n### Approved -- %s by %s\nMoved to %s." % (
                     row.get("body") or "",
                     _utc_now(),
                     ctx.user.display_name,
-                    note,
+                    dest,
                 )
+                intended_body = new_body
                 await update_draft_issue(token, draft_id, row["title"], new_body)
-                updates["body"] = new_body
-                updates["draft_id"] = draft_id
-            if shots:
-                # Re-host the new screenshots so their board links are
-                # permanent, then append them to the item's body. The
-                # channel is the server's stored evidence channel, else
-                # this channel (no per-log picker).
-                rehost_channel = await _resolve_evidence_channel(
-                    ctx.guild, ctx.channel
-                )
-                caption = "Additional evidence images for Case #%d -- %s (%s), added by %s." % (
+                await update_ghlog_item(
                     row["id"],
-                    display,
-                    target_id,
-                    ctx.user.display_name,
+                    {
+                        "status": dest,
+                        "approval": APPROVAL_APPROVED,
+                        "tags": TAG_APPROVED,
+                        "body": new_body,
+                        "draft_id": draft_id,
+                    },
                 )
-                shot_pairs = [(s.url, s.filename) for s in shots]
-                new_urls, rehost_warnings = await _rehost_screenshots(
-                    rehost_channel, shot_pairs, caption=caption
+            except Exception as exc:
+                detail = await _reconcile_ghlog_row(
+                    token, row, attempted, intended_body
                 )
-                warnings.extend(rehost_warnings)
+                return await ctx.followup.send(
+                    "Approve failed: %s\n%s" % (exc, detail),
+                    ephemeral=True,
+                )
+            reply = (
+                "Approved Case #%d -- moved to %s and marked Log approved: %s"
+                % (row["id"], dest, await _board_url(token))
+            )
+            await ctx.followup.send(reply, ephemeral=True)
+
+    if not WORKER_MODE:
+        @banlog_group.command(
+            name="update",
+            description="Update a logged case on the GitHub board.",
+        )
+        @extra_help(
+            "Finds a board item and changes its Status and/or tags, sets the "
+            "Decision field (for example Blacklist approved -- the tags field "
+            "holds only one value, so the decision marker lives in its own "
+            "field), appends a dated note to its body, and/or appends up to "
+            "10 more screenshots (for logs with more than 10 photos in total "
+            "-- the new screenshots are re-uploaded to the server's evidence "
+            "channel so their board links are permanent). Give a case number "
+            "to update that log, or a member/user to update their most recent "
+            "log. Give at least one of status, tags, decision, note, or a "
+            "screenshot. A case still waiting for approval keeps its Status "
+            "until /banlog log approve moves it; tags, decision, notes, and "
+            "screenshots can still be updated here. Only touches items logged "
+            "while the bot pointed at the current board. Manage Server or "
+            "Administrator only."
+        )
+        async def banlog_update(
+            self,
+            ctx,
+            case: discord.Option(
+                int, "Case/log number to update", required=False, default=None
+            ),
+            member: discord.Option(
+                discord.Member,
+                "Member to update (pick if they are still in the server)",
+                required=False,
+                default=None,
+            ),
+            user_id: discord.Option(
+                str,
+                "User ID, mention, or username (use when they already left)",
+                required=False,
+                default=None,
+            ),
+            status: discord.Option(
+                str, "New board status", required=False, default=None, choices=STATUS_CHOICES
+            ),
+            tags: discord.Option(
+                str, "New board tag", required=False, default=None, choices=TAG_CHOICES
+            ),
+            decision: discord.Option(
+                str,
+                "Decision marker (Blacklist approved, more info)",
+                required=False,
+                default=None,
+                choices=DECISION_CHOICES,
+            ),
+            note: discord.Option(
+                str, "Note to append to the board item", required=False, default=None
+            ),
+            screenshot: discord.Option(
+                discord.Attachment,
+                "Screenshot to add 1 of 10",
+                required=False,
+                default=None,
+            ),
+            screenshot2: discord.Option(
+                discord.Attachment,
+                "Screenshot to add 2 of 10",
+                required=False,
+                default=None,
+            ),
+            screenshot3: discord.Option(
+                discord.Attachment,
+                "Screenshot to add 3 of 10",
+                required=False,
+                default=None,
+            ),
+            screenshot4: discord.Option(
+                discord.Attachment,
+                "Screenshot to add 4 of 10",
+                required=False,
+                default=None,
+            ),
+            screenshot5: discord.Option(
+                discord.Attachment,
+                "Screenshot to add 5 of 10",
+                required=False,
+                default=None,
+            ),
+            screenshot6: discord.Option(
+                discord.Attachment,
+                "Screenshot to add 6 of 10",
+                required=False,
+                default=None,
+            ),
+            screenshot7: discord.Option(
+                discord.Attachment,
+                "Screenshot to add 7 of 10",
+                required=False,
+                default=None,
+            ),
+            screenshot8: discord.Option(
+                discord.Attachment,
+                "Screenshot to add 8 of 10",
+                required=False,
+                default=None,
+            ),
+            screenshot9: discord.Option(
+                discord.Attachment,
+                "Screenshot to add 9 of 10",
+                required=False,
+                default=None,
+            ),
+            screenshot10: discord.Option(
+                discord.Attachment,
+                "Screenshot to add 10 of 10",
+                required=False,
+                default=None,
+            ),
+        ):
+            from utils.permissions import check_slash_permission, _default_manage_or_admin
+            if not await check_slash_permission(ctx, "banlog_update", _default_manage_or_admin):
+                return
+            if case is None and member is None and not user_id:
+                return await ctx.respond(
+                    "Give a case number, or a member/user to update their "
+                    "most recent log.",
+                    ephemeral=True,
+                )
+            shots = [
+                s
+                for s in (
+                    screenshot,
+                    screenshot2,
+                    screenshot3,
+                    screenshot4,
+                    screenshot5,
+                    screenshot6,
+                    screenshot7,
+                    screenshot8,
+                    screenshot9,
+                    screenshot10,
+                )
+                if s is not None
+            ]
+            if not status and not tags and not decision and not note and not shots:
+                return await ctx.respond(
+                    "Give at least one of status, tags, decision, note, or a screenshot to update.",
+                    ephemeral=True,
+                )
+            await ctx.defer(ephemeral=True)
+            token = os.getenv("GITHUB_PROJECT_TOKEN")
+            if not token:
+                return await ctx.followup.send(
+                    "GitHub token is not set. Add GITHUB_PROJECT_TOKEN to .env "
+                    "and restart the bot, then try again.",
+                    ephemeral=True,
+                )
+            # A case number picks the log directly; otherwise the most
+            # recent log for the member/user.
+            row = None
+            if case is not None:
+                try:
+                    row = await get_ghlog_item(case)
+                except Exception as exc:
+                    # P2-23: a read failure is not "no such case" -- say
+                    # the index could not be read instead of telling staff
+                    # the case does not exist.
+                    print(
+                        "[GHLOG] /banlog log update: could not read case #%d (%s)"
+                        % (case, exc)
+                    )
+                    return await ctx.followup.send(
+                        "Could not read the log index -- I cannot tell whether "
+                        "case #%d exists. Try again, and check the board if it "
+                        "keeps failing." % case,
+                        ephemeral=True,
+                    )
+                if row is None:
+                    return await ctx.followup.send(
+                        "No log on file with case number #%d." % case,
+                        ephemeral=True,
+                    )
+                if str(row.get("guild_id")) != str(ctx.guild.id):
+                    return await ctx.followup.send(
+                        "Case #%d belongs to a different server." % case,
+                        ephemeral=True,
+                    )
+                display = row.get("display_name") or ""
+                target_id = row.get("user_id") or ""
+            else:
+                target_id, display = await self._resolve_target(ctx, member, user_id)
+                if display is None:
+                    return await ctx.followup.send(
+                        "Pick a member, or give a user ID, mention, or username I can find.",
+                        ephemeral=True,
+                    )
+                try:
+                    rows = await list_ghlog_items(ctx.guild.id, target_id)
+                except Exception as exc:
+                    # P2-23: a read failure is not "no board item" -- a
+                    # locked/corrupt index must not tell staff the user
+                    # was never logged.
+                    print(
+                        "[GHLOG] /banlog log update: could not read the log "
+                        "index for %s (%s)" % (target_id, exc)
+                    )
+                    return await ctx.followup.send(
+                        "Could not read the log index -- I cannot tell whether "
+                        "%s has a board item. Try again, and check the board "
+                        "if it keeps failing." % display,
+                        ephemeral=True,
+                    )
+                if not rows:
+                    return await ctx.followup.send(
+                        "No board item on file for %s -- log them with /banlog log first."
+                        % display,
+                        ephemeral=True,
+                    )
+                row = rows[0]
+            if row.get("project_owner") != get_project_owner() or row.get("project_number") != get_project_number():
+                return await ctx.followup.send(
+                    "That item lives on the %s board (project %s), but the bot is "
+                    "now pointed at %s project %s. Switch the target back to "
+                    "update it."
+                    % (
+                        row.get("project_owner"),
+                        row.get("project_number"),
+                        get_project_owner(),
+                        get_project_number(),
+                    ),
+                    ephemeral=True,
+                )
+            warnings = []
+            if status and (row.get("approval") or "") == APPROVAL_PENDING:
+                if not tags and not decision and not note and not shots:
+                    return await ctx.followup.send(
+                        "That case is still waiting for approval -- use "
+                        "/banlog log approve to move it to its category. Tags, decision, "
+                        "notes, and screenshots can still be updated here.",
+                        ephemeral=True,
+                    )
+                warnings.append(
+                    "Status was not changed: this case is still waiting for "
+                    "approval (use /banlog log approve)."
+                )
+                status = None
+            # P2-22: every board write is recorded before it runs, so a
+            # failure mid-sequence can be reconciled against the board
+            # instead of leaving board and row diverged.
+            attempted = []
+            intended_body = None
+            board_set = set()
+            try:
+                project_id, fields = await get_project_fields(token)
+                updates = {}
+                for field_name, option_name in (
+                    ("Status", status),
+                    ("tags", tags),
+                    (DECISION_FIELD, decision),
+                ):
+                    if not option_name:
+                        continue
+                    field = fields.get(field_name)
+                    option_id = field["options"].get(option_name) if field else None
+                    if not option_id:
+                        warnings.append(
+                            "Board %s has no option %r; left unchanged."
+                            % (field_name, option_name)
+                        )
+                        continue
+                    attempted.append((field_name, option_name))
+                    await set_single_select(
+                        token, project_id, row["item_id"], field["id"], option_id
+                    )
+                    board_set.add(field_name)
+                # The Decision field is a board-only marker (no column in
+                # ghlog_items), so it is set on the board and reported, but
+                # not stored in the row.
+                # P2-22: only record a field in the row when its board set
+                # actually happened -- a missing board option used to leave
+                # the row claiming a value the board never got.
+                if status and "Status" in board_set:
+                    updates["status"] = status
+                if tags and "tags" in board_set:
+                    updates["tags"] = tags
+                if note:
+                    draft_id = row.get("draft_id") or await resolve_draft_issue_id(
+                        token, row["item_id"]
+                    )
+                    new_body = "%s\n\n### Update -- %s by %s\n%s" % (
+                        row.get("body") or "",
+                        _utc_now(),
+                        ctx.user.display_name,
+                        note,
+                    )
+                    intended_body = new_body
+                    await update_draft_issue(token, draft_id, row["title"], new_body)
+                    updates["body"] = new_body
+                    updates["draft_id"] = draft_id
+                if shots:
+                    # Re-host the new screenshots so their board links are
+                    # permanent, then append them to the item's body. The
+                    # channel is the server's stored evidence channel, else
+                    # this channel (no per-log picker).
+                    rehost_channel = await _resolve_evidence_channel(
+                        ctx.guild, ctx.channel
+                    )
+                    caption = "Additional evidence images for Case #%d -- %s (%s), added by %s." % (
+                        row["id"],
+                        display,
+                        target_id,
+                        ctx.user.display_name,
+                    )
+                    shot_pairs = [(s.url, s.filename) for s in shots]
+                    new_urls, rehost_warnings = await _rehost_screenshots(
+                        rehost_channel, shot_pairs, caption=caption
+                    )
+                    warnings.extend(rehost_warnings)
+                    add_lines = []
+                    for i, url in enumerate(new_urls, 1):
+                        if _is_image_url(url):
+                            add_lines.append("![Additional evidence %d](%s)" % (i, url))
+                        else:
+                            add_lines.append("- " + url)
+                    base_body = updates.get("body", row.get("body") or "")
+                    new_body = "%s\n\n### Additional evidence -- %s by %s\n%s" % (
+                        base_body,
+                        _utc_now(),
+                        ctx.user.display_name,
+                        "\n".join(add_lines),
+                    )
+                    draft_id = (
+                        updates.get("draft_id")
+                        or row.get("draft_id")
+                        or await resolve_draft_issue_id(token, row["item_id"])
+                    )
+                    intended_body = new_body
+                    await update_draft_issue(token, draft_id, row["title"], new_body)
+                    updates["body"] = new_body
+                    updates["draft_id"] = draft_id
+                if updates:
+                    await update_ghlog_item(row["id"], updates)
+            except Exception as exc:
+                detail = await _reconcile_ghlog_row(
+                    token, row, attempted, intended_body
+                )
+                return await ctx.followup.send(
+                    "Update failed: %s\n%s" % (exc, detail),
+                    ephemeral=True,
+                )
+            changed = []
+            # P2-22: only report a field as changed when its board set
+            # actually happened -- a missing board option used to be
+            # reported as changed while the warning said it was not.
+            if status and "Status" in board_set:
+                changed.append("Status -> %s" % status)
+            if tags and "tags" in board_set:
+                changed.append("tags -> %s" % tags)
+            if decision and "Decision" in board_set:
+                changed.append("Decision -> %s" % decision)
+            if note:
+                changed.append("note appended")
+            if shots:
+                changed.append("%d screenshot(s) appended" % len(shots))
+            reply = "Updated %s's board item (%s): %s" % (display, await _board_url(token), ", ".join(changed))
+            if warnings:
+                reply += "\nNotes: " + " ".join(warnings)
+            await ctx.followup.send(reply, ephemeral=True)
+
+    if WORKER_MODE:
+        @banlog_group.command(
+            name="collect",
+            description="Collect screenshots sent in this channel into a log's evidence thread.",
+        )
+        @extra_help(
+            "The button-free way to add screenshots to a log: send the "
+            "screenshots as chat messages in this channel, then run this "
+            "command. It scans this channel for your recent screenshots, "
+            "downloads them, posts them to the server's evidence channel as "
+            "a captioned message plus a thread holding the images, deletes "
+            "the originals from this channel, and appends the permanent "
+            "thread links to the board item as Additional evidence. Give a "
+            "case number, or a member/user to use their most recent log. "
+            "Use it when the Collect screenshots button on the preview "
+            "fails, or after a log has already posted. Manage Server or "
+            "Administrator only."
+        )
+        async def banlog_collect(
+            self,
+            ctx,
+            case: discord.Option(
+                int, "Case/log number to attach the screenshots to",
+                required=False, default=None
+            ),
+            member: discord.Option(
+                discord.Member,
+                "Member whose most recent log to attach to",
+                required=False,
+                default=None,
+            ),
+            user_id: discord.Option(
+                str,
+                "User ID, mention, or username (most recent log)",
+                required=False,
+                default=None,
+            ),
+        ):
+            from utils.permissions import check_slash_permission, _default_manage_or_admin
+            if not await check_slash_permission(ctx, "banlog_collect", _default_manage_or_admin):
+                return
+            if case is None and member is None and not user_id:
+                return await ctx.respond(
+                    "Give a case number, or a member/user to use their most "
+                    "recent log.",
+                    ephemeral=True,
+                )
+            await ctx.defer(ephemeral=True)
+            token = os.getenv("GITHUB_PROJECT_TOKEN")
+            if not token:
+                return await ctx.followup.send(
+                    "GitHub token is not set. Add GITHUB_PROJECT_TOKEN to .env "
+                    "and restart the bot, then try again.",
+                    ephemeral=True,
+                )
+            row = None
+            if case is not None:
+                try:
+                    row = await get_ghlog_item(case)
+                except Exception as exc:
+                    # P2-23: a read failure is not "no such case" -- say
+                    # the index could not be read instead of telling staff
+                    # the case does not exist.
+                    print(
+                        "[GHLOG] /banlog log collect: could not read case #%d (%s)"
+                        % (case, exc)
+                    )
+                    return await ctx.followup.send(
+                        "Could not read the log index -- I cannot tell whether "
+                        "case #%d exists. Try again, and check the board if it "
+                        "keeps failing." % case,
+                        ephemeral=True,
+                    )
+                if row is None:
+                    return await ctx.followup.send(
+                        "No log on file with case number #%d." % case,
+                        ephemeral=True,
+                    )
+                if str(row.get("guild_id")) != str(ctx.guild.id):
+                    return await ctx.followup.send(
+                        "Case #%d belongs to a different server." % case,
+                        ephemeral=True,
+                    )
+            else:
+                target_id, display = await self._resolve_target(ctx, member, user_id)
+                if display is None:
+                    return await ctx.followup.send(
+                        "Pick a member, or give a user ID, mention, or username I can find.",
+                        ephemeral=True,
+                    )
+                try:
+                    rows = await list_ghlog_items(ctx.guild.id, target_id)
+                except Exception as exc:
+                    # P2-23: a read failure is not "no board item" -- a
+                    # locked/corrupt index must not tell staff the user
+                    # was never logged.
+                    print(
+                        "[GHLOG] /banlog log collect: could not read the log "
+                        "index for %s (%s)" % (target_id, exc)
+                    )
+                    return await ctx.followup.send(
+                        "Could not read the log index -- I cannot tell whether "
+                        "%s has a board item. Try again, and check the board "
+                        "if it keeps failing." % display,
+                        ephemeral=True,
+                    )
+                if not rows:
+                    return await ctx.followup.send(
+                        "No board item on file for %s -- log them with /banlog log first."
+                        % display,
+                        ephemeral=True,
+                    )
+                row = rows[0]
+            if row.get("project_owner") != get_project_owner() or row.get("project_number") != get_project_number():
+                return await ctx.followup.send(
+                    "That item lives on the %s board (project %s), but the bot is "
+                    "now pointed at %s project %s. Switch the target back to "
+                    "collect for it."
+                    % (
+                        row.get("project_owner"),
+                        row.get("project_number"),
+                        get_project_owner(),
+                        get_project_number(),
+                    ),
+                    ephemeral=True,
+                )
+            # Only screenshots sent after the log started (/banlog log ran) --
+            # the row records when the log was invoked, so old images
+            # already in the channel are never grabbed.
+            after = _parse_dt(row.get("invoke_at"))
+            found = await _collect_channel_screenshots(
+                ctx.channel, ctx.user.id, after=after
+            )
+            if not found:
+                return await ctx.followup.send(
+                    "No screenshots found in %s from you. Send them as chat "
+                    "messages in this channel first, then run /banlog log collect "
+                    "again." % (ctx.channel.mention if ctx.channel else "this channel"),
+                    ephemeral=True,
+                )
+            evidence_channel = await _resolve_evidence_channel(ctx.guild, ctx.channel)
+            display = row.get("display_name") or ""
+            caption = "Evidence images for Case #%d -- %s (%s), collected from %s by %s on %s." % (
+                row["id"],
+                display,
+                row.get("user_id") or "",
+                ctx.channel.mention if ctx.channel else "chat",
+                ctx.user.display_name,
+                _utc_now(),
+            )
+            shot_pairs = [(url, filename) for url, filename, _ in found]
+            new_urls, warnings, thread_url = await _post_evidence_thread(
+                evidence_channel,
+                caption,
+                shot_pairs,
+                thread_name="Case #%d evidence -- %s" % (row["id"], display),
+            )
+            delete_warnings = []
+            for _, _, message in found:
+                try:
+                    await message.delete()
+                except Exception as exc:
+                    delete_warnings.append(
+                        "could not delete an original (%s) -- the bot needs "
+                        "Manage Messages in %s to remove the originals" % (
+                            exc,
+                            ctx.channel.mention if ctx.channel else "the channel",
+                        )
+                    )
+                    print(
+                        "[GHLOG] banlog_collect: could not delete message %s (%s)"
+                        % (getattr(message, "id", "?"), exc)
+                    )
+            # Append the permanent thread links to the board item, same as
+            # /banlog log update's screenshot append.
+            try:
                 add_lines = []
                 for i, url in enumerate(new_urls, 1):
                     if _is_image_url(url):
                         add_lines.append("![Additional evidence %d](%s)" % (i, url))
                     else:
                         add_lines.append("- " + url)
-                base_body = updates.get("body", row.get("body") or "")
                 new_body = "%s\n\n### Additional evidence -- %s by %s\n%s" % (
-                    base_body,
+                    row.get("body") or "",
                     _utc_now(),
                     ctx.user.display_name,
                     "\n".join(add_lines),
                 )
-                draft_id = (
-                    updates.get("draft_id")
-                    or row.get("draft_id")
-                    or await resolve_draft_issue_id(token, row["item_id"])
+                draft_id = row.get("draft_id") or await resolve_draft_issue_id(
+                    token, row["item_id"]
                 )
                 await update_draft_issue(token, draft_id, row["title"], new_body)
-                updates["body"] = new_body
-                updates["draft_id"] = draft_id
-            if updates:
-                await update_ghlog_item(row["id"], updates)
-        except Exception as exc:
-            return await ctx.followup.send(
-                "Update failed: %s (any fields applied before the failure stay applied)."
-                % exc,
-                ephemeral=True,
+                await update_ghlog_item(
+                    row["id"], {"body": new_body, "draft_id": draft_id}
+                )
+            except Exception as exc:
+                warnings.append("could not append the links to the board item (%s)" % exc)
+            reply = "Collected %d screenshot(s) for Case #%d into the evidence thread%s." % (
+                len(found),
+                row["id"],
+                (" -- %s" % thread_url) if thread_url else "",
             )
-        changed = []
-        if status:
-            changed.append("Status -> %s" % status)
-        if tags:
-            changed.append("tags -> %s" % tags)
-        if decision:
-            changed.append("Decision -> %s" % decision)
-        if note:
-            changed.append("note appended")
-        if shots:
-            changed.append("%d screenshot(s) appended" % len(shots))
-        reply = "Updated %s's board item (%s): %s" % (display, BOARD_URL, ", ".join(changed))
-        if warnings:
-            reply += "\nNotes: " + " ".join(warnings)
-        await ctx.followup.send(reply, ephemeral=True)
+            if warnings or delete_warnings:
+                reply += " Notes: " + " ".join(warnings + delete_warnings)
+            await ctx.followup.send(reply, ephemeral=True)
 
-    @discord.slash_command(
-        name="banlog_collect",
-        description="Collect screenshots sent in this channel into a log's evidence thread.",
-        guild_ids=GUILD_IDS,
-    )
-    @extra_help(
-        "The button-free way to add screenshots to a log: send the "
-        "screenshots as chat messages in this channel, then run this "
-        "command. It scans this channel for your recent screenshots, "
-        "downloads them, posts them to the server's evidence channel as "
-        "a captioned message plus a thread holding the images, deletes "
-        "the originals from this channel, and appends the permanent "
-        "thread links to the board item as Additional evidence. Give a "
-        "case number, or a member/user to use their most recent log. "
-        "Use it when the Collect screenshots button on the preview "
-        "fails, or after a log has already posted. Manage Server or "
-        "Administrator only."
-    )
-    async def banlog_collect(
-        self,
-        ctx,
-        case: discord.Option(
-            int, "Case/log number to attach the screenshots to",
-            required=False, default=None
-        ),
-        member: discord.Option(
-            discord.Member,
-            "Member whose most recent log to attach to",
-            required=False,
-            default=None,
-        ),
-        user_id: discord.Option(
-            str,
-            "User ID, mention, or username (most recent log)",
-            required=False,
-            default=None,
-        ),
-    ):
-        from utils.permissions import check_slash_permission, _default_manage_or_admin
-        if not await check_slash_permission(ctx, "banlog_collect", _default_manage_or_admin):
-            return
-        if case is None and member is None and not user_id:
-            return await ctx.respond(
-                "Give a case number, or a member/user to use their most "
-                "recent log.",
-                ephemeral=True,
-            )
-        await ctx.defer(ephemeral=True)
-        token = os.getenv("GITHUB_PROJECT_TOKEN")
-        if not token:
-            return await ctx.followup.send(
-                "GitHub token is not set. Add GITHUB_PROJECT_TOKEN to .env "
-                "and restart the bot, then try again.",
-                ephemeral=True,
-            )
-        row = None
-        if case is not None:
+    if WORKER_MODE:
+        @banlog_group.command(
+            name="backfill_cases",
+            description="Give a case number to board logs that do not have one.",
+        )
+        @extra_help(
+            "Scans the whole GitHub ban-log board for items whose title has "
+            "no case number (hand-made logs and logs from before the "
+            "case-number flow), gives each one the next free case number, "
+            "and rewrites its board title and body to carry it. A log that "
+            "already has a tracked row keeps its original case number "
+            "instead of getting a new one. Replies with an embed saying how "
+            "many items were scanned and how many got a case number. "
+            "Manage Server or Administrator only."
+        )
+        async def ghlog_backfill_cases(self, ctx):
+            from utils.permissions import check_slash_permission, _default_manage_or_admin
+            if not await check_slash_permission(ctx, "banlog_backfill_cases", _default_manage_or_admin):
+                return
+            await ctx.defer(ephemeral=True)
+            token = os.getenv("GITHUB_PROJECT_TOKEN")
+            if not token:
+                return await ctx.followup.send(
+                    "GitHub token is not set. Add GITHUB_PROJECT_TOKEN to .env "
+                    "and restart the bot, then try again.",
+                    ephemeral=True,
+                )
             try:
-                row = await get_ghlog_item(case)
+                items = await list_project_items(token)
+            except Exception as exc:
+                return await ctx.followup.send(
+                    "Could not read the board: %s" % exc, ephemeral=True
+                )
+            # Case numbers already on the board, so a new one never
+            # collides with a title that already has one.
+            have_case = set()
+            for item in items:
+                match = re.search(r"Case #(\d+)", item.get("title") or "")
+                if match:
+                    have_case.add(int(match.group(1)))
+            try:
+                max_row_id = await get_ghlog_max_id()
             except Exception:
-                row = None
-            if row is None:
-                return await ctx.followup.send(
-                    "No log on file with case number #%d." % case,
+                max_row_id = 0
+            next_case = max(max(have_case) if have_case else 0, max_row_id) + 1
+            scanned = len(items)
+            already = 0
+            fixed = 0
+            not_draft = 0
+            failed = 0
+            fixed_lines = []
+            fail_lines = []
+            for item in items:
+                title = item.get("title") or ""
+                if re.search(r"Case #(\d+)", title):
+                    already += 1
+                    continue
+                if not item.get("is_draft") or not item.get("draft_id"):
+                    not_draft += 1
+                    fail_lines.append(
+                        "%s -- not a draft issue, cannot rewrite its title"
+                        % (title or item.get("item_id") or "?")
+                    )
+                    continue
+                # Name + user id from the title ("Name (123456789)"); a
+                # hand-made log may have just a name.
+                user_match = re.search(r"\((\d+)\)", title)
+                user_id = user_match.group(1) if user_match else ""
+                display = re.sub(r"\s*\(\d+\)\s*$", "", title).strip() or title
+                body = item.get("body") or ""
+                ticket_match = re.search(r"Ticket:\s*(\S+)", body)
+                ticket = ticket_match.group(1) if ticket_match else ""
+                action_match = re.search(r"Action:\s*([^\n]+)", body)
+                action = action_match.group(1).strip() if action_match else ""
+                fields = item.get("fields") or {}
+                status = fields.get("Status") or ""
+                # A log that already has a tracked row keeps its original
+                # case number instead of getting a new one.
+                try:
+                    existing = await get_ghlog_item_by_item_id(item["item_id"])
+                except Exception:
+                    existing = None
+                if existing is not None:
+                    case_no = existing["id"]
+                else:
+                    case_no = next_case
+                    next_case += 1
+                new_title = "%s -- Case #%d" % (title, case_no)
+                new_body = body
+                if not new_body.startswith("Case:"):
+                    new_body = "Case: #%d\n%s" % (case_no, new_body)
+                try:
+                    await update_draft_issue(
+                        token, item["draft_id"], new_title, new_body
+                    )
+                except Exception as exc:
+                    failed += 1
+                    fail_lines.append(
+                        "%s -- could not rewrite the board item (%s)"
+                        % (display, exc)
+                    )
+                    continue
+                # Track it, so /banlog log update, /banlog log approve and
+                # /banlog log collect can find it by case number.
+                try:
+                    if existing is not None:
+                        await update_ghlog_item(
+                            existing["id"],
+                            {"title": new_title, "body": new_body,
+                             "draft_id": item["draft_id"]},
+                        )
+                    else:
+                        await save_ghlog_item(
+                            {
+                                "id": case_no,
+                                "guild_id": str(ctx.guild.id),
+                                "user_id": user_id,
+                                "display_name": display,
+                                "action": action,
+                                "item_id": item["item_id"],
+                                "draft_id": item["draft_id"],
+                                "title": new_title,
+                                "body": new_body,
+                                "status": status,
+                                "tags": fields.get("tags") or "",
+                                "intended_status": (
+                                    "" if status == APPROVAL_PENDING else status
+                                ),
+                                "ticket": ticket,
+                                "approval": fields.get("Approval") or "",
+                                "project_owner": get_project_owner(),
+                                "project_number": get_project_number(),
+                                "logged_by": "backfill",
+                                "logged_by_id": "",
+                                "invoke_at": None,
+                            }
+                        )
+                except Exception as exc:
+                    failed += 1
+                    fail_lines.append(
+                        "%s -- board updated to Case #%d but tracking failed (%s)"
+                        % (display, case_no, exc)
+                    )
+                    continue
+                fixed += 1
+                fixed_lines.append("Case #%d -- %s" % (case_no, display))
+            embed = discord.Embed(
+                title="Ban-log case backfill",
+                description=(
+                    "Scanned the GitHub board for logs without a case number "
+                    "and gave each one the next free number."
+                ),
+                color=discord.Color.green(),
+            )
+            embed.add_field(name="Scanned", value=str(scanned), inline=True)
+            embed.add_field(name="Already had a case number", value=str(already), inline=True)
+            embed.add_field(name="Fixed (case numbers added)", value=str(fixed), inline=True)
+            if not_draft:
+                embed.add_field(
+                    name="Skipped (not a draft issue)", value=str(not_draft), inline=True
+                )
+            if failed:
+                embed.add_field(name="Failed", value=str(failed), inline=True)
+            if fixed_lines:
+                shown = fixed_lines[:10]
+                text = "\n".join(shown)
+                if len(fixed_lines) > 10:
+                    text += "\n+%d more" % (len(fixed_lines) - 10)
+                embed.add_field(name="Case numbers added", value=text, inline=False)
+            if fail_lines:
+                shown = fail_lines[:5]
+                text = "\n".join(shown)
+                if len(fail_lines) > 5:
+                    text += "\n+%d more" % (len(fail_lines) - 5)
+                embed.add_field(name="Problems", value=text, inline=False)
+            await ctx.followup.send(embed=embed, ephemeral=True)
+
+    if not WORKER_MODE:
+        @banlog_group.command(
+            name="delete",
+            description="Delete a logged case from the GitHub board.",
+        )
+        @extra_help(
+            "Deletes the most recent board item for a user (and its tracking "
+            "row). Type DELETE exactly to confirm -- this cannot be undone. "
+            "Manage Server or Administrator only."
+        )
+        async def banlog_delete(
+            self,
+            ctx,
+            member: discord.Option(
+                discord.Member,
+                "Member to delete (pick if they are still in the server)",
+                required=False,
+                default=None,
+            ),
+            user_id: discord.Option(
+                str,
+                "User ID, mention, or username (use when they already left)",
+                required=False,
+                default=None,
+            ),
+            confirm: discord.Option(
+                str,
+                "Type DELETE to confirm",
+                # Discord rejects a command when a required option follows an
+                # optional one, so confirm is optional in the form but still
+                # enforced in code: anything other than DELETE refuses.
+                required=False,
+                default=None,
+            ),
+        ):
+            from utils.permissions import check_slash_permission, _default_manage_or_admin
+            if not await check_slash_permission(ctx, "banlog_delete", _default_manage_or_admin):
+                return
+            if confirm != "DELETE":
+                return await ctx.respond(
+                    "Type DELETE exactly to confirm -- nothing was deleted.",
                     ephemeral=True,
                 )
-            if str(row.get("guild_id")) != str(ctx.guild.id):
-                return await ctx.followup.send(
-                    "Case #%d belongs to a different server." % case,
-                    ephemeral=True,
-                )
-        else:
             target_id, display = await self._resolve_target(ctx, member, user_id)
             if display is None:
-                return await ctx.followup.send(
+                return await ctx.respond(
                     "Pick a member, or give a user ID, mention, or username I can find.",
+                    ephemeral=True,
+                )
+            await ctx.defer(ephemeral=True)
+            token = os.getenv("GITHUB_PROJECT_TOKEN")
+            if not token:
+                return await ctx.followup.send(
+                    "GitHub token is not set. Add GITHUB_PROJECT_TOKEN to .env "
+                    "and restart the bot, then try again.",
                     ephemeral=True,
                 )
             try:
                 rows = await list_ghlog_items(ctx.guild.id, target_id)
-            except Exception:
-                rows = []
+            except Exception as exc:
+                # P2-23: a read failure is not "nothing to delete" -- a
+                # locked/corrupt index must not tell staff the user was
+                # never logged.
+                print(
+                    "[GHLOG] /banlog log delete: could not read the log index "
+                    "for %s (%s)" % (target_id, exc)
+                )
+                return await ctx.followup.send(
+                    "Could not read the log index -- I cannot tell whether "
+                    "%s has a board item to delete. Try again, and check the "
+                    "board if it keeps failing." % display,
+                    ephemeral=True,
+                )
             if not rows:
                 return await ctx.followup.send(
-                    "No board item on file for %s -- log them with /banlog first."
-                    % display,
+                    "No board item on file for %s -- nothing to delete." % display,
                     ephemeral=True,
                 )
             row = rows[0]
-        if row.get("project_owner") != PROJECT_OWNER or row.get("project_number") != PROJECT_NUMBER:
-            return await ctx.followup.send(
-                "That item lives on the %s board (project %s), but the bot is "
-                "now pointed at %s project %s. Switch the target back to "
-                "collect for it."
-                % (
-                    row.get("project_owner"),
-                    row.get("project_number"),
-                    PROJECT_OWNER,
-                    PROJECT_NUMBER,
-                ),
-                ephemeral=True,
-            )
-        # Only screenshots sent after the log started (/banlog ran) --
-        # the row records when the log was invoked, so old images
-        # already in the channel are never grabbed.
-        after = _parse_dt(row.get("invoke_at"))
-        found = await _collect_channel_screenshots(
-            ctx.channel, ctx.user.id, after=after
-        )
-        if not found:
-            return await ctx.followup.send(
-                "No screenshots found in %s from you. Send them as chat "
-                "messages in this channel first, then run /banlog_collect "
-                "again." % (ctx.channel.mention if ctx.channel else "this channel"),
-                ephemeral=True,
-            )
-        evidence_channel = await _resolve_evidence_channel(ctx.guild, ctx.channel)
-        display = row.get("display_name") or ""
-        caption = "Evidence images for Case #%d -- %s (%s), collected from %s by %s on %s." % (
-            row["id"],
-            display,
-            row.get("user_id") or "",
-            ctx.channel.mention if ctx.channel else "chat",
-            ctx.user.display_name,
-            _utc_now(),
-        )
-        shot_pairs = [(url, filename) for url, filename, _ in found]
-        new_urls, warnings, thread_url = await _post_evidence_thread(
-            evidence_channel,
-            caption,
-            shot_pairs,
-            thread_name="Case #%d evidence -- %s" % (row["id"], display),
-        )
-        delete_warnings = []
-        for _, _, message in found:
+            if row.get("project_owner") != get_project_owner() or row.get("project_number") != get_project_number():
+                return await ctx.followup.send(
+                    "That item lives on the %s board (project %s), but the bot is "
+                    "now pointed at %s project %s. Switch the target back to "
+                    "delete it."
+                    % (
+                        row.get("project_owner"),
+                        row.get("project_number"),
+                        get_project_owner(),
+                        get_project_number(),
+                    ),
+                    ephemeral=True,
+                )
+            # P2-22: delete is two-phase (board item, then tracking row).
+            # A board item that is already gone counts as deleted, so a
+            # retry after a half-finished delete cleans up the stale row
+            # instead of failing confusingly; and a row-delete failure
+            # says so plainly instead of hiding behind "Delete failed".
+            already_gone = False
             try:
-                await message.delete()
+                project_id = await get_project_id(token)
+                await delete_project_item(token, project_id, row["item_id"])
             except Exception as exc:
-                delete_warnings.append(
-                    "could not delete an original (%s) -- the bot needs "
-                    "Manage Messages in %s to remove the originals" % (
-                        exc,
-                        ctx.channel.mention if ctx.channel else "the channel",
+                already_gone = await _board_item_gone(
+                    token, row["item_id"], exc
+                )
+                if not already_gone:
+                    return await ctx.followup.send(
+                        "Delete failed: %s -- nothing was deleted; the "
+                        "board item and the tracking row are both still "
+                        "there." % exc,
+                        ephemeral=True,
                     )
-                )
-                print(
-                    "[GHLOG] banlog_collect: could not delete message %s (%s)"
-                    % (getattr(message, "id", "?"), exc)
-                )
-        # Append the permanent thread links to the board item, same as
-        # /banlog_update's screenshot append.
-        try:
-            add_lines = []
-            for i, url in enumerate(new_urls, 1):
-                if _is_image_url(url):
-                    add_lines.append("![Additional evidence %d](%s)" % (i, url))
-                else:
-                    add_lines.append("- " + url)
-            new_body = "%s\n\n### Additional evidence -- %s by %s\n%s" % (
-                row.get("body") or "",
-                _utc_now(),
-                ctx.user.display_name,
-                "\n".join(add_lines),
-            )
-            draft_id = row.get("draft_id") or await resolve_draft_issue_id(
-                token, row["item_id"]
-            )
-            await update_draft_issue(token, draft_id, row["title"], new_body)
-            await update_ghlog_item(
-                row["id"], {"body": new_body, "draft_id": draft_id}
-            )
-        except Exception as exc:
-            warnings.append("could not append the links to the board item (%s)" % exc)
-        reply = "Collected %d screenshot(s) for Case #%d into the evidence thread%s." % (
-            len(found),
-            row["id"],
-            (" -- %s" % thread_url) if thread_url else "",
-        )
-        if warnings or delete_warnings:
-            reply += " Notes: " + " ".join(warnings + delete_warnings)
-        await ctx.followup.send(reply, ephemeral=True)
-
-    @discord.slash_command(
-        name="ghlog_backfill_cases",
-        description="Give a case number to board logs that do not have one.",
-        guild_ids=GUILD_IDS,
-    )
-    @extra_help(
-        "Scans the whole GitHub ban-log board for items whose title has "
-        "no case number (hand-made logs and logs from before the "
-        "case-number flow), gives each one the next free case number, "
-        "and rewrites its board title and body to carry it. A log that "
-        "already has a tracked row keeps its original case number "
-        "instead of getting a new one. Replies with an embed saying how "
-        "many items were scanned and how many got a case number. "
-        "Manage Server or Administrator only."
-    )
-    async def ghlog_backfill_cases(self, ctx):
-        from utils.permissions import check_slash_permission, _default_manage_or_admin
-        if not await check_slash_permission(ctx, "ghlog_backfill_cases", _default_manage_or_admin):
-            return
-        await ctx.defer(ephemeral=True)
-        token = os.getenv("GITHUB_PROJECT_TOKEN")
-        if not token:
-            return await ctx.followup.send(
-                "GitHub token is not set. Add GITHUB_PROJECT_TOKEN to .env "
-                "and restart the bot, then try again.",
-                ephemeral=True,
-            )
-        try:
-            items = await list_project_items(token)
-        except Exception as exc:
-            return await ctx.followup.send(
-                "Could not read the board: %s" % exc, ephemeral=True
-            )
-        # Case numbers already on the board, so a new one never
-        # collides with a title that already has one.
-        have_case = set()
-        for item in items:
-            match = re.search(r"Case #(\d+)", item.get("title") or "")
-            if match:
-                have_case.add(int(match.group(1)))
-        try:
-            max_row_id = await get_ghlog_max_id()
-        except Exception:
-            max_row_id = 0
-        next_case = max(max(have_case) if have_case else 0, max_row_id) + 1
-        scanned = len(items)
-        already = 0
-        fixed = 0
-        not_draft = 0
-        failed = 0
-        fixed_lines = []
-        fail_lines = []
-        for item in items:
-            title = item.get("title") or ""
-            if re.search(r"Case #(\d+)", title):
-                already += 1
-                continue
-            if not item.get("is_draft") or not item.get("draft_id"):
-                not_draft += 1
-                fail_lines.append(
-                    "%s -- not a draft issue, cannot rewrite its title"
-                    % (title or item.get("item_id") or "?")
-                )
-                continue
-            # Name + user id from the title ("Name (123456789)"); a
-            # hand-made log may have just a name.
-            user_match = re.search(r"\((\d+)\)", title)
-            user_id = user_match.group(1) if user_match else ""
-            display = re.sub(r"\s*\(\d+\)\s*$", "", title).strip() or title
-            body = item.get("body") or ""
-            ticket_match = re.search(r"Ticket:\s*(\S+)", body)
-            ticket = ticket_match.group(1) if ticket_match else ""
-            action_match = re.search(r"Action:\s*([^\n]+)", body)
-            action = action_match.group(1).strip() if action_match else ""
-            fields = item.get("fields") or {}
-            status = fields.get("Status") or ""
-            # A log that already has a tracked row keeps its original
-            # case number instead of getting a new one.
             try:
-                existing = await get_ghlog_item_by_item_id(item["item_id"])
-            except Exception:
-                existing = None
-            if existing is not None:
-                case_no = existing["id"]
+                await delete_ghlog_item(row["id"])
+            except Exception as exc:
+                return await ctx.followup.send(
+                    "The board item is deleted, but the tracking row could "
+                    "not be removed (%s). The row still points at a deleted "
+                    "item -- run /banlog log delete again and it will clean up "
+                    "the stale row." % exc,
+                    ephemeral=True,
+                )
+            if already_gone:
+                await ctx.followup.send(
+                    "Deleted %s's board item (it was already gone from the "
+                    "board; removed the stale tracking row)." % display,
+                    ephemeral=True,
+                )
             else:
-                case_no = next_case
-                next_case += 1
-            new_title = "%s -- Case #%d" % (title, case_no)
-            new_body = body
-            if not new_body.startswith("Case:"):
-                new_body = "Case: #%d\n%s" % (case_no, new_body)
-            try:
-                await update_draft_issue(
-                    token, item["draft_id"], new_title, new_body
+                await ctx.followup.send(
+                    "Deleted %s's board item." % display,
+                    ephemeral=True,
                 )
-            except Exception as exc:
-                failed += 1
-                fail_lines.append(
-                    "%s -- could not rewrite the board item (%s)"
-                    % (display, exc)
-                )
-                continue
-            # Track it, so /banlog_update, /log_approve and
-            # /banlog_collect can find it by case number.
-            try:
-                if existing is not None:
-                    await update_ghlog_item(
-                        existing["id"],
-                        {"title": new_title, "body": new_body,
-                         "draft_id": item["draft_id"]},
-                    )
-                else:
-                    await save_ghlog_item(
-                        {
-                            "id": case_no,
-                            "guild_id": str(ctx.guild.id),
-                            "user_id": user_id,
-                            "display_name": display,
-                            "action": action,
-                            "item_id": item["item_id"],
-                            "draft_id": item["draft_id"],
-                            "title": new_title,
-                            "body": new_body,
-                            "status": status,
-                            "tags": fields.get("tags") or "",
-                            "intended_status": (
-                                "" if status == APPROVAL_PENDING else status
-                            ),
-                            "ticket": ticket,
-                            "approval": fields.get("Approval") or "",
-                            "project_owner": PROJECT_OWNER,
-                            "project_number": PROJECT_NUMBER,
-                            "logged_by": "backfill",
-                            "logged_by_id": "",
-                            "invoke_at": None,
-                        }
-                    )
-            except Exception as exc:
-                failed += 1
-                fail_lines.append(
-                    "%s -- board updated to Case #%d but tracking failed (%s)"
-                    % (display, case_no, exc)
-                )
-                continue
-            fixed += 1
-            fixed_lines.append("Case #%d -- %s" % (case_no, display))
-        embed = discord.Embed(
-            title="Ban-log case backfill",
-            description=(
-                "Scanned the GitHub board for logs without a case number "
-                "and gave each one the next free number."
-            ),
-            color=discord.Color.green(),
-        )
-        embed.add_field(name="Scanned", value=str(scanned), inline=True)
-        embed.add_field(name="Already had a case number", value=str(already), inline=True)
-        embed.add_field(name="Fixed (case numbers added)", value=str(fixed), inline=True)
-        if not_draft:
-            embed.add_field(
-                name="Skipped (not a draft issue)", value=str(not_draft), inline=True
-            )
-        if failed:
-            embed.add_field(name="Failed", value=str(failed), inline=True)
-        if fixed_lines:
-            shown = fixed_lines[:10]
-            text = "\n".join(shown)
-            if len(fixed_lines) > 10:
-                text += "\n+%d more" % (len(fixed_lines) - 10)
-            embed.add_field(name="Case numbers added", value=text, inline=False)
-        if fail_lines:
-            shown = fail_lines[:5]
-            text = "\n".join(shown)
-            if len(fail_lines) > 5:
-                text += "\n+%d more" % (len(fail_lines) - 5)
-            embed.add_field(name="Problems", value=text, inline=False)
-        await ctx.followup.send(embed=embed, ephemeral=True)
-
-    @discord.slash_command(
-        name="banlog_delete",
-        description="Delete a logged case from the GitHub board.",
-        guild_ids=GUILD_IDS,
-    )
-    @extra_help(
-        "Deletes the most recent board item for a user (and its tracking "
-        "row). Type DELETE exactly to confirm -- this cannot be undone. "
-        "Manage Server or Administrator only."
-    )
-    async def banlog_delete(
-        self,
-        ctx,
-        member: discord.Option(
-            discord.Member,
-            "Member to delete (pick if they are still in the server)",
-            required=False,
-            default=None,
-        ),
-        user_id: discord.Option(
-            str,
-            "User ID, mention, or username (use when they already left)",
-            required=False,
-            default=None,
-        ),
-        confirm: discord.Option(
-            str,
-            "Type DELETE to confirm",
-            # Discord rejects a command when a required option follows an
-            # optional one, so confirm is optional in the form but still
-            # enforced in code: anything other than DELETE refuses.
-            required=False,
-            default=None,
-        ),
-    ):
-        from utils.permissions import check_slash_permission, _default_manage_or_admin
-        if not await check_slash_permission(ctx, "banlog_delete", _default_manage_or_admin):
-            return
-        if confirm != "DELETE":
-            return await ctx.respond(
-                "Type DELETE exactly to confirm -- nothing was deleted.",
-                ephemeral=True,
-            )
-        target_id, display = await self._resolve_target(ctx, member, user_id)
-        if display is None:
-            return await ctx.respond(
-                "Pick a member, or give a user ID, mention, or username I can find.",
-                ephemeral=True,
-            )
-        await ctx.defer(ephemeral=True)
-        token = os.getenv("GITHUB_PROJECT_TOKEN")
-        if not token:
-            return await ctx.followup.send(
-                "GitHub token is not set. Add GITHUB_PROJECT_TOKEN to .env "
-                "and restart the bot, then try again.",
-                ephemeral=True,
-            )
-        try:
-            rows = await list_ghlog_items(ctx.guild.id, target_id)
-        except Exception:
-            rows = []
-        if not rows:
-            return await ctx.followup.send(
-                "No board item on file for %s -- nothing to delete." % display,
-                ephemeral=True,
-            )
-        row = rows[0]
-        if row.get("project_owner") != PROJECT_OWNER or row.get("project_number") != PROJECT_NUMBER:
-            return await ctx.followup.send(
-                "That item lives on the %s board (project %s), but the bot is "
-                "now pointed at %s project %s. Switch the target back to "
-                "delete it."
-                % (
-                    row.get("project_owner"),
-                    row.get("project_number"),
-                    PROJECT_OWNER,
-                    PROJECT_NUMBER,
-                ),
-                ephemeral=True,
-            )
-        try:
-            project_id = await get_project_id(token)
-            await delete_project_item(token, project_id, row["item_id"])
-            await delete_ghlog_item(row["id"])
-        except Exception as exc:
-            return await ctx.followup.send(
-                "Delete failed: %s" % exc,
-                ephemeral=True,
-            )
-        await ctx.followup.send(
-            "Deleted %s's board item." % display,
-            ephemeral=True,
-        )
 
     async def _resolve_target(self, ctx, member, user_id):
         """Return (user_id_str_or_None, display_name_or_None)."""

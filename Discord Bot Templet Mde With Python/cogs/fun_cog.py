@@ -7,6 +7,7 @@ rounds survive bot restarts and crashes. A background task finishes rounds
 whose timer expired (even ones that expired while the bot was down).
 """
 import asyncio
+import copy
 import random
 import time
 
@@ -21,6 +22,7 @@ SUGGESTIONS_FILE = "eatyeet_suggestions.json"
 ACTIVE_FILE = "eatyeet_active.json"  # rounds currently running (survives restarts)
 REMATCH_FILE = "eatyeet_rematch.json"  # last round settings per channel (for rematch)
 START_COOLDOWN = 30  # seconds before the same user can start another round
+MAX_RESULT_MSGS = 20  # results posts remembered per channel (for killing stale rematch buttons)
 MAX_SUGGESTIONS_PER_GUILD = 25
 SUGGESTION_CHANCE = 0.25  # chance a round pulls a community-suggested food
 MAX_HISTORY = 10  # rounds of history kept per guild
@@ -42,6 +44,7 @@ SOURCES = [
 ]
 
 HAMMER_TIME_SECS = 15  # final countdown threshold for the timer display
+ACTIVE_FLUSH_SECS = 2  # debounce window for persisting active rounds (P2-9)
 
 
 async def fetch_api_food(seen):
@@ -232,10 +235,34 @@ class FunCog(commands.Cog):
         self.start_cooldowns = {}  # user_id -> timestamp of last round started
         self._seen_meals = set()  # TheMealDB ids served this session (avoid repeats)
         self._ready = False
+        self._active_dirty = False  # set by _save_active(); the flush loop persists it (P2-9)
+        self._active_flush_lock = None  # asyncio.Lock, created lazily on first flush (P2-9)
+        self._finishing = set()  # channel_ids with a finish in flight (P2-10)
+        self._rematching = set()  # channel_ids with a rematch in flight
+        # channel_id -> [results message ids whose Run-it-back button is
+        # still live]. Restored from the rematch file so stale buttons
+        # stay refusable/killable after a restart.
+        self._result_messages = {}
+        try:
+            for _k, _v in load_json(REMATCH_FILE).items():
+                if isinstance(_v, dict):
+                    _ids = [int(_i) for _i in (_v.get("result_msgs") or [])]
+                    if _ids:
+                        self._result_messages[int(_k)] = _ids[-MAX_RESULT_MSGS:]
+        except Exception:
+            self._result_messages = {}
 
     def cog_unload(self):
         self._expiry_loop.cancel()
         self._countdown_loop.cancel()
+        self._flush_active_loop.cancel()
+        if self._active_dirty:
+            # Unload runs at shutdown: a brief synchronous save keeps the
+            # last votes instead of losing the whole debounce window.
+            try:
+                save_json(ACTIVE_FILE, {str(k): v for k, v in self.active.items()})
+            except Exception as e:
+                print(f"[EatYeet] ERROR: final save of active rounds failed: {e!r}")
 
     def _ensure_view(self):
         """Create and register the persistent vote + rematch views.
@@ -285,7 +312,54 @@ class FunCog(commands.Cog):
         return out
 
     def _save_active(self):
-        save_json(ACTIVE_FILE, {str(k): v for k, v in self.active.items()})
+        """Mark the active rounds dirty; the flush loop persists them.
+
+        P2-9: this used to run a synchronous full-table save (SQLite
+        DELETE + re-insert of eatyeet_active) on the event loop on
+        EVERY vote, so a vote burst stalled the heartbeat. Now a vote
+        just flips a flag, and _flush_active_loop writes at most once
+        every ACTIVE_FLUSH_SECS seconds, in a worker thread. Call sites
+        are unchanged — this stays a plain sync method.
+        """
+        self._active_dirty = True
+
+    async def _flush_active_now(self):
+        """Write the current active-rounds snapshot, off the event loop.
+
+        Serialized by a lock so a flush started by the loop and one
+        started by _finish_round can never interleave: the later
+        snapshot always wins. Snapshots (deep copy) on the event loop
+        first — the worker thread must never read the live dicts while
+        votes mutate them. Claims the dirty flag BEFORE snapshotting,
+        so a vote landing mid-flush re-marks dirty and is picked up by
+        the next tick; a failed write re-marks dirty to retry.
+        """
+        if self._active_flush_lock is None:
+            self._active_flush_lock = asyncio.Lock()
+        async with self._active_flush_lock:
+            self._active_dirty = False  # claim the pending write
+            snapshot = copy.deepcopy({str(k): v for k, v in self.active.items()})
+            try:
+                await asyncio.to_thread(save_json, ACTIVE_FILE, snapshot)
+            except Exception as e:
+                self._active_dirty = True  # retry on the next flush tick
+                print(f"[EatYeet] ERROR: failed to save active rounds: {e!r}")
+
+    @tasks.loop(seconds=ACTIVE_FLUSH_SECS)
+    async def _flush_active_loop(self):
+        """Debounced persistence for active rounds (P2-9).
+
+        At most one full-table write every ACTIVE_FLUSH_SECS seconds,
+        however many votes landed in between, and the write itself runs
+        in a worker thread so the heartbeat never stalls on it.
+        """
+        if not self._active_dirty:
+            return
+        await self._flush_active_now()
+
+    @_flush_active_loop.before_loop
+    async def _before_flush_active_loop(self):
+        await self.bot.wait_until_ready()
 
     def _guild_stats(self, stats, guild_id):
         """Get (creating if needed) a guild's stats block, migrating old keys."""
@@ -397,7 +471,13 @@ class FunCog(commands.Cog):
 
     def _save_rematch_settings(self, channel_id, duration, source):
         data = load_json(REMATCH_FILE)
-        data[str(channel_id)] = {"duration": duration, "source": source}
+        # Merge, don't replace: the entry also carries the channel's
+        # live results-message ids (for killing stale rematch buttons).
+        entry = data.get(str(channel_id))
+        if not isinstance(entry, dict):
+            entry = {}
+        entry.update({"duration": duration, "source": source})
+        data[str(channel_id)] = entry
         if len(data) > 200:  # bound the file; drop oldest channels first
             for k in list(data)[: len(data) - 200]:
                 del data[k]
@@ -405,6 +485,73 @@ class FunCog(commands.Cog):
 
     def _rematch_settings(self, channel_id):
         return load_json(REMATCH_FILE).get(str(channel_id), {"duration": 30, "source": "auto"})
+
+    def _latest_result_message(self, channel_id):
+        """Id of the newest results post with a live rematch button, if known."""
+        msgs = self._result_messages.get(channel_id)
+        return msgs[-1] if msgs else None
+
+    def _persist_result_messages(self, channel_id, msgs):
+        """Write the channel's live results-message list back to the rematch file."""
+        try:
+            data = load_json(REMATCH_FILE)
+            entry = data.get(str(channel_id))
+            if not isinstance(entry, dict):
+                entry = {}
+            entry["result_msgs"] = list(msgs)
+            data[str(channel_id)] = entry
+            save_json(REMATCH_FILE, data)
+        except Exception as e:
+            print(f"[EatYeet] ERROR: failed to persist results messages: {e!r}")
+
+    def _record_result_message(self, channel_id, message_id):
+        """Remember a results post whose Run-it-back button is live.
+
+        Kept in memory and in the rematch file, so the button stays
+        refusable and killable after a restart too.
+        """
+        msgs = self._result_messages.setdefault(channel_id, [])
+        if message_id not in msgs:
+            msgs.append(message_id)
+        if len(msgs) > MAX_RESULT_MSGS:
+            del msgs[: len(msgs) - MAX_RESULT_MSGS]
+        self._persist_result_messages(channel_id, msgs)
+
+    async def _kill_result_buttons(self, channel_id, skip_id=None):
+        """Strip the rematch view from every recorded results post in the channel.
+
+        `skip_id` is a message the caller already edited. Ids that fail
+        to edit (other than a deleted message) are kept so a later
+        rematch retries them.
+        """
+        ids = self._result_messages.pop(channel_id, [])
+        if skip_id is not None:
+            ids = [i for i in ids if i != skip_id]
+        remaining = []
+        if ids:
+            channel = self.bot.get_channel(channel_id)
+            if channel is None:
+                try:
+                    channel = await self.bot.fetch_channel(channel_id)
+                except discord.HTTPException:
+                    self._result_messages[channel_id] = ids
+                    self._persist_result_messages(channel_id, ids)
+                    return
+            for mid in ids:
+                try:
+                    msg = await channel.fetch_message(mid)
+                except discord.NotFound:
+                    continue  # message gone -- its button is gone too
+                except discord.HTTPException:
+                    remaining.append(mid)
+                    continue
+                try:
+                    await msg.edit(view=None)
+                except discord.HTTPException:
+                    remaining.append(mid)
+        if remaining:
+            self._result_messages[channel_id] = remaining
+        self._persist_result_messages(channel_id, remaining)
 
     async def _make_round(self, guild_id, channel_id, starter_id, duration, source):
         """Create a round's state and its opening embed.
@@ -441,7 +588,13 @@ class FunCog(commands.Cog):
         return (rnd, self.build_round_embed(rnd), self.vote_view), None
 
     async def _on_rematch(self, interaction: discord.Interaction):
-        """'Run it back' button: start a new round with the channel's last settings."""
+        """'Run it back' button: start a new round with the channel's last settings.
+
+        Only the newest results post's button works: an older post's
+        button is refused (and stripped on the spot), and a successful
+        rematch strips every older results post's button, so there is
+        ever only one live Run-it-back button per channel.
+        """
         if interaction.guild is None:
             await interaction.response.send_message(
                 "Rematches only work in servers!", ephemeral=True)
@@ -459,21 +612,56 @@ class FunCog(commands.Cog):
             await interaction.response.send_message(
                 f"Slow down! You can start another round in {wait} seconds.", ephemeral=True)
             return
-        self.start_cooldowns[interaction.user.id] = now
-        settings = self._rematch_settings(channel_id)
-        result, error = await self._make_round(
-            interaction.guild.id, channel_id, interaction.user.id,
-            settings.get("duration", 30), settings.get("source", "auto"))
-        if error:
-            await interaction.response.send_message(error, ephemeral=True)
+        # Staleness: only the newest results post may start a rematch.
+        # An older button is refused and stripped so it stops looking
+        # clickable. Unknown posts are only allowed when no results post
+        # is recorded at all (e.g. from before this fix shipped) — the
+        # kill step below strips them once used.
+        if interaction.message is not None:
+            latest = self._latest_result_message(channel_id)
+            if latest is not None and interaction.message.id != latest:
+                try:
+                    await interaction.message.edit(view=None)
+                except discord.HTTPException:
+                    pass
+                await interaction.response.send_message(
+                    "That button is from an older round — use the newest "
+                    "Run it back button!", ephemeral=True)
+                return
+        if channel_id in self._rematching:
+            await interaction.response.send_message(
+                "A rematch is already starting in this channel — hold on!",
+                ephemeral=True)
             return
-        rnd, embed, view = result
-        await interaction.response.send_message(embed=embed, view=view)
-        message = await interaction.original_response()
-        rnd["message_id"] = message.id
-        self._messages[channel_id] = message
-        self._save_active()
-        await interaction.followup.send("🔁 Run it back! New round started.", ephemeral=True)
+        self._rematching.add(channel_id)
+        try:
+            self.start_cooldowns[interaction.user.id] = now
+            settings = self._rematch_settings(channel_id)
+            result, error = await self._make_round(
+                interaction.guild.id, channel_id, interaction.user.id,
+                settings.get("duration", 30), settings.get("source", "auto"))
+            if error:
+                await interaction.response.send_message(error, ephemeral=True)
+                return
+            rnd, embed, view = result
+            # The new round is starting: strip the button that was just
+            # clicked, plus every other recorded results post's button.
+            if interaction.message is not None:
+                try:
+                    await interaction.message.edit(view=None)
+                except discord.HTTPException:
+                    pass
+            await self._kill_result_buttons(
+                channel_id,
+                skip_id=interaction.message.id if interaction.message is not None else None)
+            await interaction.response.send_message(embed=embed, view=view)
+            message = await interaction.original_response()
+            rnd["message_id"] = message.id
+            self._messages[channel_id] = message
+            self._save_active()
+            await interaction.followup.send("🔁 Run it back! New round started.", ephemeral=True)
+        finally:
+            self._rematching.discard(channel_id)
 
     def build_round_embed(self, rnd) -> discord.Embed:
         eats, yeets = self._counts(rnd)
@@ -662,44 +850,90 @@ class FunCog(commands.Cog):
     # ----- finishing -----
 
     async def _finish_round(self, channel_id: int):
-        """Finish a round: tally, save, announce, and remove the buttons."""
-        rnd = self.active.pop(channel_id, None)
+        """Finish a round: tally, save, announce, and remove the buttons.
+
+        Finish-then-pop (P2-10): the tally/save runs while the round is
+        still in self.active. If it fails, the round stays put so the
+        next expiry tick retries it -- popping first meant a tally
+        failure lost the round entirely (no results, no XP, nothing to
+        retry from). Only once the tally is durable is the round popped
+        and flushed as gone. The game-XP award and the results embed
+        are each guarded after that, so a failure there can cost the
+        embed but never the tally. The _finishing guard stops a second
+        concurrent finish (e.g. /eatyeet_end racing the expiry loop)
+        from tallying the same round twice, now that the pop no longer
+        happens first.
+        """
+        if channel_id in self._finishing:
+            return
+        rnd = self.active.get(channel_id)
         if rnd is None:
             return
-        self._save_active()
-        self._messages.pop(channel_id, None)
-        self._last_edit.pop(channel_id, None)
-        self._timer_edit_at.pop(channel_id, None)
-
-        verdict, shoutouts = self._tally_and_save(rnd)
-        # Profile activity feed: one game_round event per voter.
+        self._finishing.add(channel_id)
         try:
-            from data.DB.Storage.storage import log_activity
-            _majority = (
-                {uid for uid, v in rnd["votes"].items() if v == verdict}
-                if verdict in ("eat", "yeet") else set()
-            )
-            for _uid, _vote in rnd["votes"].items():
-                _pts = RARITY_POINTS[rnd["rarity"]] if _uid in _majority else 0
-                await log_activity(_uid, rnd["guild_id"], "game_round", {
-                    "food": rnd["food"],
-                    "verdict": verdict,
-                    "voted": _vote,
-                    "majority": _uid in _majority,
-                    "points": _pts,
-                })
-        except Exception:
-            pass
-        game_xp_on = await self._award_game_xp(rnd, verdict)
-        embed = self.build_results_embed(rnd, verdict, shoutouts, game_xp_on=game_xp_on)
-
-        message = await self._fetch_message(rnd)
-        if message is not None:
+            # 1. Tally + save stats while the round is still active. On
+            #    failure the round stays in self.active for the next
+            #    tick to retry; nothing else has run yet, so the retry
+            #    tallies exactly once.
             try:
-                # Swap the vote buttons for the rematch button.
-                await message.edit(embed=embed, view=self.rematch_view)
+                verdict, shoutouts = self._tally_and_save(rnd)
+            except Exception as e:
+                print(f"[EatYeet] ERROR: tally failed for channel {channel_id} "
+                      f"-- round kept for retry: {e!r}")
+                return
+            # 2. Tally is durable -- now the round can go. Flush now,
+            #    not on the next debounce tick, so the "round is gone"
+            #    state is durable before the XP/embed below run.
+            self.active.pop(channel_id, None)
+            self._save_active()
+            await self._flush_active_now()
+            self._messages.pop(channel_id, None)
+            self._last_edit.pop(channel_id, None)
+            self._timer_edit_at.pop(channel_id, None)
+
+            # Profile activity feed: one game_round event per voter.
+            try:
+                from data.DB.Storage.storage import log_activity
+                _majority = (
+                    {uid for uid, v in rnd["votes"].items() if v == verdict}
+                    if verdict in ("eat", "yeet") else set()
+                )
+                for _uid, _vote in rnd["votes"].items():
+                    _pts = RARITY_POINTS[rnd["rarity"]] if _uid in _majority else 0
+                    await log_activity(_uid, rnd["guild_id"], "game_round", {
+                        "food": rnd["food"],
+                        "verdict": verdict,
+                        "voted": _vote,
+                        "majority": _uid in _majority,
+                        "points": _pts,
+                    })
+            except Exception:
+                pass
+            # 3. Game XP -- guard the whole call, not just the per-voter
+            #    awards inside it: a failure in the preamble (levels
+            #    lookup, toggle read) used to abort the finish before
+            #    the results embed was posted.
+            try:
+                game_xp_on = await self._award_game_xp(rnd, verdict)
+            except Exception as e:
+                print(f"[EatYeet] ERROR: game XP failed for channel {channel_id}: {e!r}")
+                game_xp_on = False
+            # 4. Results embed -- guard the build + fetch + edit so a
+            #    failure here still leaves the tally saved and the round
+            #    popped, instead of aborting the finish mid-way.
+            try:
+                embed = self.build_results_embed(rnd, verdict, shoutouts, game_xp_on=game_xp_on)
+                message = await self._fetch_message(rnd)
+                if message is not None:
+                    # Swap the vote buttons for the rematch button.
+                    await message.edit(embed=embed, view=self.rematch_view)
+                    self._record_result_message(channel_id, message.id)
             except discord.HTTPException:
                 pass
+            except Exception as e:
+                print(f"[EatYeet] ERROR: results embed failed for channel {channel_id}: {e!r}")
+        finally:
+            self._finishing.discard(channel_id)
 
     async def _award_game_xp(self, rnd, verdict):
         """Award level XP to voters if the server has game XP enabled.
@@ -711,10 +945,27 @@ class FunCog(commands.Cog):
         if not rnd["votes"]:
             return False
         try:
-            from cogs.Level_system import award_xp as award_level_xp, game_xp_enabled
+            from cogs.Level_system import (
+                award_xp as award_level_xp,
+                game_xp_enabled,
+                get_levels,
+                levels_enabled,
+            )
         except ImportError:
             return False
         if not await game_xp_enabled(rnd["guild_id"]):
+            return False
+        if not await levels_enabled(rnd["guild_id"]):
+            # Level system is off in this server: award_xp would grant
+            # nothing, and the results embed must not claim XP was paid.
+            return False
+        # P1-19: a channel an admin set to no-XP must not pay game XP
+        # either. Message XP already skips these channels (Level_system
+        # on_message); game rounds did not, so votes in a no-XP channel
+        # could be farmed for 10-40 XP each. no_xp_channels stores
+        # channel ids as strings, same as the on_message check.
+        levels_db = await get_levels(str(rnd["guild_id"]))
+        if str(rnd["channel_id"]) in levels_db.get("settings", {}).get("no_xp_channels", []):
             return False
         guild = self.bot.get_guild(rnd["guild_id"])
         if guild is None:
@@ -744,7 +995,23 @@ class FunCog(commands.Cog):
 
     @tasks.loop(seconds=30)
     async def _expiry_loop(self):
-        await self._finish_expired_rounds()
+        # P2-10: outer guard -- one bad tick (an exception escaping
+        # _finish_expired_rounds itself) must never kill the loop. The
+        # per-round try/except in _finish_expired_rounds covers a bad
+        # round; this covers everything else, so the loop keeps ticking
+        # every 30s instead of dying until restart.
+        try:
+            await self._finish_expired_rounds()
+        except Exception as e:
+            print(f"[EatYeet] ERROR: expiry loop tick failed: {e!r}")
+
+    @_expiry_loop.error
+    async def _expiry_loop_error(self, exc):
+        # Backstop for anything that escapes the guard above: log loudly
+        # instead of dying silently. (In pycord the error handler runs
+        # when the loop is about to stop on an exception, so this is the
+        # last chance to see what killed it.)
+        print(f"[EatYeet] ERROR: expiry loop error handler caught: {exc!r}")
 
     @_expiry_loop.before_loop
     async def _before_expiry_loop(self):
@@ -793,6 +1060,8 @@ class FunCog(commands.Cog):
             self._expiry_loop.start()
         if not self._countdown_loop.is_running():
             self._countdown_loop.start()
+        if not self._flush_active_loop.is_running():
+            self._flush_active_loop.start()
         await self._finish_expired_rounds()
 
     # ----- commands -----
@@ -826,6 +1095,9 @@ class FunCog(commands.Cog):
             await ctx.respond(error, ephemeral=True)
             return
         rnd, embed, view = result
+        # A fresh round replaces any older results posts' buttons, so
+        # there is ever only one live Run-it-back button per channel.
+        await self._kill_result_buttons(ctx.channel.id)
         await ctx.respond(embed=embed, view=view)
         message = await ctx.interaction.original_response()
         rnd["message_id"] = message.id

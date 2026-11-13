@@ -7,16 +7,16 @@ and no new table. Everything reads and writes the same mod_data
 /userinfo panel, warns, kicks, bans and timeouts already use.
 
 What it adds:
-- /modlogs -- paginated viewer of moderation cases, with filters
+- /modlogs list -- paginated viewer of moderation cases, with filters
   (member, user id, action type, before/after date). No filter
   shows the most recent cases across the guild.
-- /modlogs_recap -- per-user counts by action type, most recent
+- /modlogs list recap -- per-user counts by action type, most recent
   case, and active tempban status.
-- /modlogs_edit -- pick one of a user's most recent cases from a
+- /modlogs list edit -- pick one of a user's most recent cases from a
   select menu, then edit its reason (modal) or delete it (with a
   confirmation screen first). Edits/deletes are logged to the
   Logger's moderation log channel when one is configured.
-- /mod_actions -- every action performed BY a given moderator.
+- /modlogs list actions -- every action performed BY a given moderator.
 
 Design notes (read before changing this file):
 - Cases have no id in this bot. A case is displayed numbered per
@@ -48,13 +48,16 @@ Design notes (read before changing this file):
   wrapped so a failure is logged and never kills the flow.
 """
 
+import heapq
+import re
 import traceback
 from datetime import datetime, timezone
 
 import discord
 from discord.ext import commands
+from discord.commands import SlashCommandGroup
 
-from config import GUILD_IDS, load_json
+from config import GUILD_IDS, WORKER_MODE, load_json
 from cogs.admin_cog import MOD_DATA_FILE, _mod_record, _save_mod_data
 
 PAGE_SIZE = 5
@@ -128,6 +131,36 @@ def _case_number(cases, index):
     return len(cases) - index
 
 
+def _case_ts(case):
+    """A case's timestamp as a float; 0 when missing or unparsable."""
+    ts = case.get("ts", 0) or 0
+    try:
+        return float(ts)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _case_matches_filters(case, ts, type_filter=None, before_ts=None,
+                          after_ts=None, moderator_id=None,
+                          moderator_name=None):
+    """True when one case (with its already-parsed ts) passes the
+    /modlogs list and /modlogs list actions filters."""
+    if type_filter and _action_base(case.get("action")) != type_filter:
+        return False
+    if before_ts is not None and not ts < before_ts:
+        return False
+    if after_ts is not None and not ts >= after_ts:
+        return False
+    if moderator_id is not None:
+        mid = case.get("mod_id")
+        if mid != moderator_id and not (
+            mid is None and moderator_name
+            and case.get("mod_name") == moderator_name
+        ):
+            return False
+    return True
+
+
 def _collect_cases(guild_id, target_id=None, moderator_id=None,
                    moderator_name=None, type_filter=None,
                    before_ts=None, after_ts=None, cap=None):
@@ -135,10 +168,57 @@ def _collect_cases(guild_id, target_id=None, moderator_id=None,
 
     Returns a list of dicts: {user_id, index, case, number, ts}.
     Read-only: never creates mod records.
+
+    P2-20: when cap is given, the cap is enforced INSIDE the
+    collector instead of slicing afterwards. The collector keeps a
+    bounded min-heap of the cap newest matches, so memory stays at
+    cap entries however large the guild history grows, and it stops
+    early: each user's cases are appended in time order (newest
+    last, trimmed to the last 50 by _record_case), so the scan walks
+    each list newest-first and abandons a list as soon as a case is
+    no newer than the weakest case already kept -- every older entry
+    in that list is no newer either, so none of them can displace
+    it. The returned set is exactly the cap newest matches, the
+    same set the old collect-everything-then-slice produced.
+
+    Callers that need the full per-user list (recap counts, edit
+    totals) pass cap=None; one user's list is already trimmed to 50
+    cases by the recorder, so that path stays small.
     """
     grec = _load_guild(guild_id)
-    out = []
     user_ids = [str(target_id)] if target_id is not None else list(grec.keys())
+    if cap is not None and cap <= 0:
+        return []
+    if cap is None:
+        out = []
+        for uid in user_ids:
+            urec = grec.get(uid)
+            if not isinstance(urec, dict):
+                continue
+            cases = urec.get("cases", [])
+            if not isinstance(cases, list):
+                continue
+            for index, case in enumerate(cases):
+                if not isinstance(case, dict):
+                    continue
+                ts = _case_ts(case)
+                if not _case_matches_filters(
+                        case, ts, type_filter, before_ts, after_ts,
+                        moderator_id, moderator_name):
+                    continue
+                out.append({
+                    "user_id": uid,
+                    "index": index,
+                    "case": case,
+                    "number": _case_number(cases, index),
+                    "ts": ts,
+                })
+        out.sort(key=lambda item: item["ts"], reverse=True)
+        return out
+    # Capped path: bounded heap of the cap newest matches.
+    heap = []  # (ts, seq, entry); heap[0] is the weakest kept case
+    seq = 0
+    threshold = None  # ts of the weakest kept case, once the heap is full
     for uid in user_ids:
         urec = grec.get(uid)
         if not isinstance(urec, dict):
@@ -146,38 +226,39 @@ def _collect_cases(guild_id, target_id=None, moderator_id=None,
         cases = urec.get("cases", [])
         if not isinstance(cases, list):
             continue
-        for index, case in enumerate(cases):
+        # Newest first. Once a case is at or below the threshold, the
+        # rest of this list is older still, so the list is done.
+        for index in range(len(cases) - 1, -1, -1):
+            case = cases[index]
             if not isinstance(case, dict):
                 continue
-            ts = case.get("ts", 0) or 0
-            try:
-                ts = float(ts)
-            except (TypeError, ValueError):
-                ts = 0
-            if type_filter and _action_base(case.get("action")) != type_filter:
+            ts = _case_ts(case)
+            if threshold is not None and ts <= threshold:
+                break
+            if not _case_matches_filters(
+                    case, ts, type_filter, before_ts, after_ts,
+                    moderator_id, moderator_name):
                 continue
-            if before_ts is not None and not ts < before_ts:
-                continue
-            if after_ts is not None and not ts >= after_ts:
-                continue
-            if moderator_id is not None:
-                mid = case.get("mod_id")
-                if mid != moderator_id and not (
-                    mid is None and moderator_name
-                    and case.get("mod_name") == moderator_name
-                ):
-                    continue
-            out.append({
+            entry = {
                 "user_id": uid,
                 "index": index,
                 "case": case,
                 "number": _case_number(cases, index),
                 "ts": ts,
-            })
-    out.sort(key=lambda item: item["ts"], reverse=True)
-    if cap is not None:
-        out = out[:cap]
-    return out
+            }
+            if len(heap) < cap:
+                heapq.heappush(heap, (ts, seq, entry))
+                seq += 1
+                if len(heap) == cap:
+                    threshold = heap[0][0]
+            elif ts > heap[0][0]:
+                heapq.heapreplace(heap, (ts, seq, entry))
+                seq += 1
+                threshold = heap[0][0]
+            # A case that only ties the weakest kept case cannot
+            # displace it; ties are interchangeable for "most recent".
+    heap.sort(key=lambda item: item[0], reverse=True)
+    return [entry for _, _, entry in heap]
 
 
 def _parse_date(text):
@@ -217,23 +298,40 @@ def _format_case(guild, entry):
 
 
 def _case_key(entry):
-    """Opaque identity for a case, carried in select values."""
+    """Opaque identity for a case, carried in select values.
+
+    P2-18: the key carries the action base as well as the moderator
+    id, so _resolve_case can tell two cases apart that were recorded
+    in the same 2-second window (e.g. a warn and a timeout by the
+    same moderator a second apart). The action base is a single
+    lower-case word, so it is safe as a colon-delimited field.
+    """
     case = entry["case"]
     mod_id = case.get("mod_id") or 0
-    return f"{entry['user_id']}:{entry['index']}:{int(entry['ts'])}:{mod_id}"
+    return (f"{entry['user_id']}:{entry['index']}:{int(entry['ts'])}"
+            f":{mod_id}:{_action_base(case.get('action'))}")
 
 
 def _parse_case_key(value):
     parts = (value or "").split(":")
-    if len(parts) != 4:
+    if len(parts) != 5:
+        # Pre-P2-18 keys had only 4 parts (no action). They are
+        # rejected outright: without the action a same-moderator
+        # warn/timeout pair recorded a second apart is
+        # indistinguishable, and silently resolving one could edit
+        # or delete the wrong case. A select built before the
+        # restart just asks the moderator to run /modlogs list edit
+        # again -- selects time out after 5 minutes anyway.
         return None
-    uid, index, ts, mod_id = parts
+    uid, index, ts, mod_id, action = parts
+    action = (action or "").strip().lower() or None
     index = _safe_int(index)
     ts = _safe_int(ts)
     mod_id = _safe_int(mod_id)
     if index is None or ts is None or mod_id is None:
         return None
-    return {"user_id": uid, "index": index, "ts": ts, "mod_id": mod_id}
+    return {"user_id": uid, "index": index, "ts": ts, "mod_id": mod_id,
+            "action": action}
 
 
 def _resolve_case(guild_id, key):
@@ -259,13 +357,33 @@ def _resolve_case(guild_id, key):
         return None, None, None, None, None
 
     def _matches(case, index):
+        """Timestamp + action base + moderator must all agree.
+
+        P2-18: the old version compared only the timestamp, so two
+        cases recorded within 2 seconds of each other (a warn and a
+        timeout by the same moderator, or cases by two moderators
+        one second apart) were interchangeable -- after a list shift
+        the index path could hand back the wrong case and an edit
+        or delete would land on it. The moderator id is compared
+        with _safe_int so a mod_id stored as a string still matches
+        the integer in the key; a key with an empty action segment
+        skips the action check (only reachable from a hand-built
+        key -- the bot always mints one).
+        """
         if not isinstance(case, dict):
             return False
         try:
             ts = float(case.get("ts", 0) or 0)
         except (TypeError, ValueError):
             return False
-        return abs(ts - key["ts"]) < 2
+        if abs(ts - key["ts"]) >= 2:
+            return False
+        if (_safe_int(case.get("mod_id")) or 0) != key["mod_id"]:
+            return False
+        action = key.get("action")
+        if action is not None and _action_base(case.get("action")) != action:
+            return False
+        return True
 
     index = key["index"]
     if 0 <= index < len(cases) and _matches(cases[index], index):
@@ -321,7 +439,7 @@ def _apply_edit(guild_id, key, new_reason):
     if case is None:
         return False, (
             "That case changed or was removed since the list was built. "
-            "Run /modlogs_edit again to pick it fresh."
+            "Run /modlogs list edit again to pick it fresh."
         ), None
     old = dict(case)
     _mirror_warn(urec, case, new_reason=new_reason)
@@ -340,7 +458,7 @@ def _apply_delete(guild_id, key):
     if case is None:
         return False, (
             "That case changed or was removed since the list was built. "
-            "Run /modlogs_edit again to pick it fresh."
+            "Run /modlogs list edit again to pick it fresh."
         ), None
     old = dict(case)
     _mirror_warn(urec, case, delete=True)
@@ -486,7 +604,7 @@ class CaseSelectView(discord.ui.View):
             key = _parse_case_key(interaction.data["values"][0])
             if key is None:
                 await interaction.response.send_message(
-                    "That selection could not be read. Run /modlogs_edit again.",
+                    "That selection could not be read. Run /modlogs list edit again.",
                     ephemeral=True,
                 )
                 return
@@ -496,7 +614,7 @@ class CaseSelectView(discord.ui.View):
             if case is None:
                 await interaction.response.send_message(
                     "That case changed or was removed since the list was built. "
-                    "Run /modlogs_edit again to pick it fresh.",
+                    "Run /modlogs list edit again to pick it fresh.",
                     ephemeral=True,
                 )
                 return
@@ -558,7 +676,7 @@ class CaseDetailView(discord.ui.View):
             if case is None:
                 await interaction.response.send_message(
                     "That case changed or was removed. "
-                    "Run /modlogs_edit again to pick it fresh.",
+                    "Run /modlogs list edit again to pick it fresh.",
                     ephemeral=True,
                 )
                 return
@@ -591,7 +709,7 @@ class CaseDetailView(discord.ui.View):
             if case is None:
                 await interaction.response.send_message(
                     "That case changed or was removed. "
-                    "Run /modlogs_edit again to pick it fresh.",
+                    "Run /modlogs list edit again to pick it fresh.",
                     ephemeral=True,
                 )
                 return
@@ -649,6 +767,12 @@ class EditReasonModal(discord.ui.Modal):
         ))
 
     async def callback(self, interaction):
+        if not _is_manager(interaction):
+            await interaction.response.send_message(
+                "You need Manage Server to edit mod cases.",
+                ephemeral=True,
+            )
+            return
         new_reason = (self.children[0].value or "").strip() or "No reason given"
         try:
             ok, message, old = _apply_edit(self.guild.id, self.key, new_reason)
@@ -743,6 +867,12 @@ class DeleteConfirmView(discord.ui.View):
 
     @discord.ui.button(label="Cancel", style=discord.ButtonStyle.secondary)
     async def cancel_button(self, button, interaction):
+        if not _is_manager(interaction):
+            await interaction.response.send_message(
+                "You need Manage Server to dismiss this delete confirmation.",
+                ephemeral=True,
+            )
+            return
         for child in self.children:
             child.disabled = True
         try:
@@ -771,6 +901,8 @@ class DeleteConfirmView(discord.ui.View):
 class Modlogs(commands.Cog):
     """Paginated mod-case viewer, recap, edit/delete, and by-moderator view."""
 
+    modlogs_group = SlashCommandGroup("modlogs", "Moderation case logs.", guild_ids=GUILD_IDS)
+
     def __init__(self, bot):
         self.bot = bot
 
@@ -794,312 +926,539 @@ class Modlogs(commands.Cog):
         )
         view.message = message
 
-    # ---------- /modlogs ----------
+    # ---------- /modlogs list ----------
 
-    @discord.slash_command(
-        name="modlogs",
-        description="Browse moderation cases, newest first (filter by user, type, or date).",
-        guild_ids=GUILD_IDS,
-    )
-    async def modlogs(
-        self,
-        ctx,
-        member: discord.Option(
-            discord.Member,
-            "Only show cases for this member",
-            required=False,
-            default=None,
-        ),
-        user_id: discord.Option(
-            str,
-            "Or a raw user ID (used when the member has left the server)",
-            required=False,
-            default=None,
-        ),
-        type_filter: discord.Option(
-            str,
-            "Only show cases of this type",
-            name="type",
-            required=False,
-            default=None,
-            choices=TYPE_CHOICES,
-        ),
-        before: discord.Option(
-            str,
-            "Only cases before this date (YYYY-MM-DD)",
-            required=False,
-            default=None,
-        ),
-        after: discord.Option(
-            str,
-            "Only cases from this date onwards (YYYY-MM-DD)",
-            required=False,
-            default=None,
-        ),
-    ):
-        from utils.permissions import check_slash_permission, _default_manage_or_admin
-        if not await check_slash_permission(ctx, "modlogs", _default_manage_or_admin):
-            return
-        target_id = None
-        if member is not None:
-            target_id = member.id
-        elif user_id:
-            target_id = _safe_int(user_id.strip())
-            if target_id is None:
+    if not WORKER_MODE:
+        @modlogs_group.command(
+            name="list",
+            description="Browse moderation cases, newest first (filter by user, type, or date).",
+        )
+        async def modlogs(
+            self,
+            ctx,
+            member: discord.Option(
+                discord.Member,
+                "Only show cases for this member",
+                required=False,
+                default=None,
+            ),
+            user_id: discord.Option(
+                str,
+                "Or a raw user ID (used when the member has left the server)",
+                required=False,
+                default=None,
+            ),
+            type_filter: discord.Option(
+                str,
+                "Only show cases of this type",
+                name="type",
+                required=False,
+                default=None,
+                choices=TYPE_CHOICES,
+            ),
+            before: discord.Option(
+                str,
+                "Only cases before this date (YYYY-MM-DD)",
+                required=False,
+                default=None,
+            ),
+            after: discord.Option(
+                str,
+                "Only cases from this date onwards (YYYY-MM-DD)",
+                required=False,
+                default=None,
+            ),
+        ):
+            from utils.permissions import check_slash_permission, _default_manage_or_admin
+            if not await check_slash_permission(ctx, "modlogs_list", _default_manage_or_admin):
+                return
+            target_id = None
+            if member is not None:
+                target_id = member.id
+            elif user_id:
+                target_id = _safe_int(user_id.strip())
+                if target_id is None:
+                    await ctx.respond(
+                        "That user ID does not look like a number.",
+                        ephemeral=True,
+                    )
+                    return
+            before_ts = after_ts = None
+            if before:
+                before_ts, err = _parse_date(before)
+                if err:
+                    await ctx.respond(err, ephemeral=True)
+                    return
+            if after:
+                after_ts, err = _parse_date(after)
+                if err:
+                    await ctx.respond(err, ephemeral=True)
+                    return
+            if before_ts is not None and after_ts is not None and after_ts >= before_ts:
                 await ctx.respond(
-                    "That user ID does not look like a number.",
+                    "The 'after' date has to be before the 'before' date.",
                     ephemeral=True,
                 )
                 return
-        before_ts = after_ts = None
-        if before:
-            before_ts, err = _parse_date(before)
-            if err:
-                await ctx.respond(err, ephemeral=True)
-                return
-        if after:
-            after_ts, err = _parse_date(after)
-            if err:
-                await ctx.respond(err, ephemeral=True)
-                return
-        if before_ts is not None and after_ts is not None and after_ts >= before_ts:
-            await ctx.respond(
-                "The 'after' date has to be before the 'before' date.",
-                ephemeral=True,
-            )
-            return
-        await ctx.defer(ephemeral=True)
-        try:
-            items = _collect_cases(
-                ctx.guild.id,
-                target_id=target_id,
-                type_filter=type_filter,
-                before_ts=before_ts,
-                after_ts=after_ts,
-            )
-        except Exception:
-            print("[MODLOG] /modlogs collect failed:")
-            traceback.print_exc()
-            await ctx.followup.send(
-                "Could not read the modlog.",
-                ephemeral=True,
-            )
-            return
-        total = len(items)
-        if total > GUILD_SCAN_CAP:
-            items = items[:GUILD_SCAN_CAP]
-        if target_id is not None:
-            target_member = ctx.guild.get_member(target_id)
-            title = (f"Mod cases — {target_member.display_name}"
-                     if target_member else f"Mod cases — <@{target_id}>")
-        else:
-            title = "Mod cases — most recent"
-        if total > GUILD_SCAN_CAP:
-            title += f" (showing the {GUILD_SCAN_CAP} most recent of {total})"
-        await self._send_pager(ctx, title, items)
-
-    # ---------- /modlogs_recap ----------
-
-    @discord.slash_command(
-        name="modlogs_recap",
-        description="Counts by action type, most recent case, and tempban status for one user.",
-        guild_ids=GUILD_IDS,
-    )
-    async def modlogs_recap(
-        self,
-        ctx,
-        member: discord.Option(
-            discord.Member,
-            "The member to recap",
-            required=False,
-            default=None,
-        ),
-        user_id: discord.Option(
-            str,
-            "Or a raw user ID (used when the member has left the server)",
-            required=False,
-            default=None,
-        ),
-    ):
-        from utils.permissions import check_slash_permission, _default_manage_or_admin
-        if not await check_slash_permission(ctx, "modlogs_recap", _default_manage_or_admin):
-            return
-        target_id, target_member, err = self._resolve_target(ctx, member, user_id)
-        if err:
-            await ctx.respond(err, ephemeral=True)
-            return
-        await ctx.defer(ephemeral=True)
-        try:
-            grec = _load_guild(ctx.guild.id)
-            urec = grec.get(str(target_id), {})
-            if not isinstance(urec, dict):
-                urec = {}
-            cases = urec.get("cases", [])
-            if not isinstance(cases, list):
-                cases = []
-            items = _collect_cases(ctx.guild.id, target_id=target_id)
-            tempbans = grec.get("tempbans", {})
-            tb = tempbans.get(str(target_id)) if isinstance(tempbans, dict) else None
-        except Exception:
-            print("[MODLOG] /modlogs_recap failed:")
-            traceback.print_exc()
-            await ctx.followup.send(
-                "Could not read the modlog.",
-                ephemeral=True,
-            )
-            return
-        display = (target_member.display_name if target_member
-                   else f"<@{target_id}>")
-        embed = discord.Embed(
-            title=f"Mod recap — {display}",
-            color=discord.Color.blurple(),
-        )
-        counts = {}
-        for item in items:
-            base = _action_base(item["case"].get("action"))
-            counts[base] = counts.get(base, 0) + 1
-        if counts:
-            lines = [f"{name.title()}: {n}"
-                     for name, n in sorted(counts.items(), key=lambda kv: -kv[1])]
-            embed.add_field(name=f"Cases ({len(items)})",
-                            value="\n".join(lines), inline=True)
-        else:
-            embed.add_field(name="Cases (0)", value="No recorded actions.",
-                            inline=True)
-        embed.add_field(name="Warns", value=str(len(urec.get("warns", []) or [])),
-                        inline=True)
-        embed.add_field(name="Notes", value=str(len(urec.get("notes", []) or [])),
-                        inline=True)
-        if items:
-            name, value = _format_case(ctx.guild, items[0])
-            embed.add_field(name="Most recent", value=f"**{name}**\n{value}",
-                            inline=False)
-        if isinstance(tb, dict) and tb.get("unban_at"):
+            await ctx.defer(ephemeral=True)
             try:
-                unban_at = int(float(tb["unban_at"]))
-            except (TypeError, ValueError):
-                unban_at = 0
-            import time as _time
-            if unban_at and unban_at > _time.time():
-                embed.add_field(
-                    name="Active tempban",
-                    value=(f"Until <t:{unban_at}:F> (<t:{unban_at}:R>)\n"
-                           f"**Reason:** {tb.get('reason', '')}\n"
-                           f"**By:** {tb.get('mod_name', '?')}"),
-                    inline=False,
+                # P2-20: cap inside the collector -- it stops early once
+                # the cap is met instead of gathering every case in the
+                # guild and slicing afterwards. The exact total is no
+                # longer known when the cap is hit, so the title says so
+                # instead of claiming an exact count.
+                items = _collect_cases(
+                    ctx.guild.id,
+                    target_id=target_id,
+                    type_filter=type_filter,
+                    before_ts=before_ts,
+                    after_ts=after_ts,
+                    cap=GUILD_SCAN_CAP,
                 )
-            elif unban_at:
-                embed.add_field(
-                    name="Tempban",
-                    value="Expired — waiting for the sweep to lift it.",
-                    inline=False,
+            except Exception:
+                print("[MODLOG] /modlogs list collect failed:")
+                traceback.print_exc()
+                await ctx.followup.send(
+                    "Could not read the modlog.",
+                    ephemeral=True,
                 )
+                return
+            if target_id is not None:
+                target_member = ctx.guild.get_member(target_id)
+                title = (f"Mod cases — {target_member.display_name}"
+                         if target_member else f"Mod cases — <@{target_id}>")
+            else:
+                title = "Mod cases — most recent"
+            if len(items) == GUILD_SCAN_CAP:
+                title += (f" (showing the {GUILD_SCAN_CAP} most recent — "
+                          "use filters to narrow)")
+            await self._send_pager(ctx, title, items)
+
+    # ---------- /modlogs list recap ----------
+
+    if not WORKER_MODE:
+        @modlogs_group.command(
+            name="recap",
+            description="Counts by action type, most recent case, and tempban status for one user.",
+        )
+        async def modlogs_recap(
+            self,
+            ctx,
+            member: discord.Option(
+                discord.Member,
+                "The member to recap",
+                required=False,
+                default=None,
+            ),
+            user_id: discord.Option(
+                str,
+                "Or a raw user ID (used when the member has left the server)",
+                required=False,
+                default=None,
+            ),
+        ):
+            from utils.permissions import check_slash_permission, _default_manage_or_admin
+            if not await check_slash_permission(ctx, "modlogs_recap", _default_manage_or_admin):
+                return
+            target_id, target_member, err = self._resolve_target(ctx, member, user_id)
+            if err:
+                await ctx.respond(err, ephemeral=True)
+                return
+            await ctx.defer(ephemeral=True)
+            try:
+                grec = _load_guild(ctx.guild.id)
+                urec = grec.get(str(target_id), {})
+                if not isinstance(urec, dict):
+                    urec = {}
+                cases = urec.get("cases", [])
+                if not isinstance(cases, list):
+                    cases = []
+                items = _collect_cases(ctx.guild.id, target_id=target_id)
+                tempbans = grec.get("tempbans", {})
+                tb = tempbans.get(str(target_id)) if isinstance(tempbans, dict) else None
+            except Exception:
+                print("[MODLOG] /modlogs list recap failed:")
+                traceback.print_exc()
+                await ctx.followup.send(
+                    "Could not read the modlog.",
+                    ephemeral=True,
+                )
+                return
+            display = (target_member.display_name if target_member
+                       else f"<@{target_id}>")
+            embed = discord.Embed(
+                title=f"Mod recap — {display}",
+                color=discord.Color.blurple(),
+            )
+            counts = {}
+            for item in items:
+                base = _action_base(item["case"].get("action"))
+                counts[base] = counts.get(base, 0) + 1
+            if counts:
+                lines = [f"{name.title()}: {n}"
+                         for name, n in sorted(counts.items(), key=lambda kv: -kv[1])]
+                embed.add_field(name=f"Cases ({len(items)})",
+                                value="\n".join(lines), inline=True)
+            else:
+                embed.add_field(name="Cases (0)", value="No recorded actions.",
+                                inline=True)
+            embed.add_field(name="Warns", value=str(len(urec.get("warns", []) or [])),
+                            inline=True)
+            embed.add_field(name="Notes", value=str(len(urec.get("notes", []) or [])),
+                            inline=True)
+            if items:
+                name, value = _format_case(ctx.guild, items[0])
+                embed.add_field(name="Most recent", value=f"**{name}**\n{value}",
+                                inline=False)
+            if isinstance(tb, dict) and tb.get("unban_at"):
+                try:
+                    unban_at = int(float(tb["unban_at"]))
+                except (TypeError, ValueError):
+                    unban_at = 0
+                import time as _time
+                if unban_at and unban_at > _time.time():
+                    embed.add_field(
+                        name="Active tempban",
+                        value=(f"Until <t:{unban_at}:F> (<t:{unban_at}:R>)\n"
+                               f"**Reason:** {tb.get('reason', '')}\n"
+                               f"**By:** {tb.get('mod_name', '?')}"),
+                        inline=False,
+                    )
+                elif unban_at:
+                    embed.add_field(
+                        name="Tempban",
+                        value="Expired — waiting for the sweep to lift it.",
+                        inline=False,
+                    )
+                else:
+                    embed.add_field(name="Tempban", value="No active tempban.",
+                                    inline=False)
             else:
                 embed.add_field(name="Tempban", value="No active tempban.",
                                 inline=False)
-        else:
-            embed.add_field(name="Tempban", value="No active tempban.",
-                            inline=False)
-        await ctx.followup.send(embed=embed, ephemeral=True)
+            await ctx.followup.send(embed=embed, ephemeral=True)
 
-    # ---------- /modlogs_edit ----------
+    # ---------- /modlogs list edit ----------
 
-    @discord.slash_command(
-        name="modlogs_edit",
-        description="Pick one of a user's recent cases to edit its reason or delete it.",
-        guild_ids=GUILD_IDS,
-    )
-    async def modlogs_edit(
-        self,
-        ctx,
-        member: discord.Option(
-            discord.Member,
-            "The member whose case to change",
-            required=False,
-            default=None,
-        ),
-        user_id: discord.Option(
-            str,
-            "Or a raw user ID (used when the member has left the server)",
-            required=False,
-            default=None,
-        ),
-    ):
-        from utils.permissions import check_slash_permission, _default_manage_or_admin
-        if not await check_slash_permission(ctx, "modlogs_edit", _default_manage_or_admin):
-            return
-        target_id, target_member, err = self._resolve_target(ctx, member, user_id)
-        if err:
-            await ctx.respond(err, ephemeral=True)
-            return
-        await ctx.defer(ephemeral=True)
-        try:
-            items = _collect_cases(ctx.guild.id, target_id=target_id)
-        except Exception:
-            print("[MODLOG] /modlogs_edit collect failed:")
-            traceback.print_exc()
-            await ctx.followup.send(
-                "Could not read the modlog.",
-                ephemeral=True,
-            )
-            return
-        if not items:
-            display = (target_member.mention if target_member
-                       else f"<@{target_id}>")
-            await ctx.followup.send(
-                f"No cases found for {display}.",
-                ephemeral=True,
-            )
-            return
-        entries = items[:SELECT_LIMIT]
-        display = (target_member.display_name if target_member
-                   else f"<@{target_id}>")
-        embed = discord.Embed(
-            title=f"Edit a case — {display}",
-            description=(f"Pick one of their {len(entries)} most recent cases "
-                         f"({len(items)} total)."),
-            color=discord.Color.blurple(),
+    if not WORKER_MODE:
+        @modlogs_group.command(
+            name="edit",
+            description="Pick one of a user's recent cases to edit its reason or delete it.",
         )
-        view = CaseSelectView(ctx.guild, target_id, entries)
-        message = await ctx.followup.send(embed=embed, view=view,
-                                          ephemeral=True, wait=True)
-        view.message = message
-
-    # ---------- /mod_actions ----------
-
-    @discord.slash_command(
-        name="mod_actions",
-        description="Every moderation action performed by one moderator.",
-        guild_ids=GUILD_IDS,
-    )
-    async def mod_actions(
-        self,
-        ctx,
-        moderator: discord.Option(
-            discord.Member,
-            "The moderator whose actions to list",
-            required=True,
-        ),
-    ):
-        from utils.permissions import check_slash_permission, _default_manage_or_admin
-        if not await check_slash_permission(ctx, "mod_actions", _default_manage_or_admin):
-            return
-        await ctx.defer(ephemeral=True)
-        try:
-            items = _collect_cases(
-                ctx.guild.id,
-                moderator_id=moderator.id,
-                moderator_name=str(moderator),
+        async def modlogs_edit(
+            self,
+            ctx,
+            member: discord.Option(
+                discord.Member,
+                "The member whose case to change",
+                required=False,
+                default=None,
+            ),
+            user_id: discord.Option(
+                str,
+                "Or a raw user ID (used when the member has left the server)",
+                required=False,
+                default=None,
+            ),
+        ):
+            from utils.permissions import check_slash_permission, _default_manage_or_admin
+            if not await check_slash_permission(ctx, "modlogs_edit", _default_manage_or_admin):
+                return
+            target_id, target_member, err = self._resolve_target(ctx, member, user_id)
+            if err:
+                await ctx.respond(err, ephemeral=True)
+                return
+            await ctx.defer(ephemeral=True)
+            try:
+                items = _collect_cases(ctx.guild.id, target_id=target_id)
+            except Exception:
+                print("[MODLOG] /modlogs list edit collect failed:")
+                traceback.print_exc()
+                await ctx.followup.send(
+                    "Could not read the modlog.",
+                    ephemeral=True,
+                )
+                return
+            if not items:
+                display = (target_member.mention if target_member
+                           else f"<@{target_id}>")
+                await ctx.followup.send(
+                    f"No cases found for {display}.",
+                    ephemeral=True,
+                )
+                return
+            entries = items[:SELECT_LIMIT]
+            display = (target_member.display_name if target_member
+                       else f"<@{target_id}>")
+            embed = discord.Embed(
+                title=f"Edit a case — {display}",
+                description=(f"Pick one of their {len(entries)} most recent cases "
+                             f"({len(items)} total)."),
+                color=discord.Color.blurple(),
             )
-        except Exception:
-            print("[MODLOG] /mod_actions collect failed:")
-            traceback.print_exc()
-            await ctx.followup.send(
-                "Could not read the modlog.",
-                ephemeral=True,
+            view = CaseSelectView(ctx.guild, target_id, entries)
+            message = await ctx.followup.send(embed=embed, view=view,
+                                              ephemeral=True, wait=True)
+            view.message = message
+
+    # ---------- /modlogs list actions ----------
+
+    if not WORKER_MODE:
+        @modlogs_group.command(
+            name="actions",
+            description="Every moderation action performed by one moderator.",
+        )
+        async def mod_actions(
+            self,
+            ctx,
+            moderator: discord.Option(
+                discord.Member,
+                "The moderator whose actions to list",
+                required=True,
+            ),
+        ):
+            from utils.permissions import check_slash_permission, _default_manage_or_admin
+            if not await check_slash_permission(ctx, "modlogs_actions", _default_manage_or_admin):
+                return
+            await ctx.defer(ephemeral=True)
+            try:
+                # P2-20: previously uncapped -- the whole guild history
+                # was collected and paged. Cap inside the collector.
+                items = _collect_cases(
+                    ctx.guild.id,
+                    moderator_id=moderator.id,
+                    moderator_name=str(moderator),
+                    cap=GUILD_SCAN_CAP,
+                )
+            except Exception:
+                print("[MODLOG] /modlogs list actions collect failed:")
+                traceback.print_exc()
+                await ctx.followup.send(
+                    "Could not read the modlog.",
+                    ephemeral=True,
+                )
+                return
+            title = f"Actions by {moderator.display_name}"
+            if len(items) == GUILD_SCAN_CAP:
+                title += f" (showing the {GUILD_SCAN_CAP} most recent)"
+            await self._send_pager(ctx, title, items)
+
+    if WORKER_MODE:
+        @modlogs_group.command(
+            name="scan",
+            description="Scan the mod-log channel and add any missing cases to the modlog.",
+        )
+        async def modlog_scan(
+            self,
+            ctx,
+            channel: discord.Option(
+                discord.TextChannel,
+                "Channel to scan (default: the mod-log channel)",
+                required=False,
+                default=None,
+            ),
+            limit: discord.Option(
+                int,
+                "How many recent messages to scan (1-1000, default 100)",
+                required=False,
+                default=100,
+                min_value=1,
+                max_value=1000,
+            ),
+        ):
+            from utils.permissions import check_slash_permission, _default_manage_or_admin
+            if not await check_slash_permission(ctx, "modlogs_scan", _default_manage_or_admin):
+                return
+            await ctx.defer(ephemeral=True)
+            target = channel
+            if target is None:
+                try:
+                    from cogs.Logger.database import db as logger_db
+                    chans = logger_db.get_all_log_channels(ctx.guild.id)
+                    mod_ch = chans.get("moderation")
+                    if mod_ch:
+                        target = ctx.guild.get_channel(mod_ch)
+                except Exception as e:
+                    print(f"[MODLOG] modlog_scan: could not read Logger channels: {e!r}")
+            if target is None:
+                target = ctx.channel
+            if not isinstance(target, discord.TextChannel):
+                await ctx.followup.send(
+                    "I need a text channel to scan.",
+                    ephemeral=True,
+                )
+                return
+            try:
+                messages = [m async for m in target.history(limit=limit)]
+            except discord.Forbidden:
+                await ctx.followup.send(
+                    "The bot cannot read that channel's history.",
+                    ephemeral=True,
+                )
+                return
+            except Exception as e:
+                await ctx.followup.send(
+                    f"Could not read that channel: {e!r}",
+                    ephemeral=True,
+                )
+                return
+            parsed = []
+            skipped = 0
+            for msg in messages:
+                for emb in msg.embeds:
+                    action = _MODLOG_SCAN_TITLES.get((emb.title or "").strip())
+                    if action is None:
+                        continue
+                    got = _parse_modlog_embed(emb, action, msg)
+                    if got is None:
+                        skipped += 1
+                    else:
+                        parsed.append(got)
+            try:
+                data = load_json(MOD_DATA_FILE) or {}
+            except Exception as e:
+                print(f"[MODLOG] modlog_scan: could not load mod data: {e!r}")
+                await ctx.followup.send(
+                    "Could not read the modlog, so the scan was aborted -- "
+                    "nothing was added. Try again in a bit.",
+                    ephemeral=True,
+                )
+                return
+            grec = data.get(str(ctx.guild.id), {})
+            if not isinstance(grec, dict):
+                grec = {}
+            # Channel history yields newest first; cases are stored oldest
+            # first (the collector relies on that), so sort before appending.
+            parsed.sort(key=lambda p: p["ts"])
+            added = 0
+            already = 0
+            added_by_action = {}
+            for p in parsed:
+                urec = grec.setdefault(
+                    str(p["target_id"]), {"warns": [], "notes": [], "cases": []}
+                )
+                cases = urec.setdefault("cases", [])
+                if _modlog_case_exists(cases, p):
+                    already += 1
+                    continue
+                cases.append({
+                    "action": p["action"],
+                    "reason": p["reason"],
+                    "mod_id": p["mod_id"],
+                    "mod_name": p["mod_name"],
+                    "ts": p["ts"],
+                    "extra": p["extra"],
+                })
+                if len(cases) > 50:
+                    del cases[:-50]
+                added += 1
+                added_by_action[p["action"]] = added_by_action.get(p["action"], 0) + 1
+            if added:
+                data[str(ctx.guild.id)] = grec
+                try:
+                    _save_mod_data(data)
+                except Exception as e:
+                    print(f"[MODLOG] modlog_scan: could not save mod data: {e!r}")
+                    await ctx.followup.send(
+                        "The scan found missing cases but could not save them. "
+                        "Nothing was added -- try again in a bit.",
+                        ephemeral=True,
+                    )
+                    return
+            embed = discord.Embed(
+                title="Mod-log scan complete",
+                description=f"Scanned the last {len(messages)} messages in {target.mention}.",
+                color=discord.Color.blurple(),
             )
-            return
-        await self._send_pager(ctx, f"Actions by {moderator.display_name}", items)
+            embed.add_field(name="Parsed actions", value=str(len(parsed)), inline=True)
+            embed.add_field(name="Added to the modlog", value=str(added), inline=True)
+            embed.add_field(name="Already in the modlog", value=str(already), inline=True)
+            embed.add_field(name="Skipped (unreadable)", value=str(skipped), inline=True)
+            if added_by_action:
+                embed.add_field(
+                    name="Added by type",
+                    value=", ".join(
+                        f"{a} x{n}" for a, n in sorted(added_by_action.items())
+                    ),
+                    inline=False,
+                )
+            await ctx.followup.send(embed=embed, ephemeral=True)
+
+
+# --- /modlogs list scan: LH mod-log channel embeds -------------------------------
+# The old Little Haven bot posted one embed per moderation action to the
+# mod-log channel. The title is the action; the description carries the
+# target, moderator, reason (and duration/expiry for timeouts). Timeout
+# status updates (timeout expired / removed) share the description shape
+# but are edits of an existing timeout, not new actions, so they are
+# skipped -- only the original log embed creates a case.
+_MODLOG_SCAN_TITLES = {
+    "\u26a0\ufe0f User Warned": "warn",
+    "\U0001f528 User Banned": "ban",
+    "\U0001f462 User Kicked": "kick",
+    "\U0001f6e1\ufe0f Informal Warning Given": "inf_warn",
+    "\U0001f513 User Unbanned": "unban",
+    "\U0001f507 User Timed Out": "timeout",
+}
+_MODLOG_USER_RE = re.compile(r"\*\*User:\*\* <@(\d+)>")
+_MODLOG_MOD_RE = re.compile(r"\*\*Moderator:\*\* <@(\d+)> \[([^\]]*)\]")
+_MODLOG_REASON_RE = re.compile(r"\*\*Reason:\*\* (.*?)(?:\n\*\*Duration:\*\*|\Z)", re.S)
+_MODLOG_DURATION_RE = re.compile(r"\*\*Duration:\*\* (.*?)(?:\n\*\*Expires:\*\*|\Z)", re.S)
+
+
+def _parse_modlog_embed(embed, action, message):
+    """Parse one LH mod-log embed into a case dict, or None if unreadable."""
+    desc = embed.description or ""
+    m_user = _MODLOG_USER_RE.search(desc)
+    m_mod = _MODLOG_MOD_RE.search(desc)
+    m_reason = _MODLOG_REASON_RE.search(desc)
+    if not m_user or not m_mod or not m_reason:
+        return None
+    reason = (m_reason.group(1) or "").strip()
+    if reason in ("null", "None"):
+        reason = ""
+    extra = {"message_id": str(message.id)}
+    if action == "timeout":
+        m_dur = _MODLOG_DURATION_RE.search(desc)
+        if m_dur and (m_dur.group(1) or "").strip():
+            extra["duration"] = m_dur.group(1).strip()
+    try:
+        ts = message.created_at.timestamp()
+    except Exception:
+        return None
+    return {
+        "action": action,
+        "target_id": m_user.group(1),
+        "reason": reason,
+        "mod_id": m_mod.group(1),
+        "mod_name": (m_mod.group(2) or "").strip() or m_mod.group(1),
+        "ts": ts,
+        "extra": extra,
+    }
+
+
+def _modlog_case_exists(cases, parsed):
+    """True when an equivalent case is already in the user's history.
+
+    Same action, same moderator, same (normalised) reason, and a
+    timestamp within 5 minutes -- the log message goes out seconds
+    after the action is recorded, so a real duplicate sits within
+    seconds, while two genuinely separate actions on one user are
+    almost never that close together with the same moderator and
+    reason.
+    """
+    for case in cases:
+        if not isinstance(case, dict):
+            continue
+        if _action_base(case.get("action")) != parsed["action"]:
+            continue
+        if str(case.get("mod_id")) != str(parsed["mod_id"]):
+            continue
+        if (case.get("reason") or "").strip() != parsed["reason"]:
+            continue
+        if abs(_case_ts(case) - parsed["ts"]) <= 300:
+            return True
+    return False
 
 
 def setup(bot):

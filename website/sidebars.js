@@ -5,12 +5,12 @@ const sidebars = {
     {
       type: 'category',
       label: 'Fundamentals',
-      items: ['project-map', 'boot-sequence', 'cogs', 'commands', 'views-buttons', 'permissions', 'config-helpers'],
+      items: ['two-bots', 'project-map', 'boot-sequence', 'cogs', 'commands', 'views-buttons', 'permissions', 'config-helpers'],
     },
     {
       type: 'category',
       label: 'Data',
-      items: ['data-layer', 'adding-a-table'],
+      items: ['postgres', 'data-layer', 'adding-a-table'],
     },
     {
       type: 'category',

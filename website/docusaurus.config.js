@@ -2,8 +2,8 @@
 
 /** @type {import('@docusaurus/types').Config} */
 const config = {
-  title: 'Bot Developer Handbook',
-  tagline: 'How the Discord bot is built — architecture, patterns, and examples',
+  title: 'Havenly Bot 2.0 & Havenly Helper Handbook',
+  tagline: 'How the two bots are built — architecture, patterns, and examples',
   url: 'https://poos241.github.io',
   baseUrl: '/Discord-Testing-Bot-Grounds-V1/',
   organizationName: 'poos241',
@@ -34,7 +34,7 @@ const config = {
     /** @type {import('@docusaurus/preset-classic').ThemeConfig} */
     ({
       navbar: {
-        title: 'Bot Developer Handbook',
+        title: 'Havenly Handbook',
         items: [
           {
             type: 'docSidebar',

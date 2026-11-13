@@ -23,12 +23,17 @@ one line at startup. A failed push is logged and the loop keeps going —
 one failed push never kills the loop.
 """
 
+import math
 import os
 
 import aiohttp
 from discord.ext import commands, tasks
 
+from config import WORKER_MODE
+
 DEFAULT_INTERVAL_SECONDS = 30.0
+MIN_INTERVAL_SECONDS = 5.0
+MAX_INTERVAL_SECONDS = 120.0
 PUSH_TIMEOUT_SECONDS = 10
 
 
@@ -36,15 +41,29 @@ def _push_interval_seconds():
     """Read the push interval from the environment (default 30s).
 
     Falls back to the default for a missing, non-numeric, zero, or
-    negative value. No upper clamp — the operator picks the interval.
+    negative value. Clamped to 5-120s: a value outside that range is
+    clamped and a warning is printed, so a typo'd interval (e.g. 3600)
+    cannot silently make the monitor useless.
     """
     raw = os.getenv("KUMA_PUSH_INTERVAL_SECONDS", str(DEFAULT_INTERVAL_SECONDS))
     try:
         value = float(raw)
     except (TypeError, ValueError):
         return DEFAULT_INTERVAL_SECONDS
-    if value <= 0:
+    if not math.isfinite(value) or value <= 0:
         return DEFAULT_INTERVAL_SECONDS
+    if value < MIN_INTERVAL_SECONDS:
+        print(
+            f"[KUMA] WARNING: KUMA_PUSH_INTERVAL_SECONDS={raw} is below "
+            f"{MIN_INTERVAL_SECONDS:g}s; clamping to {MIN_INTERVAL_SECONDS:g}s"
+        )
+        return MIN_INTERVAL_SECONDS
+    if value > MAX_INTERVAL_SECONDS:
+        print(
+            f"[KUMA] WARNING: KUMA_PUSH_INTERVAL_SECONDS={raw} is above "
+            f"{MAX_INTERVAL_SECONDS:g}s; clamping to {MAX_INTERVAL_SECONDS:g}s"
+        )
+        return MAX_INTERVAL_SECONDS
     return value
 
 
@@ -53,10 +72,22 @@ class KumaHeartbeat(commands.Cog):
 
     def __init__(self, bot):
         self.bot = bot
-        self.push_url = (os.getenv("KUMA_PUSH_URL") or "").strip()
+        # Worker mode: push to the WORKER's own Kuma monitor. Reusing
+        # the main bot's KUMA_PUSH_URL would make Kuma show the main
+        # bot UP even when only the worker is pushing. Until Emily
+        # creates a push monitor for Havenly Helper and adds
+        # WORKER_KUMA_PUSH_URL to the .env, the worker's heartbeat
+        # stays disabled (one log line, nothing else).
+        if WORKER_MODE:
+            self.push_url = (os.getenv("WORKER_KUMA_PUSH_URL") or "").strip()
+        else:
+            self.push_url = (os.getenv("KUMA_PUSH_URL") or "").strip()
         self.interval = _push_interval_seconds()
         if not self.push_url:
-            print("[KUMA] Kuma push URL not set (KUMA_PUSH_URL) — heartbeat disabled")
+            print(
+                "[KUMA] Kuma push URL not set (%s) — heartbeat disabled"
+                % ("WORKER_KUMA_PUSH_URL" if WORKER_MODE else "KUMA_PUSH_URL")
+            )
             return
         print(f"[KUMA] Heartbeat enabled — pushing every {self.interval:g}s")
         self.heartbeat_loop.change_interval(seconds=self.interval)

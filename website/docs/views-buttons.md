@@ -41,9 +41,11 @@ async def on_ready(self):
     self._ensure_view()   # builds VoteView + rematch view, bot.add_view(...)
 ```
 
-The ticket system follows the same pattern: its panel/close/claim/reopen
-views register once in `on_ready`, never in `__init__` (building a view
-there crashed the whole bot with `no running event loop`).
+The ticket system followed the same pattern: its panel/close/claim/reopen
+views registered once in `on_ready`, never in `__init__` (building a view
+there crashed the whole bot with `no running event loop`). Tickets is
+deliberately disabled now, so that reference is historical — the pattern
+still applies to any persistent view.
 
 > **Never** build a `View` at import time or in `__init__` — it raises
 > `RuntimeError: no running event loop`. (There used to be a regression
@@ -68,13 +70,13 @@ collide between cogs.
 ## The full lifecycle (voting)
 
 1. `_make_round()` builds the food + duration and stores the round dict in
-   the `eatyeet_active` table (SQLite) keyed by channel.
+   the `eatyeet_active` table (Postgres) keyed by channel.
 2. The round message is posted with `VoteView` attached.
 3. A countdown task edits the message every 30s (every 5s in the last 30s).
 4. On expiry: tally votes → results embed → award game XP → attach the
    rematch view → delete the round from the active store.
 5. If the bot restarts mid-round: `on_ready` re-registers views, the
-   expiry loop finds the overdue round in the SQLite store and tallies it.
+   expiry loop finds the overdue round in the Postgres store and tallies it.
 
 ## Gotchas
 

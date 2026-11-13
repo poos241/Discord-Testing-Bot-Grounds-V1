@@ -1,4 +1,6 @@
 """Sends log embeds to the configured per-guild, per-category channels."""
+import asyncio
+
 import discord
 
 from .database import db
@@ -44,10 +46,17 @@ class Logger:
 
         Silently skips when no channel is configured, the channel is gone,
         or the bot can't send there. Every event is also recorded to the
-        queryable event history used by the web dashboard.
+        queryable event history used by the web dashboard. Returns the
+        sent message, or None when nothing was posted -- callers that
+        need the message (e.g. to open a thread on it) use the return.
         """
         try:
-            db.record_event(
+            # P1-25: the SQLite write runs in a worker thread so a slow
+            # or locked message_log.db never blocks the gateway loop.
+            # The summary is flattened on the loop first; only plain
+            # values cross into the thread.
+            await asyncio.to_thread(
+                db.record_event,
                 guild.id,
                 category,
                 event_type=getattr(embed, "title", None),
@@ -57,14 +66,14 @@ class Logger:
             pass
         channel_id = db.get_log_channel(guild.id, category)
         if not channel_id:
-            return
+            return None
         channel = guild.get_channel(channel_id)
         if channel is None:
             try:
                 channel = await self.bot.fetch_channel(channel_id)
             except (discord.NotFound, discord.Forbidden, discord.HTTPException):
-                return
+                return None
         try:
-            await channel.send(embed=embed)
+            return await channel.send(embed=embed)
         except (discord.Forbidden, discord.NotFound, discord.HTTPException):
-            pass
+            return None

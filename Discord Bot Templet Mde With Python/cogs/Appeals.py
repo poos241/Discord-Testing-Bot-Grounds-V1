@@ -210,13 +210,81 @@ async def dm_user(bot, user_id, text):
         return False
 
 
+def _has_active_timeout(member):
+    """True when the member's timeout is still running. A member
+    whose timeout timestamp is None (never timed out) or in the past
+    (already expired) has nothing left to lift. pycord 2.8.1 names
+    the field `communication_disabled_until` (there is no
+    `timed_out_until` on Member); the discord.py name is kept as a
+    fallback so a future library rename does not silently break
+    this check the way the admin cog's bare
+    `getattr(member, "timed_out_until", None)` reads do."""
+    until = getattr(member, "communication_disabled_until", None)
+    if until is None:
+        until = getattr(member, "timed_out_until", None)
+    if until is None:
+        return False
+    if until.tzinfo is None:
+        until = until.replace(tzinfo=timezone.utc)
+    return until > datetime.now(timezone.utc)
+
+
+async def _fetch_member(guild, user_id):
+    """Fresh member record, falling back to the cache when the fetch
+    fails for a transient reason (NotFound means they left)."""
+    try:
+        return await guild.fetch_member(int(user_id))
+    except discord.NotFound:
+        return None
+    except Exception:
+        return guild.get_member(int(user_id))
+
+
+async def _is_punished(guild, user_id, appeal_type):
+    """True when the user is actually under the punishment they want
+    to appeal. A ban appeal needs a live ban entry; a timeout appeal
+    needs a live, unexpired timeout. When the check itself cannot
+    run (no ban-list permission, transient API error), assume
+    punished and let staff verify at review time — the
+    approve-time check is the backstop."""
+    if appeal_type == "ban":
+        try:
+            await guild.fetch_ban(discord.Object(id=int(user_id)))
+            return True
+        except discord.NotFound:
+            return False
+        except Exception:
+            return True
+    member = await _fetch_member(guild, user_id)
+    if member is None:
+        return False
+    return _has_active_timeout(member)
+
+
 async def create_appeal_for(bot, guild, user_id, user_name, appeal_type, text):
     """Shared submit path for the slash command and the DM flow.
-    Returns (appeal_dict, existing_pending_or_None)."""
+    Returns (appeal_dict, existing_pending_or_None).
+    Raises ValueError when the appeal cannot be filed: an unknown
+    type, or the user is not actually under the punishment they
+    want to appeal (P3-7 — a non-punished member must not be able
+    to file, and staff must never be told an appeal was approved
+    when nothing was lifted)."""
     await ensure_db()
+    if appeal_type not in ("ban", "timeout"):
+        raise ValueError(
+            f"Unknown appeal type {appeal_type!r} — appeals are only for bans and timeouts."
+        )
     existing = await get_pending_appeal_for_user(str(guild.id), str(user_id))
     if existing:
         return None, existing
+    if not await _is_punished(guild, user_id, appeal_type):
+        if appeal_type == "ban":
+            raise ValueError(
+                "You don't appear to be banned in this server, so there's nothing to appeal."
+            )
+        raise ValueError(
+            "You don't appear to be timed out in this server, so there's nothing to appeal."
+        )
     appeal = await create_appeal(
         str(guild.id), str(user_id), user_name, appeal_type, text
     )
@@ -337,10 +405,18 @@ class DmAppealModal(discord.ui.Modal):
                 ephemeral=True,
             )
             return
-        appeal, existing = await create_appeal_for(
-            self.cog.bot, self.guild, interaction.user.id,
-            str(interaction.user), appeal_type, text,
-        )
+        try:
+            appeal, existing = await create_appeal_for(
+                self.cog.bot, self.guild, interaction.user.id,
+                str(interaction.user), appeal_type, text,
+            )
+        except ValueError as e:
+            # P3-7: unknown type, or the user is not actually under
+            # the punishment they want to appeal.
+            await interaction.response.send_message(
+                f"❌ {e}", ephemeral=True,
+            )
+            return
         if existing:
             await interaction.response.send_message(
                 f"You already have a pending appeal in **{self.guild.name}** "
@@ -414,10 +490,16 @@ class Appeals(commands.Cog):
                 ephemeral=True,
             )
             return
-        appeal, existing = await create_appeal_for(
-            self.bot, ctx.guild, ctx.author.id, str(ctx.author),
-            appeal_type, (details or "").strip() or "No details given",
-        )
+        try:
+            appeal, existing = await create_appeal_for(
+                self.bot, ctx.guild, ctx.author.id, str(ctx.author),
+                appeal_type, (details or "").strip() or "No details given",
+            )
+        except ValueError as e:
+            # P3-7: unknown type, or the user is not actually under
+            # the punishment they want to appeal.
+            await ctx.respond(f"❌ {e}", ephemeral=True)
+            return
         if existing:
             await ctx.respond(
                 f"You already have a pending appeal (appeal #{existing['id']}). "
@@ -571,7 +653,17 @@ class Appeals(commands.Cog):
                     )
                     result_note = "User unbanned."
                 except discord.NotFound:
-                    result_note = "User wasn't actually banned — nothing to unban."
+                    # P3-7: the punishment is gone, so there is
+                    # nothing to approve — refuse and leave the
+                    # appeal pending instead of closing it as
+                    # "approved" while lifting nothing. Staff can
+                    # deny it if it should not stand.
+                    await interaction.response.send_message(
+                        "❌ That user isn't actually banned, so there's nothing to lift. "
+                        "The appeal is still pending — deny it if it shouldn't be approved.",
+                        ephemeral=True,
+                    )
+                    return
                 except discord.Forbidden:
                     await interaction.response.send_message(
                         "❌ I can't unban them — check my permissions. The appeal is still pending.",
@@ -588,41 +680,82 @@ class Appeals(commands.Cog):
                     tb_data, tb = _tempban_data(guild.id)
                     tb.pop(str(appeal["user_id"]), None)
                     _save_mod_data(tb_data)
-                except Exception:
-                    pass
-            else:  # timeout
-                member = guild.get_member(int(appeal["user_id"]))
+                except Exception as e:
+                    # P1-17: log loudly instead of swallowing -- a stale
+                    # tempban entry would make the sweep retry the unban.
+                    print(f"[APPEALS] Could not clear tempban entry for {appeal['user_id']}: {e!r}")
+            elif appeal["appeal_type"] == "timeout":
+                # P3-7: verify the timeout is actually still running
+                # before approving. remove_timeout() on a member with
+                # no active timeout succeeds as a no-op, which used
+                # to close the appeal as "approved" while lifting
+                # nothing; a member who already left has no timeout
+                # to lift either. Refuse and leave it pending.
+                member = await _fetch_member(guild, int(appeal["user_id"]))
                 if member is None:
-                    result_note = "User isn't in the server, so there's no timeout to lift."
-                else:
-                    try:
-                        await member.remove_timeout(
-                            reason=f"Appeal #{appeal['id']} approved by {interaction.user}"
-                        )
-                        result_note = "Timeout removed."
-                    except discord.Forbidden:
-                        await interaction.response.send_message(
-                            "❌ I can't remove that timeout — is my role above theirs? The appeal is still pending.",
-                            ephemeral=True,
-                        )
-                        return
-                    except Exception as e:
-                        await interaction.response.send_message(
-                            f"❌ Removing the timeout failed: `{e}` — the appeal is still pending.",
-                            ephemeral=True,
-                        )
-                        return
-            _record_case(
-                guild.id, int(appeal["user_id"]), "appeal_approved",
-                f"Appeal #{appeal['id']} approved: {result_note}",
-                interaction.user,
-            )
+                    await interaction.response.send_message(
+                        "❌ That user isn't in the server, so there's no timeout to lift. "
+                        "The appeal is still pending — deny it if it shouldn't be approved.",
+                        ephemeral=True,
+                    )
+                    return
+                if not _has_active_timeout(member):
+                    await interaction.response.send_message(
+                        "❌ That user is no longer timed out (their timeout already ended), "
+                        "so there's nothing to lift. The appeal is still pending — deny it "
+                        "if it shouldn't be approved.",
+                        ephemeral=True,
+                    )
+                    return
+                try:
+                    await member.remove_timeout(
+                        reason=f"Appeal #{appeal['id']} approved by {interaction.user}"
+                    )
+                    result_note = "Timeout removed."
+                except discord.Forbidden:
+                    await interaction.response.send_message(
+                        "❌ I can't remove that timeout — is my role above theirs? The appeal is still pending.",
+                        ephemeral=True,
+                    )
+                    return
+                except Exception as e:
+                    await interaction.response.send_message(
+                        f"❌ Removing the timeout failed: `{e}` — the appeal is still pending.",
+                        ephemeral=True,
+                    )
+                    return
+            else:
+                # P3-7: unknown types used to fall through to the
+                # timeout branch. Refuse instead of lifting the
+                # wrong thing (or nothing) and calling it approved.
+                await interaction.response.send_message(
+                    f"❌ This appeal has an unknown type ({appeal['appeal_type']!r}) — "
+                    "there's no punishment to lift, so it can't be approved. "
+                    "The appeal is still pending; deny it if it shouldn't be approved.",
+                    ephemeral=True,
+                )
+                return
+            # P1-17: the punishment is already lifted -- a case-record
+            # failure must not abort the decision (status update + DM).
+            try:
+                _record_case(
+                    guild.id, int(appeal["user_id"]), "appeal_approved",
+                    f"Appeal #{appeal['id']} approved: {result_note}",
+                    interaction.user,
+                )
+            except Exception as e:
+                print(f"[APPEALS] ERROR: could not record appeal_approved case for {appeal['user_id']} in guild {guild.id}: {e!r}")
+                result_note += " (Case record failed to save \u2014 check the mod history.)"
         else:  # denied
-            _record_case(
-                guild.id, int(appeal["user_id"]), "appeal_denied",
-                f"Appeal #{appeal['id']} denied: {reason}",
-                interaction.user,
-            )
+            try:
+                _record_case(
+                    guild.id, int(appeal["user_id"]), "appeal_denied",
+                    f"Appeal #{appeal['id']} denied: {reason}",
+                    interaction.user,
+                )
+            except Exception as e:
+                print(f"[APPEALS] ERROR: could not record appeal_denied case for {appeal['user_id']} in guild {guild.id}: {e!r}")
+                result_note += " (Case record failed to save \u2014 check the mod history.)"
         await update_appeal(int(appeal["id"]), {
             "status": status,
             "decided_by": str(interaction.user.id),

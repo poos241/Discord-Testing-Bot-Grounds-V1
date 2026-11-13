@@ -30,6 +30,10 @@ except Exception:
     pass
 
 BRIDGE_URL = os.environ.get("BRIDGE_URL", "http://127.0.0.1:5001").rstrip("/")
+# Havenly Helper (worker) bridge. Same secret, localhost only. The
+# website only ever READS the worker's /bridge/status (health) --
+# it never sends the worker a job or an action.
+WORKER_BRIDGE_URL = os.environ.get("WORKER_BRIDGE_URL", "http://127.0.0.1:5002").rstrip("/")
 BRIDGE_VERSION = 1
 
 READ_TIMEOUT = 5
@@ -102,8 +106,8 @@ def _headers():
     return {"X-Bridge-Secret": secret}
 
 
-def _request(method, path, timeout, params=None, json_body=None):
-    url = BRIDGE_URL + path
+def _request(method, path, timeout, params=None, json_body=None, base_url=None):
+    url = (base_url or BRIDGE_URL) + path
     try:
         headers = _headers()
     except BridgeUnavailable:
@@ -143,8 +147,8 @@ def _request(method, path, timeout, params=None, json_body=None):
     return payload
 
 
-def _get(path, timeout=READ_TIMEOUT, params=None):
-    return _request("GET", path, timeout, params=params)
+def _get(path, timeout=READ_TIMEOUT, params=None, base_url=None):
+    return _request("GET", path, timeout, params=params, base_url=base_url)
 
 
 def _post(path, body, timeout=ACTION_TIMEOUT):
@@ -167,6 +171,15 @@ def status():
     """GET /bridge/status -> {ready, user, latency_ms, guild_count,
     member_total, uptime_s, bridge_version}."""
     return _get("/bridge/status")
+
+
+def worker_status():
+    """GET the WORKER bridge /bridge/status (Havenly Helper, 5002).
+
+    Read-only health check: the website asks the worker if it is up
+    and who it is, nothing else. Same secret, same timeouts, localhost
+    only. Raises BridgeUnavailable / BridgeError like status()."""
+    return _get("/bridge/status", base_url=WORKER_BRIDGE_URL)
 
 
 def get_guilds():

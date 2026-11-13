@@ -26,7 +26,7 @@ CHANNEL_NAMES = {
 }
 
 LOG_CATEGORY_NAME = "📜 Server Logs"
-FOOTER_TEXT = "Kush Bush Logger"
+FOOTER_TEXT = "Powered by Havenly Bot"
 
 
 # ----- Per-event toggle keys -----

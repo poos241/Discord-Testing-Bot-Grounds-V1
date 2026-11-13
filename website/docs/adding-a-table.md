@@ -39,14 +39,17 @@ async def get_my_feature(guild_id: str):
     return row["data"] if row else {}
 
 async def save_my_feature(guild_id: str, data: dict):
-    await database.execute(
-        my_feature.insert()
-        .values(guild_id=guild_id, data=data)
-        .prefix_with("OR REPLACE")   # upsert: insert or overwrite
-    )
+    await database.execute(_upsert(
+        my_feature,
+        {"guild_id": guild_id, "data": data},
+    ))
 ```
 
-`OR REPLACE` makes save an upsert — no separate "create vs update" logic.
+`_upsert()` (in `storage.py`, built on
+`sqlalchemy.dialects.postgresql.insert` + `ON CONFLICT DO UPDATE`)
+makes save an upsert — no separate "create vs update" logic. For an
+insert that should silently skip on conflict instead, use
+`_insert_ignore()`.
 
 ## 3. Use it in a cog
 
@@ -58,11 +61,13 @@ data["wins"] = data.get("wins", 0) + 1
 await save_my_feature(str(ctx.guild.id), data)
 ```
 
-## When not to use SQLite
+## When not to use Postgres
 
 Short answer: don't reach for JSON for new features. JSON files were the
 old home for game round state and similar blobs, but those all moved to
-SQLite in October 2026 (see [Data layer](./data-layer.md)) — the only
-standing JSON file is the notification bell's read state. If your data
-is JSON-shaped and you want the lightest path, follow the store pattern
-in `utils/json_sqlite_store.py` rather than a new file.
+tables in October 2026 and then to Postgres on 2026-11-12 (see
+[Data layer](./data-layer.md)) — the only standing JSON file is the
+notification bell's read state. If your data is JSON-shaped and you want
+the lightest path, follow the store pattern in
+`utils/json_sqlite_store.py` (Postgres-backed now, name kept for
+imports) rather than a new file.

@@ -130,6 +130,29 @@ def status():
     except Exception:
         pass
 
+    # Havenly Helper (worker) status, same shape, fail-closed: when
+    # the worker bridge is down it reports disconnected, never stale
+    # good news. Read-only (bridge.worker_status() is a GET).
+    worker_name = None
+    worker_id = None
+    worker_avatar = None
+    worker_connected = False
+    worker_ready = False
+    worker_latency = None
+
+    try:
+        winfo = bridge.worker_status()
+        worker_connected = True
+        worker_ready = bool(winfo.get("ready"))
+        wuser = winfo.get("user") or {}
+        worker_id = wuser.get("id")
+        worker_name = wuser.get("name")
+        worker_avatar = wuser.get("avatar_url")
+        if winfo.get("latency_ms") is not None:
+            worker_latency = round(float(winfo.get("latency_ms")), 1)
+    except Exception:
+        pass
+
     return {
 
         "online":
@@ -150,6 +173,59 @@ def status():
         "bot_avatar":
             bot_avatar,
 
+        "worker":
+            {
+                "connected": worker_connected,
+                "ready": worker_ready,
+                "name": worker_name,
+                "id": worker_id,
+                "avatar": worker_avatar,
+                "latency_ms": worker_latency,
+            },
+
+    }
+
+
+@api.route("/bots")
+def bots():
+    """Public two-bot status (no login needed).
+
+    Read-only health surface so the e2e test (and anyone) can check
+    whether the website reaches BOTH bots without a Discord login.
+    Returns only bot identity + latency (name, id, avatar, connected,
+    ready, latency_ms, guild_count) -- no tokens, no user data, no
+    guild member data. The main bot and the worker are both public
+    Discord bots, so their name/id are already visible in Discord.
+    """
+    def _one(getter):
+        out = {
+            "connected": False,
+            "ready": False,
+            "name": None,
+            "id": None,
+            "avatar": None,
+            "latency_ms": None,
+            "guild_count": 0,
+        }
+        try:
+            info = getter()
+            out["connected"] = True
+            out["ready"] = bool(info.get("ready"))
+            user = info.get("user") or {}
+            out["name"] = user.get("name")
+            out["id"] = user.get("id")
+            out["avatar"] = user.get("avatar_url")
+            if info.get("latency_ms") is not None:
+                out["latency_ms"] = round(float(info.get("latency_ms")), 1)
+            out["guild_count"] = int(info.get("guild_count") or 0)
+        except Exception:
+            pass
+        return out
+
+    return {
+        "online": True,
+        "main": _one(bridge.status),
+        "worker": _one(bridge.worker_status),
     }
 # =========================================================
 # GLOBAL SERVERS
@@ -1594,7 +1670,7 @@ def api_info():
         "success": True,
 
         "name":
-            "Kush Bush Discord Dashboard API",
+            "Little Haven Discord Dashboard API",
 
         "version":
             "1.0.0",

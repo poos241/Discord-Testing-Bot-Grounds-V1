@@ -1,13 +1,243 @@
 /**
- * Any CSS included here will be global. The default Docusaurus styles
- * are kept; this just adds a few handbook-style touches.
+ * Havenly Bot 2.0 + Havenly Helper handbook theme.
+ *
+ * Dark mode is the default (see docusaurus.config.js
+ * colorMode.defaultMode: 'dark'). The palette follows the bots'
+ * own artwork: pink + purple for Havenly Bot 2.0, mint/teal for
+ * Havenly Helper, gold for the Helper's star badge.
  */
 
+/* ---------- Brand palette ---------- */
+:root {
+  --ifm-color-primary: #7c3aed;
+  --ifm-color-primary-dark: #6d28d9;
+  --ifm-color-primary-darker: #5b21b6;
+  --ifm-color-primary-darkest: #4c1d95;
+  --ifm-color-primary-light: #8b5cf6;
+  --ifm-color-primary-lighter: #a78bfa;
+  --ifm-color-primary-lightest: #c4b5fd;
+  --ifm-code-font-size: 95%;
+  --docusaurus-highlighted-code-line-bg: rgba(139, 92, 246, 0.12);
+
+  --havenly-pink: #ec4899;
+  --havenly-pink-soft: #f472b6;
+  --havenly-purple: #8b5cf6;
+  --havenly-purple-soft: #a78bfa;
+  --havenly-indigo: #6366f1;
+  --havenly-mint: #2dd4bf;
+  --havenly-mint-soft: #5eead4;
+  --havenly-gold: #f59e0b;
+  --havenly-gold-soft: #fbbf24;
+  --havenly-blue: #38bdf8;
+  --havenly-rose: #fb7185;
+}
+
+/* ---------- Dark theme (default) ---------- */
+[data-theme='dark'] {
+  --ifm-background-color: #16161f;
+  --ifm-background-surface-color: #1e1e2e;
+  --ifm-font-color-base: #e8e8f2;
+  --ifm-font-color-secondary: #b8b8cc;
+  --ifm-color-primary: #a78bfa;
+  --ifm-color-primary-dark: #8b5cf6;
+  --ifm-color-primary-darker: #7c3aed;
+  --ifm-color-primary-darkest: #6d28d9;
+  --ifm-color-primary-light: #c4b5fd;
+  --ifm-color-primary-lighter: #ddd6fe;
+  --ifm-color-primary-lightest: #ede9fe;
+  --ifm-link-color: #c4b5fd;
+  --ifm-navbar-background-color: #1a1a28;
+  --ifm-navbar-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.4);
+  --ifm-code-background: #262640;
+  --ifm-table-stripe-background: rgba(167, 139, 250, 0.06);
+  --ifm-toc-border-color: #2e2e44;
+  --docusaurus-highlighted-code-line-bg: rgba(167, 139, 250, 0.18);
+}
+
+/* ---------- Light theme (toggle still available) ---------- */
+[data-theme='light'] {
+  --ifm-background-color: #fdfaff;
+  --ifm-background-surface-color: #ffffff;
+  --ifm-font-color-base: #2e2a3a;
+  --ifm-link-color: #7c3aed;
+  --ifm-code-background: #f3efff;
+  --ifm-table-stripe-background: rgba(124, 58, 237, 0.05);
+}
+
+/* ---------- Hero: pink -> purple -> indigo gradient ---------- */
 .hero--primary {
-  --ifm-hero-background-color: #2b2d31;
+  background: linear-gradient(135deg, #db2777 0%, #8b5cf6 55%, #4f46e5 100%);
   --ifm-hero-text-color: #ffffff;
 }
 
+.hero__title {
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.hero__subtitle {
+  opacity: 0.95;
+}
+
+/* Gradient primary buttons (hero + cards) */
+.button--primary {
+  background: linear-gradient(135deg, #ec4899, #8b5cf6);
+  border: none;
+  color: #fff;
+  font-weight: 600;
+}
+
+.button--primary:hover {
+  background: linear-gradient(135deg, #db2777, #7c3aed);
+  color: #fff;
+}
+
+.button--secondary {
+  font-weight: 600;
+}
+
+/* ---------- Cards ---------- */
 .card {
   height: 100%;
+  border-radius: 14px;
+  border: 1px solid var(--ifm-toc-border-color, #e5e5ef);
+  overflow: hidden;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+[data-theme='dark'] .card {
+  background: #20202f;
+  border-color: #2e2e44;
+}
+
+.card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(139, 92, 246, 0.22);
+}
+
+.card__header h3 {
+  margin-bottom: 0;
+}
+
+/* Feature cards (landing page): emoji icon + colored top border */
+.feature-card {
+  border-top: 4px solid var(--feature-accent, #8b5cf6);
+}
+
+.feature-card__icon {
+  font-size: 2rem;
+  line-height: 1;
+  margin-bottom: 0.5rem;
+}
+
+.feature-card--pink {
+  --feature-accent: #ec4899;
+}
+
+.feature-card--purple {
+  --feature-accent: #8b5cf6;
+}
+
+.feature-card--mint {
+  --feature-accent: #2dd4bf;
+}
+
+.feature-card--gold {
+  --feature-accent: #f59e0b;
+}
+
+.feature-card--blue {
+  --feature-accent: #38bdf8;
+}
+
+.feature-card--rose {
+  --feature-accent: #fb7185;
+}
+
+/* ---------- Section headings on the landing page ---------- */
+.home-section-title {
+  font-size: 1.6rem;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  margin: 2.5rem 0 0.25rem;
+}
+
+.home-section-sub {
+  color: var(--ifm-font-color-secondary);
+  margin-bottom: 1.25rem;
+}
+
+/* Two-bot callout strip on the landing page */
+.two-bot-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin: 1.5rem 0 0.5rem;
+}
+
+.two-bot-chip {
+  flex: 1 1 260px;
+  border-radius: 14px;
+  padding: 1rem 1.25rem;
+  border: 1px solid var(--ifm-toc-border-color, #e5e5ef);
+}
+
+[data-theme='dark'] .two-bot-chip {
+  background: #20202f;
+  border-color: #2e2e44;
+}
+
+.two-bot-chip h3 {
+  margin-bottom: 0.25rem;
+}
+
+.two-bot-chip--main {
+  border-top: 4px solid #ec4899;
+}
+
+.two-bot-chip--helper {
+  border-top: 4px solid #2dd4bf;
+}
+
+/* ---------- Sidebar / navbar accents ---------- */
+.menu__link--active {
+  color: var(--ifm-color-primary-lightest);
+  background: rgba(139, 92, 246, 0.16);
+}
+
+.navbar__title {
+  font-weight: 700;
+}
+
+/* ---------- Tables ---------- */
+table thead tr {
+  border-bottom: 2px solid rgba(139, 92, 246, 0.35);
+}
+
+table th {
+  color: var(--ifm-color-primary-light, #7c3aed);
+}
+
+/* ---------- Code blocks ---------- */
+.prism-code {
+  border: 1px solid rgba(139, 92, 246, 0.18);
+  border-radius: 10px;
+}
+
+/* ---------- Admonitions: give them a pink/purple tint ---------- */
+.admonition {
+  border-radius: 10px;
+}
+
+.admonition--note {
+  border-color: #8b5cf6;
+}
+
+.admonition--tip {
+  border-color: #2dd4bf;
+}
+
+.admonition--caution,
+.admonition--warning {
+  border-color: #f59e0b;
 }

@@ -3,6 +3,7 @@ import asyncio
 import io
 import re
 import time
+from contextlib import asynccontextmanager
 import discord
 from discord.ext import commands
 import random
@@ -16,7 +17,11 @@ except ImportError:
     _PIL_OK = False
 
 from config import admin_required, extra_help, GUILD_IDS
-from data.DB.Storage.storage import get_levels, save_levels, get_xp, save_xp, log_activity
+from data.DB.db import database
+from data.DB.Storage.storage import (
+    get_levels, save_levels, get_xp, save_xp, log_activity,
+    get_voice_xp_config,
+)
 
 COOLDOWN_LEVEL = 30
 COOLDOWN_LEADERBOARD = 30
@@ -26,6 +31,75 @@ DAILY_STREAK_WINDOW = 40 * 3600  # claim within 40h to keep the streak
 DAILY_BASE = 50
 DAILY_STREAK_BONUS = 10  # per streak day, capped below
 DAILY_STREAK_CAP = 10
+
+# P2-15: cap on the /set_level_role backfill. A reward configured
+# after members already passed its level is granted to them on the
+# spot, but each grant is a Discord call, so one invocation backfills
+# at most this many members and tells the admin how many are left
+# (re-run the command to continue) instead of holding the
+# interaction open for a whole server.
+BACKFILL_MAX = 100
+
+# P2-5: cap on the per-message XP range. /set_xp_rate used to accept any
+# maximum, so an xp_max of 10**9 was storable and every message became
+# a multi-level event. The command refuses anything above this, and
+# on_message clamps stored values too, so bad data saved before the
+# cap existed can't keep awarding huge XP either.
+XP_RATE_MAX = 100
+
+# P2-6: cap on the per-message XP cooldown. /set_cooldown used to store
+# `seconds` verbatim, so a negative value was storable and every message
+# earned XP -- `now - ts < cooldown` is False for any negative cooldown,
+# so the cooldown was off while settings claimed e.g. -30s. The command
+# refuses anything outside 0..3600, and on_message clamps stored values
+# too, so bad data saved before the cap existed can't keep disabling
+# the cooldown either.
+COOLDOWN_MAX = 3600
+
+# P1-18: a Postgres advisory lock per guild serializes every
+# read-modify-write on that guild's level blob. get_levels +
+# save_levels is a whole-blob fetch + upsert with no lock, so two
+# concurrent messages (or a message racing a game/voice/bridge/panel
+# grant) used to interleave between the read and the write and the
+# last writer silently discarded the other's XP and level-up.
+#
+# The lock is pg_advisory_xact_lock(hashtext("levels:<guild_id>")),
+# taken inside a transaction on the shared async database
+# connection. It works even when no levels row exists yet (the key
+# is derived from the guild id, not from a row), and it serialises
+# across PROCESSES -- the main bot and the Havenly Helper worker
+# share the database, so a single-process asyncio.Lock can no
+# longer protect the blob. The lock is held only across the
+# load -> mutate -> save itself, never across Discord calls
+# (announcements, role adds), so a slow level-up DM can't stall the
+# guild's other XP.
+#
+# The transaction is the lock's scope: the advisory lock is released
+# automatically at COMMIT/ROLLBACK, and the load + save ride in the
+# same transaction, so the whole read-modify-write is atomic.
+# Never nest get_level_lock: a caller that already holds it must
+# use _apply_xp_locked(), never award_xp() -- the nested
+# transaction would degrade to a savepoint under the same lock,
+# which is safe but pointless, and the discipline keeps the lock
+# scope obvious.
+
+
+@asynccontextmanager
+async def get_level_lock(guild_id):
+    """Async context manager holding one guild's level lock.
+
+    Use as ``async with get_level_lock(gid):`` around a load ->
+    mutate -> save. Same call shape as before (the call sites are
+    unchanged); the context itself is the lock, so nothing is
+    yielded.
+    """
+    key = "levels:%s" % str(guild_id)
+    async with database.transaction():
+        await database.execute(
+            "SELECT pg_advisory_xact_lock(hashtext(:key)::bigint)",
+            {"key": key},
+        )
+        yield
 
 
 async def game_xp_enabled(guild_id):
@@ -44,35 +118,161 @@ async def levels_enabled(guild_id):
     return bool(db.get("settings", {}).get("levels_enabled", False))
 
 
-async def apply_level_rewards(guild, user_id, level, settings):
-    """Grant level-role rewards the member has earned (cumulative)."""
-    rewards = settings.get("level_roles", {})
+async def sync_level_rewards(guild, user_id, level, settings):
+    """Reconcile a member's level-role rewards with their current level.
+
+    Adds every reward for a level the member has reached that they
+    don't hold yet, and removes every configured reward for a level
+    above theirs that they still hold (level-down, panel Remove XP,
+    or a reward re-pointed at a higher level). One Discord call per
+    role, so a role the bot can't manage (e.g. sitting above the
+    bot, where add/remove raises Forbidden) fails on its own and
+    never blocks the other roles.
+
+    Returns (added, removed, failed): role names added, role names
+    removed, and "Name (reason)" strings for the roles that could
+    not be added or removed. Never raises; a member who left the
+    server, or a server with no rewards configured, returns three
+    empty lists. Failures are also logged loudly, because a reward
+    the bot can't grant looks live to an admin until someone
+    notices the role never lands. (P2-15: apply_level_rewards used
+    to only ever add, and swallowed Forbidden per role, so a member
+    who lost levels kept the roles and a reward above the bot
+    failed silently.)
+    """
+    rewards = (settings or {}).get("level_roles", {})
     if not rewards:
-        return
+        return [], [], []
     member = guild.get_member(int(user_id))
     if member is None:
-        return
+        return [], [], []
+    should_have = set()
     for lvl_str, role_id in rewards.items():
         try:
-            if level < int(lvl_str):
-                continue
-            role = guild.get_role(int(role_id))
-            if role is not None and role not in member.roles:
-                await member.add_roles(role, reason=f"Level reward: reached level {lvl_str}")
-        except (ValueError, discord.HTTPException):
+            if level >= int(lvl_str):
+                should_have.add(int(role_id))
+        except (ValueError, TypeError):
             continue
+    # Track holdings locally as we go: the member's cached role list
+    # may not reflect a role we just added/removed, and the same role
+    # can be configured at two levels, so a stale read would add or
+    # remove it twice.
+    held = {role.id for role in member.roles}
+    added, removed, failed = [], [], []
+    for lvl_str, role_id in rewards.items():
+        try:
+            rid = int(role_id)
+            role = guild.get_role(rid)
+        except (ValueError, TypeError):
+            continue
+        if role is None:
+            print("[WARN] Level reward for level %s points at deleted "
+                  "role %s; no member can ever earn it."
+                  % (lvl_str, role_id))
+            continue
+        try:
+            if rid in should_have and rid not in held:
+                await member.add_roles(
+                    role, reason="Level reward: reached level %s" % lvl_str)
+                held.add(rid)
+                added.append(role.name)
+            elif rid not in should_have and rid in held:
+                await member.remove_roles(
+                    role, reason="Level reward: below level %s" % lvl_str)
+                held.discard(rid)
+                removed.append(role.name)
+        except discord.Forbidden:
+            failed.append("%s (bot can't manage this role -- it may sit "
+                          "above the bot or the bot lacks Manage Roles)"
+                          % role.name)
+            print("[WARN] Could not %s level reward %s for %s: Forbidden "
+                  "(role above the bot or missing Manage Roles)."
+                  % ("grant" if rid in should_have else "remove",
+                     role.name, member.display_name))
+        except discord.HTTPException as exc:
+            failed.append("%s (%s)" % (role.name, exc))
+            print("[WARN] Could not sync level reward %s for %s: %r"
+                  % (role.name, member.display_name, exc))
+    return added, removed, failed
+
+
+async def apply_level_rewards(guild, user_id, level, settings):
+    """Grant level-role rewards the member has earned (cumulative).
+
+    Thin wrapper around sync_level_rewards: on a level-up the sync
+    only ever adds (nothing is above the new level), and any role
+    the bot can't grant is logged loudly by the sync instead of
+    being swallowed here. Kept so existing callers keep working.
+    (P2-15)"""
+    await sync_level_rewards(guild, user_id, level, settings)
+
+
+async def remove_level_rewards(guild, user_id, settings):
+    """Remove every configured level-role reward the member currently holds.
+
+    Mirror of apply_level_rewards for resets / level-downs: collects the
+    reward roles the member actually has and removes them in one call.
+    Returns (removed, failed): the names of the roles taken away, and
+    the names of the ones that could not be removed (e.g. a reward role
+    sitting above the bot, where remove_roles raises Forbidden -- a
+    subclass of HTTPException -- so the whole call fails and nothing
+    was removed). A failure never raises; the caller reports the
+    failed names so an admin can remove them by hand. A member who
+    left the server, or who holds no reward roles, returns two empty
+    lists. (P2-7: /resetxp used to leave every reward role on the
+    member, so a reset member kept roles they no longer qualified
+    for. The wider backfill/hierarchy work is P2-15, not this item.)
+    """
+    rewards = settings.get("level_roles", {})
+    if not rewards:
+        return [], []
+    member = guild.get_member(int(user_id))
+    if member is None:
+        return [], []
+    roles = []
+    for lvl_str, role_id in rewards.items():
+        try:
+            role = guild.get_role(int(role_id))
+        except (ValueError, TypeError):
+            continue
+        if role is not None and role in member.roles:
+            roles.append(role)
+    if not roles:
+        return [], []
+    try:
+        await member.remove_roles(
+            *roles, reason="Level reset: removing earned level-role rewards")
+    except discord.HTTPException:
+        return [], [role.name for role in roles]
+    return [role.name for role in roles], []
 
 
 async def announce_level_up(guild, user_id, display_name, level, settings,
-                          fallback_channel=None, accent=(88, 101, 242)):
+                          fallback_channel=None, accent=(88, 101, 242),
+                          interaction=None):
     """Post a level-up message (custom template or default) with a celebration card.
 
-    If a level-up channel is set, the message goes there. If no level
-    channel is set, the message is sent to the user by DM instead, so
-    it is only visible to them -- it never falls back to the public
-    channel where they leveled up. The message names the command that
-    turns level-up messages off for that user. The fallback_channel
-    parameter is kept for callers but is no longer used for announcements.
+    Delivery, in order:
+    1. A level-up channel is set: post there (public by design -- the
+       admin chose that channel as the celebration spot).
+    2. No level channel, and the XP came from a slash command: send the
+       announcement as an EPHEMERAL followup to that interaction, so
+       only the person who invoked the command sees it.
+    3. No level channel and no interaction (message or voice XP): stay
+       silent -- a bot cannot send an ephemeral message without an
+       interaction to answer, and public posts and DMs are both out.
+       The XP and role rewards still apply.
+
+    `fallback_channel` is kept for callers that pass it but is no
+    longer a delivery target (the public fallback post is what Emily
+    rejected 2026-11-09). `interaction` is the slash-command
+    interaction that caused the XP (None for message/voice XP).
+
+    CALLERS MUST DEFER WITH ephemeral=True: a public defer locks the
+    whole interaction's followups public, and Discord then ignores
+    the ephemeral flag on the followup -- the card is sent with
+    ephemeral=True but stored with flags=0 (live 2026-11-09, /add_xp
+    level-up to 8). /daily and /add_xp both defer ephemeral.
     """
     channel = None
     channel_id = settings.get("levelup_channel_id")
@@ -84,14 +284,35 @@ async def announce_level_up(guild, user_id, display_name, level, settings,
     text = render_levelup_message(settings, user_id, display_name, level)
     text += ("\n\nDon't want level-up messages? Run /toggle_level_messages "
              "to turn them off -- you'll still earn XP.")
-    dest = channel
-    if dest is None:
-        # No level channel: DM the user (private) instead of posting
-        # in the channel where they leveled up.
-        member = guild.get_member(int(user_id))
-        if member is None:
-            return
-        dest = member
+    if channel is None and interaction is not None:
+        # Ephemeral followup: only the invoker sees it. A followup can
+        # only be sent to an interaction that was deferred or answered
+        # (/daily and /add_xp both defer first), and the followup token
+        # stays valid for 15 minutes, so this cannot expire mid-award.
+        if _PIL_OK:
+            try:
+                member = guild.get_member(int(user_id))
+                url = str(member.display_avatar.url) if member else None
+                avatar_bytes = await _fetch_avatar_bytes(url) if url else None
+                card = await asyncio.to_thread(
+                    build_levelup_card, avatar_bytes, display_name, level, accent)
+                await interaction.followup.send(
+                    content=text, file=discord.File(card, filename="levelup.png"),
+                    ephemeral=True)
+                return
+            except Exception:
+                pass
+        try:
+            await interaction.followup.send(text, ephemeral=True)
+        except (discord.Forbidden, discord.HTTPException):
+            # Interaction gone (or the followup failed) -- stay silent
+            # rather than posting it publicly.
+            pass
+        return
+    if channel is None:
+        # No level channel and no interaction to answer: nowhere
+        # private to send it, so skip the announcement quietly.
+        return
     if _PIL_OK:
         try:
             member = guild.get_member(int(user_id))
@@ -99,15 +320,15 @@ async def announce_level_up(guild, user_id, display_name, level, settings,
             avatar_bytes = await _fetch_avatar_bytes(url) if url else None
             card = await asyncio.to_thread(
                 build_levelup_card, avatar_bytes, display_name, level, accent)
-            await dest.send(content=text, file=discord.File(card, filename="levelup.png"))
+            await channel.send(content=text, file=discord.File(card, filename="levelup.png"))
             return
         except Exception:
             pass
     try:
-        await dest.send(text)
+        await channel.send(text)
     except (discord.Forbidden, discord.HTTPException):
-        # DMs closed, or the channel is gone. Never fall back to a
-        # public channel -- the user just doesn't get the message.
+        # Bot can't post there (no access, or the channel is gone).
+        # The user just doesn't get the message.
         pass
 
 
@@ -149,18 +370,20 @@ CARD_PRESETS = {
 }
 
 
-async def award_xp(guild, user_id, display_name, amount, fallback_channel=None,
-                 apply_event=True):
-    """Award XP, handling level-ups, role rewards, and announcements.
+def _apply_xp_to_db(db, user_id, display_name, amount, apply_event=True):
+    """Mutate one user's XP inside an already-loaded levels blob.
 
-    Active XP events multiply earned XP (unless apply_event=False, used for
-    manual admin grants). Returns the list of new levels reached.
+    Pure in-memory work: no I/O, no lock (the caller owns both).
+    Returns (gained_levels, user_data). user_data is None when the
+    level system is off in this server (nothing was mutated).
+    Split out of _apply_xp_locked so award_xp_batch() can apply
+    several awards to one loaded blob (P2-8) instead of reloading
+    and re-saving the whole blob per member.
     """
-    gid, uid = str(guild.id), str(user_id)
-    db = await get_levels(gid)
+    uid = str(user_id)
     settings = db.setdefault("settings", {})
     if not settings.get("levels_enabled", False):
-        return []  # level system is off in this server -- no XP at all
+        return [], None  # level system is off in this server -- no XP at all
     if apply_event:
         until = settings.get("xp_event_until", 0)
         if until and time.time() < until:
@@ -173,18 +396,117 @@ async def award_xp(guild, user_id, display_name, amount, fallback_channel=None,
         user_data["xp"] -= user_data["level"] * 100
         user_data["level"] += 1
         gained.append(user_data["level"])
+    return gained, user_data
+
+
+async def _apply_xp_locked(guild, user_id, display_name, amount,
+                         apply_event=True):
+    """Load -> mutate -> save one user's XP. CALLER MUST HOLD the guild's
+    level lock (see get_level_lock); never call this without it.
+
+    Returns (gained_levels, user_data, settings). user_data is None
+    when the level system is off in this server (nothing was saved).
+    Kept separate from award_xp so the lock covers only the blob
+    read/write and not the slow Discord calls that follow it.
+    """
+    gid, uid = str(guild.id), str(user_id)
+    db = await get_levels(gid)
+    gained, user_data = _apply_xp_to_db(db, uid, display_name, amount,
+                                        apply_event)
+    if user_data is None:
+        return [], None, db.get("settings", {})
     await save_levels(gid, db)
-    if gained:
+    return gained, user_data, db["settings"]
+
+
+async def award_xp(guild, user_id, display_name, amount, fallback_channel=None,
+                 apply_event=True, interaction=None):
+    """Award XP, handling level-ups, role rewards, and announcements.
+
+    Active XP events multiply earned XP (unless apply_event=False, used for
+    manual admin grants). Returns the list of new levels reached.
+
+    P1-18: the blob read/write is serialized per guild (see
+    get_level_lock), so concurrent grants can't lose each other's XP.
+    Level-up announcements and role rewards run after the lock is
+    released, so they can't stall other grants.
+
+    `interaction` is the slash-command interaction that caused the XP
+    (passed by /daily and /add_xp so the level-up can go out as an
+    ephemeral followup when no level channel is set); None for
+    message/voice XP.
+    """
+    gid, uid = str(guild.id), str(user_id)
+    async with get_level_lock(gid):
+        gained, user_data, settings = await _apply_xp_locked(
+            guild, user_id, display_name, amount, apply_event)
+    if not gained:
+        return []
+    for new_level in gained:
+        await log_activity(uid, gid, "level_up", {"level": new_level})
+    await apply_level_rewards(guild, user_id, user_data["level"], settings)
+    # A user who opted out still earns XP (and role rewards) but
+    # gets no level-up announcement, anywhere.
+    if user_data.get("level_messages", True):
+        accent = _hex_to_rgb(user_data.get("card_color", "#5865F2"))
+        await announce_level_up(guild, user_id, display_name, user_data["level"],
+                                settings, fallback_channel, accent,
+                                interaction=interaction)
+    return gained
+
+
+async def award_xp_batch(guild, awards, fallback_channel=None,
+                       apply_event=True, interaction=None):
+    """Award level XP to several members with ONE levels-blob load/save.
+
+    P2-8: the voice XP ticker used to call award_xp() once per member
+    per 5-minute chunk, and every call re-loaded + re-saved the whole
+    guild levels blob. Batching holds the guild lock once, loads the
+    blob once, applies every award through _apply_xp_to_db(), and
+    saves once; level-up announcements and role rewards still run
+    per member afterwards, outside the lock, exactly as award_xp()
+    does them. An XP event multiplies each award the same way
+    award_xp() would (unless apply_event=False).
+
+    `awards` is an iterable of (user_id, display_name, amount).
+    Returns [(user_id, gained_levels), ...] in the order given.
+    An empty list does no I/O at all. When the level system is off
+    in this server nothing is awarded or saved.
+    """
+    awards = list(awards)
+    if not awards:
+        return []
+    gid = str(guild.id)
+    async with get_level_lock(gid):
+        db = await get_levels(gid)
+        settings = db.get("settings", {})
+        if not settings.get("levels_enabled", False):
+            return []
+        results = []
+        for user_id, display_name, amount in awards:
+            gained, user_data = _apply_xp_to_db(
+                db, user_id, display_name, amount, apply_event)
+            if user_data is not None:
+                results.append((str(user_id), display_name, gained, user_data))
+        await save_levels(gid, db)
+    out = []
+    for user_id, display_name, gained, user_data in results:
+        if not gained:
+            out.append((user_id, []))
+            continue
         for new_level in gained:
-            await log_activity(uid, gid, "level_up", {"level": new_level})
+            await log_activity(user_id, gid, "level_up", {"level": new_level})
         await apply_level_rewards(guild, user_id, user_data["level"], settings)
         # A user who opted out still earns XP (and role rewards) but
         # gets no level-up announcement, anywhere.
         if user_data.get("level_messages", True):
             accent = _hex_to_rgb(user_data.get("card_color", "#5865F2"))
-            await announce_level_up(guild, user_id, display_name, user_data["level"],
-                                    settings, fallback_channel, accent)
-    return gained
+            await announce_level_up(guild, user_id, display_name,
+                                    user_data["level"], settings,
+                                    fallback_channel, accent,
+                                    interaction=interaction)
+        out.append((user_id, gained))
+    return out
 
 
 # ----- rank card -----
@@ -416,6 +738,259 @@ class NoXpBulkView(discord.ui.View):
         await interaction.edit_original_response(content=summary, view=self)
 
 
+def _chunk_lines(lines, limit=1000):
+    """Split lines into chunks of at most `limit` chars, never splitting
+    mid-line. Same shape as the help cog's chunker (embed field values
+    cap at 1024). A single line longer than the limit is truncated."""
+    chunks, current = [], ""
+    for line in lines:
+        if len(line) > limit:
+            line = line[:limit - 1] + "…"
+        if current and len(current) + 1 + len(line) > limit:
+            chunks.append(current)
+            current = line
+        else:
+            current = (current + "\n" + line) if current else line
+    if current:
+        chunks.append(current)
+    return chunks
+
+
+def _build_level_embeds(sections):
+    """Turn [(title, description, [(field name, field value), ...]), ...]
+    into a list of embeds, each within Discord's caps (25 fields,
+    ~5800 chars total). Each section starts a fresh embed; a section
+    whose fields don't fit continues in following embeds titled
+    "<title> (cont.)"."""
+    embeds = []
+    for title, description, fields in sections:
+        current = None
+
+        def _size(embed):
+            total = len(embed.title or "") + len(embed.description or "")
+            return total + sum(len(f.name) + len(f.value) for f in embed.fields)
+
+        for name, value in fields:
+            if (current is None or len(current.fields) >= 25
+                    or _size(current) + len(name) + len(value) > 5800):
+                current = discord.Embed(
+                    title=(title if current is None else title + " (cont.)"),
+                    color=discord.Color.blue())
+                if description and current.title == title:
+                    current.description = description
+                embeds.append(current)
+            current.add_field(name=name, value=value, inline=False)
+        if current is None:
+            # A section with no fields still gets its embed (its
+            # description carries the content, e.g. "None — ...").
+            current = discord.Embed(title=title, color=discord.Color.blue())
+            if description:
+                current.description = description
+            embeds.append(current)
+    return embeds
+
+
+class LevelSettingsView(discord.ui.View):
+    """The Manage button on the /level_settings overview. Only the
+    admin who ran the overview can open the no-XP picker; the picker
+    itself (NoXpBulkView) re-checks the opener on every click, so a
+    stale view can't be driven by anyone else either."""
+
+    def __init__(self, author_id, guild_id):
+        super().__init__(timeout=300)
+        self.author_id = author_id
+        self.guild_id = guild_id
+
+    @discord.ui.button(label="Manage no-XP channels",
+                       style=discord.ButtonStyle.primary)
+    async def manage(self, button, interaction):
+        if interaction.user.id != self.author_id:
+            await interaction.response.send_message(
+                "Only the admin who ran /level_settings can use this.",
+                ephemeral=True)
+            return
+        view = NoXpBulkView(self.author_id, self.guild_id)
+        await interaction.response.send_message(
+            content=("Pick channels below, then hit **Disable XP** to stop XP in all of them, "
+                     "or **Enable XP** to turn XP back on in them."),
+            view=view,
+            ephemeral=True)
+
+
+class CleardataConfirmView(discord.ui.View):
+    """Confirm /cleardata before anything is wiped.
+
+    One tap used to delete every member's XP/levels/streaks *and* the
+    server settings (XP rate, cooldown, role rewards, no-XP channels,
+    the levels_enabled flag itself), so a misclick silently turned the
+    level system off. Confirm re-checks the cleardata gate at click
+    time, reloads the levels row fresh, wipes only the member entries,
+    and writes the row back with the settings preserved. A denied
+    click leaves the view open so another admin can still confirm.
+    """
+
+    def __init__(self, guild_id):
+        super().__init__(timeout=180)
+        self.guild_id = str(guild_id)
+        self.done = False
+
+    @discord.ui.button(label="Yes, clear all level data",
+                       style=discord.ButtonStyle.danger)
+    async def confirm(self, button, interaction):
+        if self.done:
+            await interaction.response.send_message(
+                "This confirmation was already handled.", ephemeral=True)
+            return
+        self.done = True
+        from utils.permissions import check_interaction_permission, _default_admin_only
+        if not await check_interaction_permission(
+                interaction, "cleardata", _default_admin_only):
+            self.done = False
+            return
+        for child in self.children:
+            child.disabled = True
+        try:
+            db = await get_levels(self.guild_id)
+            settings = db.get("settings", {})
+            count = len([k for k in db if k != "settings"])
+            await save_levels(self.guild_id, {"settings": settings})
+        except Exception as exc:
+            await interaction.response.edit_message(
+                content=("⚠️ Could not clear level data (database error: %s) — "
+                         "nothing was changed. Try again in a moment." % exc),
+                view=self)
+            self.stop()
+            return
+        await interaction.response.edit_message(
+            content=(f"✅ Cleared level data for **{count}** member(s). "
+                     "Server settings were kept (XP rate, cooldown, role "
+                     "rewards, no-XP channels, level system on/off)."),
+            view=self)
+        self.stop()
+
+    @discord.ui.button(label="Cancel", style=discord.ButtonStyle.secondary)
+    async def cancel(self, button, interaction):
+        if self.done:
+            await interaction.response.send_message(
+                "This confirmation was already handled.", ephemeral=True)
+            return
+        self.done = True
+        for child in self.children:
+            child.disabled = True
+        await interaction.response.edit_message(
+            content="❌ Cancelled — nothing was cleared.", view=self)
+        self.stop()
+
+
+class ResetxpConfirmView(discord.ui.View):
+    """Confirm /resetxp before one member's progress is wiped.
+
+    One tap used to reset a member's XP/level with no confirmation,
+    while leaving every level-role reward on them and silently
+    dropping daily_streak, daily_last, card_color and level_messages
+    from the row. Confirm re-checks the resetxp gate at click time,
+    reloads the levels row fresh under the guild lock, resets only
+    XP and level (the row is mutated in place, so the non-XP keys
+    survive), strips the member's earned level-role rewards, and
+    reports anything it could not remove. A denied click leaves the
+    view open so another admin can still confirm.
+    """
+
+    def __init__(self, guild_id, user_id):
+        super().__init__(timeout=180)
+        self.guild_id = str(guild_id)
+        self.user_id = str(user_id)
+        self.done = False
+
+    @discord.ui.button(label="Yes, reset their XP",
+                       style=discord.ButtonStyle.danger)
+    async def confirm(self, button, interaction):
+        if self.done:
+            await interaction.response.send_message(
+                "This confirmation was already handled.", ephemeral=True)
+            return
+        self.done = True
+        from utils.permissions import check_interaction_permission, _default_admin_only
+        if not await check_interaction_permission(
+                interaction, "resetxp", _default_admin_only):
+            self.done = False
+            return
+        for child in self.children:
+            child.disabled = True
+        guild = interaction.guild
+        member = (guild.get_member(int(self.user_id))
+                  if guild is not None else None)
+        name = "that member"
+        try:
+            # P1-18: hold the guild lock across the load -> mutate ->
+            # save, never across the Discord role call below.
+            async with get_level_lock(self.guild_id):
+                db = await get_levels(self.guild_id)
+                user = db.get(self.user_id)
+                if not user:
+                    await interaction.response.edit_message(
+                        content="That member has no level data — nothing to reset.",
+                        view=self)
+                    self.stop()
+                    return
+                settings = db.get("settings", {})
+                old_level = user.get("level", 1)
+                old_xp = user.get("xp", 0)
+                # Reset XP/level only: mutate the row in place so the
+                # non-XP keys (daily streak, card color, level-up
+                # message preference, ...) survive the reset instead
+                # of being dropped by a dict replacement.
+                user["xp"] = 0
+                user["level"] = 1
+                if member is not None:
+                    user["username"] = member.display_name
+                name = user.get("username") or name
+                await save_levels(self.guild_id, db)
+        except Exception as exc:
+            await interaction.response.edit_message(
+                content=("⚠️ Could not reset that member (database error: %s) — "
+                         "nothing was changed. Try again in a moment." % exc),
+                view=self)
+            self.stop()
+            return
+        # Role removal runs after the lock is released (a Discord call,
+        # never under the guild lock) and after the DB reset, so a
+        # failed removal never un-does the reset: the row is reset and
+        # the message says exactly which roles still need removing.
+        removed, failed = await remove_level_rewards(
+            guild, self.user_id, settings)
+        parts = ["✅ Reset %s: level %d (%s XP) → level 1, 0 XP."
+                 % (name, old_level, f"{old_xp:,}")]
+        if removed:
+            parts.append("Removed level-role reward(s): %s."
+                         % ", ".join(removed))
+        if failed:
+            parts.append("⚠️ Could not remove: %s (a reward role may sit "
+                         "above the bot — remove by hand)."
+                         % ", ".join(failed))
+        if member is None:
+            parts.append("They are no longer in the server, so no roles "
+                         "were checked.")
+        parts.append("Daily streak, card color, and level-up message "
+                     "preference were kept.")
+        await interaction.response.edit_message(
+            content="\n".join(parts), view=self)
+        self.stop()
+
+    @discord.ui.button(label="Cancel", style=discord.ButtonStyle.secondary)
+    async def cancel(self, button, interaction):
+        if self.done:
+            await interaction.response.send_message(
+                "This confirmation was already handled.", ephemeral=True)
+            return
+        self.done = True
+        for child in self.children:
+            child.disabled = True
+        await interaction.response.edit_message(
+            content="❌ Cancelled — nothing was reset.", view=self)
+        self.stop()
+
+
 class LevelSystem(commands.Cog):
     HelpCategory = "Level System"
 
@@ -434,7 +1009,10 @@ class LevelSystem(commands.Cog):
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
-        if message.author.bot or not message.guild:
+        # P2-14: webhook messages have a non-bot author, so anyone able
+        # to post through a webhook in a channel could farm message XP
+        # with no user account sending anything. Ignore them entirely.
+        if message.author.bot or message.webhook_id is not None or not message.guild:
             return
 
         gid = str(message.guild.id)
@@ -446,26 +1024,50 @@ class LevelSystem(commands.Cog):
             return  # level system is off in this server
         if str(message.channel.id) in settings.get("no_xp_channels", []):
             return  # this channel is opted out of XP
+        # Threads: a thread under a no-XP channel never earns XP, and
+        # when XP in threads is off no thread message earns XP (covers
+        # ticket threads from external ticket bots, discussion threads,
+        # and forum posts -- thread ids are created on the fly, so they
+        # can never be pre-listed in no_xp_channels). Default on, so
+        # nothing changes until an admin flips it with /toggle_thread_xp.
+        if isinstance(message.channel, discord.Thread):
+            parent_id = getattr(message.channel, "parent_id", None)
+            if (parent_id is not None
+                    and str(parent_id) in settings.get("no_xp_channels", [])):
+                return
+            if not settings.get("xp_in_threads", True):
+                return
         cooldown = settings.get("cooldown", 0)
+        # P2-6: clamp stored values saved before the /set_cooldown cap.
+        # A negative cooldown used to make `now - ts < cooldown` False
+        # for every message, so the cooldown was silently off.
+        cooldown = max(0, min(cooldown, COOLDOWN_MAX))
 
         now = time.time()
         if cooldown:
-            timestamps = await get_xp(gid)
-            if now - timestamps.get(uid, 0) < cooldown:
-                return
-            timestamps[uid] = now
-            await save_xp(gid, timestamps)
+            # P1-18 / P2-13: the cooldown check-then-save is a race too --
+            # two messages at once both read the old timestamp and both
+            # award. Hold the guild lock across the claim, then release
+            # it before award_xp (which takes the lock itself).
+            async with get_level_lock(gid):
+                timestamps = await get_xp(gid)
+                if now - timestamps.get(uid, 0) < cooldown:
+                    return
+                timestamps[uid] = now
+                await save_xp(gid, timestamps)
 
         lo, hi = settings.get("xp_min", 1), settings.get("xp_max", 5)
         if lo > hi:  # guard against bad data saved before validation existed
             lo, hi = hi, lo
+        # P2-5: clamp stored values saved before the /set_xp_rate cap.
+        lo, hi = min(lo, XP_RATE_MAX), min(hi, XP_RATE_MAX)
         xp_gain = random.randint(lo, hi)
 
         await award_xp(message.guild, message.author.id, message.author.display_name,
                        xp_gain, fallback_channel=message.channel)
 
     @commands.slash_command(name="set_xp_rate", description="Set XP gain range per message", guild_ids=GUILD_IDS)
-    @extra_help("Set the minimum and maximum XP that can be gained per message.")
+    @extra_help("Set the minimum and maximum XP that can be gained per message (maximum 100).")
     async def set_xp_rate(self, interaction, minimum: int, maximum: int):
         from utils.permissions import check_slash_permission, _default_admin_only
         if not await check_slash_permission(interaction, "set_xp_rate", _default_admin_only):
@@ -474,6 +1076,12 @@ class LevelSystem(commands.Cog):
             return await interaction.respond("XP values can't be negative.", ephemeral=True)
         if minimum > maximum:
             return await interaction.respond("Minimum can't be higher than maximum.", ephemeral=True)
+        # P2-5: no upper bound used to let xp_max of 10**9 be stored,
+        # turning every message into a multi-level event.
+        if maximum > XP_RATE_MAX:
+            return await interaction.respond(
+                "Maximum XP per message can't be more than %d." % XP_RATE_MAX,
+                ephemeral=True)
         gid = str(interaction.guild.id)
         db = await get_levels(gid)
         db.setdefault("settings", {})["xp_min"] = minimum
@@ -482,26 +1090,58 @@ class LevelSystem(commands.Cog):
         await interaction.respond(f"✅ XP gain range set to {minimum}–{maximum} XP/msg")
 
     @commands.slash_command(name="set_cooldown", description="Set XP gain cooldown (sec)", guild_ids=GUILD_IDS)
-    @extra_help("Set the cooldown in seconds between XP gains per user. Set to 0 for no cooldown.")
+    @extra_help("Set the cooldown in seconds between XP gains per user (0-3600). Set to 0 for no cooldown.")
     async def set_cooldown(self, interaction, seconds: int):
         from utils.permissions import check_slash_permission, _default_admin_only
         if not await check_slash_permission(interaction, "set_cooldown", _default_admin_only):
             return
+        # P2-6: a negative cooldown used to be stored verbatim, silently
+        # disabling the cooldown (every message earned XP), and a huge
+        # one could lock XP out for effectively forever.
+        if seconds < 0:
+            return await interaction.respond(
+                "Cooldown can't be negative -- use 0 for no cooldown.",
+                ephemeral=True)
+        if seconds > COOLDOWN_MAX:
+            return await interaction.respond(
+                "Cooldown can't be more than %d seconds (1 hour)." % COOLDOWN_MAX,
+                ephemeral=True)
         gid = str(interaction.guild.id)
         db = await get_levels(gid)
         db.setdefault("settings", {})["cooldown"] = seconds
         await save_levels(gid, db)
         await interaction.respond(f"✅ Cooldown set to {seconds}s")
 
-    @commands.slash_command(name="set_level_channel", description="Set level-up message channel", guild_ids=GUILD_IDS)
-    @extra_help("Set the channel where level-up messages will be posted.")
-    async def set_level_channel(self, interaction, channel: discord.TextChannel):
+    @commands.slash_command(name="set_level_channel", description="Set or remove the level-up message channel", guild_ids=GUILD_IDS)
+    @extra_help("Set the channel where level-up messages will be posted, or turn remove on to clear it (level-ups then go out as ephemeral replies where possible, and are skipped otherwise).")
+    async def set_level_channel(
+        self,
+        interaction,
+        channel: discord.Option(discord.TextChannel, "Channel for level-up messages", required=False, default=None),
+        remove: discord.Option(bool, "Remove the level-up channel", required=False, default=False),
+    ):
         from utils.permissions import check_slash_permission, _default_admin_only
         if not await check_slash_permission(interaction, "set_level_channel", _default_admin_only):
             return
         gid = str(interaction.guild.id)
         db = await get_levels(gid)
-        db.setdefault("settings", {})["levelup_channel_id"] = str(channel.id)
+        settings = db.setdefault("settings", {})
+        if remove and channel is not None:
+            return await interaction.respond(
+                "Pick one: give a channel to set it, or turn remove on to clear it — not both.",
+                ephemeral=True)
+        if remove:
+            settings.pop("levelup_channel_id", None)
+            await save_levels(gid, db)
+            return await interaction.respond(
+                "✅ Level-up channel removed — level-ups will go out as ephemeral replies where possible, and are skipped otherwise.")
+        if channel is None:
+            current = settings.get("levelup_channel_id")
+            return await interaction.respond(
+                "Give a channel to set it, or turn remove on to clear it." +
+                (f" Current channel: <#{current}>." if current else " No level-up channel is set right now."),
+                ephemeral=True)
+        settings["levelup_channel_id"] = str(channel.id)
         await save_levels(gid, db)
         await interaction.respond(f"✅ Level-up messages will post in {channel.mention}")
 
@@ -612,26 +1252,40 @@ class LevelSystem(commands.Cog):
             return await interaction.respond(
                 "The level system is off in this server. Turn it on with /toggle_levels first.",
                 ephemeral=True)
+        # Defer first: award_xp can take seconds when it levels the
+        # member up (role rewards + level-up card + announcement), and
+        # an interaction left unanswered for 3s expires -- Discord
+        # then shows "The application did not respond" even though the
+        # XP was already awarded (live 10062 on 2026-11-09).
+        # The defer MUST be ephemeral: a public defer locks the whole
+        # interaction's followups public, and Discord then ignores the
+        # ephemeral flag on the level-up followup (live 2026-11-09:
+        # the card was sent with ephemeral=True but stored flags=0).
+        # Everything on this interaction -- the level-up card AND the
+        # confirmation below -- renders ephemeral, visible only to the
+        # admin who ran the command.
+        await interaction.response.defer(ephemeral=True)
         gained = await award_xp(interaction.guild, member.id, member.display_name,
                                 amount, fallback_channel=interaction.channel,
-                                apply_event=False)  # manual grants aren't multiplied
+                                apply_event=False,  # manual grants aren't multiplied
+                                interaction=interaction)  # level-up goes ephemeral to the invoker
         db = await get_levels(str(interaction.guild.id))
         user_data = db[str(member.id)]
         xp_needed = user_data["level"] * 100
         if gained:
-            await interaction.respond(
+            await interaction.followup.send(
                 f"\u2705 Added {amount} XP to {member.mention} \u2014 they leveled up to "
                 f"**{user_data['level']}**! \U0001f389")
         else:
             xp_remaining = xp_needed - user_data["xp"]
-            await interaction.respond(
+            await interaction.followup.send(
                 f"\u2705 Added {amount} XP to {member.mention}\n"
                 f"\U0001f4c8 Level: {user_data['level']} \u2014 XP: {user_data['xp']}/{xp_needed} "
                 f"(\U0001f9ee {xp_remaining} XP to next level)"
             )
 
     @commands.slash_command(name="resetxp", description="Reset XP and level for a user", guild_ids=GUILD_IDS)
-    @extra_help("Reset a user's XP and level to 0 and 1 respectively. Admins only.")
+    @extra_help("Reset a user's XP and level to 0 and 1 respectively. Admins only. Asks for confirmation first; the member's level-role rewards are removed too, while their daily streak, card color, and level-up message preference are kept.")
     async def resetxp(self, interaction, member: discord.Member):
         from utils.permissions import check_slash_permission, _default_admin_only
         if not await check_slash_permission(interaction, "resetxp", _default_admin_only):
@@ -639,21 +1293,56 @@ class LevelSystem(commands.Cog):
         gid, uid = str(interaction.guild.id), str(member.id)
         db = await get_levels(gid)
 
-        if uid in db:
-            db[uid] = {"xp": 0, "level": 1, "username": member.display_name}
-            await save_levels(gid, db)
-            await interaction.respond(f"✅ Reset data for {member.display_name}.")
-        else:
+        if uid not in db:
             await interaction.respond("User not found.")
+            return
+        # P2-7: one tap used to wipe the member's progress on the
+        # spot, keep every level-role reward on them, and drop the
+        # non-XP keys from the row. Now the reset asks first, strips
+        # the earned reward roles on confirm, and keeps the rest of
+        # the row (daily streak, card color, level-up message
+        # preference) intact.
+        user = db[uid]
+        rewards = db.get("settings", {}).get("level_roles", {})
+        held = []
+        for lvl_str, role_id in rewards.items():
+            try:
+                role = interaction.guild.get_role(int(role_id))
+            except (ValueError, TypeError):
+                continue
+            if role is not None and role in member.roles:
+                held.append(role.name)
+        prompt = (f"⚠️ Reset **{member.display_name}** (level "
+                  f"{user.get('level', 1)}, {user.get('xp', 0):,} XP) back to "
+                  "level 1, 0 XP?\n")
+        if held:
+            prompt += ("This also removes their level-role reward(s): %s.\n"
+                       % ", ".join(held))
+        prompt += ("Their daily streak, card color, and level-up message "
+                   "preference are kept.")
+        await interaction.respond(
+            prompt, view=ResetxpConfirmView(gid, uid), ephemeral=True)
 
     @commands.slash_command(name="cleardata", description="Clear all level data for this server", guild_ids=GUILD_IDS)
-    @extra_help("Clear all level data for this server. Admins only.")
+    @extra_help("Clear every member's level data for this server. Admins only. Asks for confirmation first; server settings (XP rate, cooldown, role rewards, no-XP channels, level system on/off) are kept.")
     async def cleardata(self, interaction):
         from utils.permissions import check_slash_permission, _default_admin_only
         if not await check_slash_permission(interaction, "cleardata", _default_admin_only):
             return
-        await save_levels(str(interaction.guild.id), {})
-        await interaction.respond("⚠️ All data cleared for this server.")
+        gid = str(interaction.guild.id)
+        db = await get_levels(gid)
+        member_count = len([k for k in db if k != "settings"])
+        if member_count == 0:
+            return await interaction.respond(
+                "There is no level data to clear in this server.",
+                ephemeral=True)
+        await interaction.respond(
+            f"⚠️ Clear level data for **{member_count}** member(s)?\n"
+            "This deletes every member's XP, levels, and daily streaks. "
+            "**Server settings are kept** — XP rate, cooldown, role rewards, "
+            "no-XP channels, and the level system on/off state stay as they are.",
+            view=CleardataConfirmView(gid),
+            ephemeral=True)
 
     @commands.slash_command(name="getxpsettings", description="View current XP settings", guild_ids=GUILD_IDS)
     @extra_help("View XP gain, cooldown, level-up channel, role rewards, no-XP channels, XP events, and the game XP toggle.")
@@ -672,7 +1361,7 @@ class LevelSystem(commands.Cog):
         channel_id = settings.get("levelup_channel_id")
         embed.add_field(name="📢 Level-up Channel",
                         value=(f"<#{channel_id}>" if channel_id
-                               else "Not set (level-ups are sent by DM)"),
+                               else "Not set (level-ups go out as ephemeral replies, or are skipped)"),
                         inline=False)
         rewards = settings.get("level_roles", {})
         if rewards:
@@ -702,20 +1391,206 @@ class LevelSystem(commands.Cog):
 
         await interaction.respond(embed=embed)
 
+    @commands.slash_command(name="level_settings", description="Show the level system's full configuration", guild_ids=GUILD_IDS)
+    @extra_help("Admin overview of the level system: on/off, XP rates, cooldown, level-up channel, role rewards, XP events, which channels earn XP and which don't, and whether threads earn XP. Includes a button to manage no-XP channels.")
+    async def level_settings(self, interaction):
+        from utils.permissions import check_slash_permission, _default_admin_only
+        if not await check_slash_permission(interaction, "level_settings", _default_admin_only):
+            return
+        guild = interaction.guild
+        gid = str(guild.id)
+        db = await get_levels(gid)
+        settings = db.get("settings", {}) if isinstance(db, dict) else {}
+        try:
+            voice_cfg = await get_voice_xp_config(gid)
+        except Exception:
+            voice_cfg = {}
+
+        enabled = bool(settings.get("levels_enabled", False))
+        xp_min = settings.get("xp_min", 1)
+        xp_max = settings.get("xp_max", 5)
+        cooldown = settings.get("cooldown", 0)
+        game_xp = settings.get("game_xp", GAME_XP_DEFAULT)
+        xp_threads = settings.get("xp_in_threads", True)
+        no_xp = list(settings.get("no_xp_channels", []) or [])
+        no_xp_set = set(str(c) for c in no_xp)
+        level_roles = settings.get("level_roles", {}) or {}
+
+        # Section 1: the settings themselves.
+        fields = [
+            ("Status", "ON" if enabled
+             else "OFF — turn it on with /toggle_levels"),
+            ("XP per message", "%s–%s XP, cooldown %ss" % (xp_min, xp_max, cooldown)),
+            ("XP in threads", ("ON — messages in threads earn XP" if xp_threads
+                               else "OFF — messages in threads earn no XP")),
+            ("Game XP", "ON" if game_xp else "OFF"),
+        ]
+        voice_on = voice_cfg.get("enabled", True)
+        fields.append(("Voice XP",
+                       ("ON — %s XP/min, cap %s/day"
+                        % (voice_cfg.get("xp_per_minute", 1),
+                           voice_cfg.get("daily_cap_xp", 100)))
+                       if voice_on else "OFF"))
+        channel_id = settings.get("levelup_channel_id")
+        fields.append(("Level-up channel",
+                       (f"<#{channel_id}>" if channel_id
+                        else "Not set (level-ups go out as ephemeral replies, or are skipped)")))
+        msg = settings.get("levelup_message")
+        fields.append(("Level-up message",
+                       ((msg[:100] + "…") if len(msg) > 100 else msg)
+                       if msg else "Default"))
+        until = settings.get("xp_event_until", 0)
+        if until and until > time.time():
+            fields.append(("XP event",
+                           "%sx until <t:%d:R>"
+                           % (settings.get("xp_event_multiplier", 2), int(until))))
+        else:
+            fields.append(("XP event", "None active"))
+        if level_roles:
+            lines = []
+            for lvl in sorted(level_roles,
+                              key=lambda s: int(s) if str(s).isdigit() else 0):
+                try:
+                    role = guild.get_role(int(level_roles[lvl]))
+                except (ValueError, TypeError):
+                    role = None
+                lines.append("Level %s: %s"
+                             % (lvl, role.mention if role is not None
+                                else "(deleted role, id %s)" % level_roles[lvl]))
+            fields.append(("Role rewards", "\n".join(lines)))
+        else:
+            fields.append(("Role rewards", "None set"))
+        sections = [("Level System Settings", None, fields)]
+
+        # Section 2: the no-XP channels, with names (deleted ones marked).
+        if not no_xp:
+            sections.append(("No-XP channels (0)",
+                             "None — every text channel earns XP.", []))
+        else:
+            lines = []
+            for cid in no_xp:
+                channel = (guild.get_channel(int(cid))
+                           if str(cid).isdigit() else None)
+                if channel is not None:
+                    lines.append(channel.mention)
+                else:
+                    lines.append("(deleted channel, id %s)" % cid)
+            noxp_fields = [
+                ("No XP" if i == 0 else "No XP (cont.)", chunk)
+                for i, chunk in enumerate(_chunk_lines(lines))]
+            sections.append(("No-XP channels (%d)" % len(no_xp), None,
+                             noxp_fields))
+
+        # Section 3: the channels that earn XP (counts, names when short).
+        visible = list(getattr(guild, "text_channels", []) or [])
+        giving = [c for c in visible if str(c.id) not in no_xp_set]
+        rule = "Every text channel earns XP except the no-XP list above."
+        if not xp_threads:
+            rule += " Threads earn no XP right now (XP in threads is OFF)."
+        joined = "\n".join(c.mention for c in giving)
+        xp_fields = []
+        if giving and len(joined) <= 1000:
+            xp_fields.append(("Earn XP", joined))
+        sections.append(("Channels that earn XP (%d of %d)"
+                         % (len(giving), len(visible)), rule, xp_fields))
+
+        embeds = _build_level_embeds(sections)
+        view = LevelSettingsView(interaction.user.id, guild.id)
+        # One embed per message (Discord caps total chars across all
+        # embeds in one message at 6000); the Manage button rides on
+        # the first message.
+        first = True
+        for em in embeds:
+            if first:
+                await interaction.respond(embed=em, view=view, ephemeral=True)
+                first = False
+            else:
+                await interaction.followup.send(embed=em, ephemeral=True)
+
     @commands.slash_command(name="set_level_role", description="Set a role reward for reaching a level", guild_ids=GUILD_IDS)
-    @extra_help("Members automatically receive the role when they reach the level. Rewards are cumulative.")
+    @extra_help("Members automatically receive the role when they reach the level. Rewards are cumulative. Members who already hold the level get the role right away (backfilled).")
     async def set_level_role(self, interaction, level: int, role: discord.Role):
         from utils.permissions import check_slash_permission, _default_admin_only
         if not await check_slash_permission(interaction, "set_level_role", _default_admin_only):
             return
         if level < 2:
             return await interaction.respond("Level must be at least 2.", ephemeral=True)
-        gid = str(interaction.guild.id)
+        if role.is_default():
+            return await interaction.respond(
+                "@everyone can't be a level reward — pick a real role.", ephemeral=True)
+        guild = interaction.guild
+        gid = str(guild.id)
         db = await get_levels(gid)
         rewards = db.setdefault("settings", {}).setdefault("level_roles", {})
         rewards[str(level)] = str(role.id)
         await save_levels(gid, db)
-        await interaction.respond(f"✅ {role.mention} will be awarded at level **{level}**.")
+        # P2-15: a reward configured after members already passed its
+        # level used to never reach them, and a reward role above the
+        # bot used to fail silently per member, so the admin thought
+        # it was live when it never applied. Check the bot can manage
+        # the role first; if not, say so plainly and skip the backfill
+        # instead of failing once per member.
+        me = guild.me
+        can_manage = (me is not None
+                      and getattr(me.guild_permissions, "manage_roles", False)
+                      and me.top_role > role)
+        if not can_manage:
+            return await interaction.respond(
+                f"✅ {role.mention} will be awarded at level **{level}**.\n"
+                "⚠️ But the bot can't grant this role — it sits above the "
+                "bot's highest role, or the bot lacks Manage Roles. Move "
+                "the bot's role above it (Server Settings → Roles) and "
+                "re-run this command to backfill members who already "
+                "qualify.")
+        # Backfill members who already hold the level. Deferred: the
+        # grants are one Discord call each, so a big server takes a
+        # while; capped per run (see BACKFILL_MAX).
+        await interaction.defer()
+        qualifying = [uid for uid, row in db.items()
+                      if uid != "settings" and isinstance(row, dict)
+                      and row.get("level", 1) >= level]
+        added = already = skipped = 0
+        failed = []
+        for uid in qualifying[:BACKFILL_MAX]:
+            member = guild.get_member(int(uid))
+            if member is None:
+                skipped += 1
+                continue
+            if role in member.roles:
+                already += 1
+                continue
+            try:
+                await member.add_roles(
+                    role, reason="Level reward backfill: already level %d" % level)
+                added += 1
+            except discord.Forbidden:
+                failed.append(member.display_name)
+                print("[WARN] Backfill: could not grant %s to %s: Forbidden "
+                      "(role above the bot or missing Manage Roles)."
+                      % (role.name, member.display_name))
+            except discord.HTTPException as exc:
+                failed.append(member.display_name)
+                print("[WARN] Backfill: could not grant %s to %s: %r"
+                      % (role.name, member.display_name, exc))
+        remaining = len(qualifying) - BACKFILL_MAX if len(qualifying) > BACKFILL_MAX else 0
+        parts = [f"✅ {role.mention} will be awarded at level **{level}**."]
+        bits = []
+        if added:
+            bits.append("%d member(s) backfilled" % added)
+        if already:
+            bits.append("%d already had it" % already)
+        if skipped:
+            bits.append("%d no longer in the server" % skipped)
+        if failed:
+            bits.append("could not grant to %d (%s)"
+                        % (len(failed), ", ".join(failed[:5])))
+        if bits:
+            parts.append("Backfill: %s." % "; ".join(bits))
+        if remaining:
+            parts.append("%d more member(s) still qualify — run "
+                         "/set_level_role again to continue the backfill."
+                         % remaining)
+        await interaction.followup.send("\n".join(parts))
 
     @commands.slash_command(name="remove_level_role", description="Remove a level role reward", guild_ids=GUILD_IDS)
     @extra_help("Stops awarding a role at the given level (members who already have it keep it).")
@@ -766,6 +1641,24 @@ class LevelSystem(commands.Cog):
                   if new_val else
                   "members will no longer earn XP, and level-ups stop")
         await interaction.respond(f"📊 Level system is now **{state}** — {detail}.")
+
+    @commands.slash_command(name="toggle_thread_xp", description="Turn XP on/off for messages in threads", guild_ids=GUILD_IDS)
+    @extra_help("Turns message XP on or off inside threads (ticket threads, discussion threads, forum posts). On by default -- turn it off so ticket threads don't earn XP.")
+    async def toggle_thread_xp(self, interaction):
+        from utils.permissions import check_slash_permission, _default_admin_only
+        if not await check_slash_permission(interaction, "toggle_thread_xp", _default_admin_only):
+            return
+        gid = str(interaction.guild.id)
+        db = await get_levels(gid)
+        settings = db.setdefault("settings", {})
+        new_val = not settings.get("xp_in_threads", True)
+        settings["xp_in_threads"] = new_val
+        await save_levels(gid, db)
+        state = "ON" if new_val else "OFF"
+        detail = ("messages in threads now earn XP" if new_val
+                  else "messages in threads no longer earn XP")
+        await interaction.respond(f"🧵 XP in threads is now **{state}** — {detail}.",
+                                  ephemeral=True)
 
     @commands.slash_command(name="toggle_level_messages", description="Turn your level-up messages on/off", guild_ids=GUILD_IDS)
     @extra_help("Turns your own level-up messages on or off. You still earn XP when they're off -- you just won't get the announcements.")
@@ -826,7 +1719,7 @@ class LevelSystem(commands.Cog):
             ephemeral=True,
         )
 
-    @commands.slash_command(name="xp_event", description="Start a bonus XP event")
+    @commands.slash_command(name="xp_event", description="Start a bonus XP event", guild_ids=GUILD_IDS)
     @extra_help("Starts a server-wide XP multiplier event for the given minutes (multiplier 2-5).")
     async def xp_event(self, interaction, minutes: int,
                        multiplier: discord.Option(int, "XP multiplier (2-5)", default=2)):  # type: ignore
@@ -871,28 +1764,51 @@ class LevelSystem(commands.Cog):
                 "The level system is off in this server. An admin can turn it on with /toggle_levels.",
                 ephemeral=True)
         target = interaction.user
-        db = await get_levels(gid)
-        user = db.setdefault(uid, {"xp": 0, "level": 1, "username": target.display_name})
-        now = time.time()
-        last = user.get("daily_last", 0)
-        if now - last < DAILY_COOLDOWN:
-            wait = DAILY_COOLDOWN - (now - last)
-            h, rem = divmod(int(wait), 3600)
-            return await interaction.respond(
-                f"⏳ Daily already claimed! Come back in {h}h {rem // 60}m.", ephemeral=True)
-        streak = user.get("daily_streak", 0)
-        streak = streak + 1 if now - last < DAILY_STREAK_WINDOW else 1
-        amount = DAILY_BASE + min(streak, DAILY_STREAK_CAP) * DAILY_STREAK_BONUS
-        user["daily_last"] = now
-        user["daily_streak"] = streak
-        await save_levels(gid, db)
+        # P1-18 / P2-12: the daily claim is check-then-save with no lock --
+        # two invocations in flight both pass the 20h check and both
+        # collect. Hold the guild lock across the claim, then release it
+        # before award_xp (which takes the lock itself).
+        async with get_level_lock(gid):
+            db = await get_levels(gid)
+            user = db.setdefault(uid, {"xp": 0, "level": 1, "username": target.display_name})
+            now = time.time()
+            last = user.get("daily_last", 0)
+            if now - last < DAILY_COOLDOWN:
+                wait = DAILY_COOLDOWN - (now - last)
+                h, rem = divmod(int(wait), 3600)
+                return await interaction.respond(
+                    f"⏳ Daily already claimed! Come back in {h}h {rem // 60}m.", ephemeral=True)
+            streak = user.get("daily_streak", 0)
+            streak = streak + 1 if now - last < DAILY_STREAK_WINDOW else 1
+            amount = DAILY_BASE + min(streak, DAILY_STREAK_CAP) * DAILY_STREAK_BONUS
+            user["daily_last"] = now
+            user["daily_streak"] = streak
+            await save_levels(gid, db)
         await log_activity(uid, gid, "daily_claim", {"streak": streak})
+        # Defer first: award_xp can take seconds when it levels the
+        # member up (role rewards + level-up card + announcement), and
+        # an interaction left unanswered for 3s expires (same 10062
+        # as /add_xp, 2026-11-09).
+        # The defer MUST be ephemeral: a public defer locks the whole
+        # interaction's followups public, and Discord then ignores the
+        # ephemeral flag on the level-up followup (live 2026-11-09:
+        # the card was sent with ephemeral=True but stored flags=0).
+        # Everything on this interaction -- the level-up card AND the
+        # daily confirmation below -- renders ephemeral, visible only
+        # to the person who claimed.
+        await interaction.response.defer(ephemeral=True)
         gained = await award_xp(interaction.guild, target.id, target.display_name,
-                                amount, fallback_channel=interaction.channel)
+                                amount, fallback_channel=interaction.channel,
+                                interaction=interaction)  # level-up goes ephemeral to the invoker
         msg = f"🎁 Daily claimed! **+{amount} XP** (🔥 {streak}-day streak)"
         if gained:
-            msg += f"\n🎉 And that leveled you up to **{db[uid]['level']}**!"
-        await interaction.respond(msg)
+            # P2-11: report gained[-1]. The local `db` above was loaded
+            # before award_xp ran, and award_xp reloads and saves its
+            # own copy with the new level, so db[uid]["level"] is still
+            # the PRE-award level -- the old line announced the level
+            # the member had just left.
+            msg += f"\n🎉 And that leveled you up to **{gained[-1]}**!"
+        await interaction.followup.send(msg)
 
     @commands.slash_command(name="cardcolor", description="Set your rank card accent color", guild_ids=GUILD_IDS)
     @extra_help("Personalize your /rank card and level-up card with a hex color (e.g. #EB459E), a preset name, or 'reset'.")

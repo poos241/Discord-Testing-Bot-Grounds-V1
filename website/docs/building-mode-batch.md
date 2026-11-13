@@ -1,5 +1,17 @@
 # Building-mode batch (October 2026)
 
+> **Dated record.** This page describes the October 2026 batch as it
+> shipped. The live state has moved on since: all data moved from
+> SQLite to **Postgres** on 2026-11-12, the bot split into **two bots**
+> (Havenly Bot 2.0 + Havenly Helper, same codebase, `WORKER_MODE`),
+> and commands were re-split between them (2026-11-13). Seven cogs
+> from this batch are now **deliberately disabled** (Tickets, Appeals,
+> VoiceXP, Automod, AutoThreads, TimeCmd, CustomBadges) — their
+> commands are not registered on either bot. For the current state see
+> [Data layer](./data-layer.md), [Project map](./project-map.md), and
+> [Boot sequence](./boot-sequence.md). The sections below are kept as
+> a historical record of what was built and why.
+
 Eighteen systems and fixes built in one batch (27–28 October 2026),
 developed locally on the bot host and pushed together. Each section names
 the files, the commands or pages, the behavior, and the known limits.

@@ -6,8 +6,12 @@ stays the single Discord actor and the website never logs into the
 gateway.
 
 Public surface:
-    async def start_bridge(bot)  -- bind 127.0.0.1:BRIDGE_PORT (default
-                                  5001), serve until stop_bridge().
+    async def start_bridge(bot, worker=False)
+        -- bind 127.0.0.1:BRIDGE_PORT (default 5001), serve until
+        stop_bridge(). With worker=True this is the Havenly Helper
+        JOB HUB (port 5002): only /bridge/status and
+        /bridge/jobs/{job} -- the main bot asks the worker to run a
+        background job by POSTing here with the shared secret.
     async def stop_bridge()      -- shut the server down cleanly.
 
 Auth: every request must carry header ``X-Bridge-Secret`` equal to
@@ -27,6 +31,7 @@ import time
 import traceback
 
 import discord
+import aiohttp
 from aiohttp import web
 
 BRIDGE_VERSION = 1
@@ -721,13 +726,173 @@ async def _not_found(request):
 
 
 # ----------------------------------------------------------------------
+# Worker jobs (Havenly Helper hub, BRIDGE_PORT=5002)
+#
+# The worker's bridge is a JOB HUB, not a second website API: it
+# exposes ONLY /bridge/status and /bridge/jobs/{job}. The main bot
+# (and anything that can reach the main bot) asks the worker to run a
+# background job by POSTing here with the shared X-Bridge-Secret.
+# The design is a direct HTTP call (no queue, no polling): localhost
+# only, the same secret as the main bridge, the caller waits for the
+# result. A failed call is a logged 500; the caller decides the
+# fallback (for a board refresh it is the worker's 5-minute sweep).
+# The worker never serves the moderation/action routes -- those stay
+# on the main bot (port 5001), the sole Discord actor for moderation.
+# ----------------------------------------------------------------------
+
+
+async def _job_backup_now(bot, body):
+    """Take a backup snapshot now (same as /backup now)."""
+    from utils.backup import create_snapshot
+
+    summary = await asyncio.to_thread(create_snapshot, "manual")
+    return {
+        "snapshot": summary.get("name"),
+        "files": len(summary.get("files") or []),
+    }
+
+
+async def _job_board_refresh(bot, body):
+    """Refresh one guild's Active Timeouts board now."""
+    gid_raw = (body or {}).get("guild_id")
+    if gid_raw is None:
+        raise _BridgeError(400, "guild_id is required.")
+    guild = _get_guild(gid_raw)
+    from cogs.admin_cog import _refresh_board
+
+    ok = await _refresh_board(bot, guild)
+    return {"guild_id": int(guild.id), "refreshed": bool(ok)}
+
+
+async def _job_main_status(bot, body):
+    """Ask the MAIN bot's bridge for its status (worker -> main).
+
+    Proves the worker can reach the main bot's bridge with the shared
+    secret. A read, never an action.
+    """
+    secret = os.getenv("BRIDGE_SECRET") or ""
+    if not secret:
+        raise _BridgeError(503, "BRIDGE_SECRET is not set.")
+    # The main bot's bridge port (its own BRIDGE_PORT, default 5001).
+    # This is NOT the worker's BRIDGE_PORT (5002), so it is a separate
+    # var; if the main bot's port is ever moved, set MAIN_BRIDGE_PORT.
+    main_port = int(os.getenv("MAIN_BRIDGE_PORT", "5001"))
+    url = "http://127.0.0.1:%d/bridge/status" % main_port
+    timeout = aiohttp.ClientTimeout(total=10)
+    try:
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.get(
+                url, headers={"X-Bridge-Secret": secret}
+            ) as resp:
+                if resp.status != 200:
+                    raise _BridgeError(
+                        502, "Main bridge returned HTTP %d." % resp.status
+                    )
+                data = await resp.json()
+    except _BridgeError:
+        raise
+    except Exception as exc:
+        raise _BridgeError(
+            502, "Could not reach the main bridge: %s" % type(exc).__name__
+        )
+    return {"main": data}
+
+
+async def _job_e2e_marker(bot, body):
+    """Throwaway end-to-end marker (two-bot e2e test).
+
+    A dedicated ``e2e_marker`` table (key TEXT PK, value TEXT) that
+    either bot can write/read/delete through its bridge. This is how
+    the e2e test proves the two bots share the same live Postgres:
+    the main bot writes a marker, the worker reads it back (and vice
+    versa). The table holds only test markers; the e2e test deletes
+    its keys and drops the table when it finishes, so no test data
+    stays in the live database.
+
+    Actions (body): write {key, value}, read {key}, delete {key}.
+    Authenticated by the bridge secret (same middleware as every
+    other route), localhost only. Never touches a live table.
+    """
+    from data.DB.db import database
+
+    body = body or {}
+    action = (body.get("action") or "").strip().lower()
+    key = (body.get("key") or "").strip()
+    if action not in ("write", "read", "delete"):
+        raise _BridgeError(400, "action must be write, read, or delete.")
+    if (
+        not key
+        or len(key) > 128
+        or any(c not in "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-" for c in key)
+    ):
+        raise _BridgeError(400, "key must be 1-128 chars [A-Za-z0-9_-].")
+    await database.execute(
+        "CREATE TABLE IF NOT EXISTS e2e_marker "
+        "(key TEXT PRIMARY KEY, value TEXT NOT NULL, "
+        "updated_at TIMESTAMPTZ NOT NULL DEFAULT now())"
+    )
+    if action == "write":
+        value = body.get("value")
+        if not isinstance(value, str) or not value or len(value) > 512:
+            raise _BridgeError(400, "value must be a non-empty string (max 512).")
+        await database.execute(
+            "INSERT INTO e2e_marker (key, value) VALUES (:key, :value) "
+            "ON CONFLICT (key) DO UPDATE SET value = :value, updated_at = now()",
+            {"key": key, "value": value},
+        )
+        return {"key": key, "value": value, "stored": True}
+    if action == "read":
+        row = await database.fetch_one(
+            "SELECT value FROM e2e_marker WHERE key = :key", {"key": key}
+        )
+        return {"key": key, "value": (row["value"] if row else None), "found": bool(row)}
+    await database.execute(
+        "DELETE FROM e2e_marker WHERE key = :key", {"key": key}
+    )
+    return {"key": key, "deleted": True}
+
+
+_JOB_DISPATCH = {
+    "backup_now": _job_backup_now,
+    "board_refresh": _job_board_refresh,
+    "main_status": _job_main_status,
+    "e2e_marker": _job_e2e_marker,
+}
+
+
+async def _job(request):
+    _require_ready()
+    name = request.match_info.get("job")
+    handler = _JOB_DISPATCH.get(name)
+    if handler is None:
+        raise _BridgeError(404, "Unknown job: %s." % name)
+    body = await _json_body(request)
+    try:
+        result = await handler(_bot, body)
+    except _BridgeError:
+        raise
+    except Exception as exc:
+        print(f"[ERROR] Worker job {name} failed: {exc!r}")
+        traceback.print_exc()
+        raise _BridgeError(500, "Worker job %s failed." % name)
+    return _ok({"job": name, "result": result or {}})
+
+
+# ----------------------------------------------------------------------
 # Server lifecycle
 # ----------------------------------------------------------------------
 
-def _build_app():
+def _build_app(worker=False):
     app = web.Application(
         middlewares=[_auth_middleware, _error_middleware]
     )
+    if worker:
+        # Havenly Helper hub: status + jobs only. No moderation or
+        # action routes -- the main bot (5001) owns those.
+        app.router.add_get("/bridge/status", _status)
+        app.router.add_post("/bridge/jobs/{job}", _job)
+        app.router.add_route("*", "/{tail:.*}", _not_found)
+        return app
     app.router.add_get("/bridge/status", _status)
     app.router.add_get("/bridge/guilds", _guilds)
     app.router.add_get("/bridge/guilds/{gid}", _guild)
@@ -749,17 +914,23 @@ def _build_app():
     app.router.add_post("/bridge/guilds/{gid}/members/{uid}/dm", _dm)
     app.router.add_post("/bridge/guilds/{gid}/members/{uid}/xp", _xp)
     app.router.add_post("/bridge/restart", _restart)
+    # Jobs (same dispatcher as the worker hub): the e2e test runs the
+    # e2e_marker job on BOTH bridges to prove the two bots share the
+    # same live Postgres. The other jobs are the same safe, secret-
+    # gated, localhost-only operations the worker hub already runs.
+    app.router.add_post("/bridge/jobs/{job}", _job)
     # JSON 404 for anything else under /bridge (and elsewhere).
     app.router.add_route("*", "/{tail:.*}", _not_found)
     return app
 
 
-async def start_bridge(bot):
+async def start_bridge(bot, worker=False):
     """Start the bridge server; block until stop_bridge() is called.
 
     Returns True while serving, False when the bridge did not start
     (disabled, no secret, bad port, bind failure). Never raises for
     those cases: the bot must keep running and the website degrades.
+    With worker=True this is the Havenly Helper job hub (port 5002).
     """
     global _bot, _runner, _stop_event, _started_at
     _bot = bot
@@ -776,7 +947,7 @@ async def start_bridge(bot):
     except ValueError:
         print("[ERROR] Bridge API will NOT start: BRIDGE_PORT is not a number.")
         return False
-    app = _build_app()
+    app = _build_app(worker=worker)
     _stop_event = asyncio.Event()
     _started_at = time.monotonic()
     runner = web.AppRunner(app)
@@ -793,8 +964,8 @@ async def start_bridge(bot):
         return False
     _runner = runner
     print(
-        "[OK] Bridge API listening on http://127.0.0.1:%d (localhost only)"
-        % port
+        "[OK] Bridge API listening on http://127.0.0.1:%d (localhost only)%s"
+        % (port, " [worker hub]" if worker else "")
     )
     try:
         await _stop_event.wait()

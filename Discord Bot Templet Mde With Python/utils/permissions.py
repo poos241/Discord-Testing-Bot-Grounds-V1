@@ -25,8 +25,9 @@ How it works
 
 The grantable actions are the moderation actions and the ban-log
 commands. Add more here (name + short description) and they become
-pickable in /perm_allow, /perm_remove, and /perm_list. Keep the list
-at 25 or fewer -- Discord caps slash-option choices at 25.
+pickable in /perm allow, /perm remove, and /perm list. The command
+picker is an autocomplete (capped at 25 results per query), so the
+list itself is not capped -- only each bulk/picker group is.
 """
 
 from data.DB.Storage.storage import get_command_permissions
@@ -38,13 +39,13 @@ GRANTABLE_COMMANDS = [
     ("timeout", "Time out a member (panel button + /timeout)"),
     ("warn", "Warn a member (panel Warn button)"),
     ("clear_user", "Clear a user's messages (/clear_user)"),
-    ("banlog", "Post a ban/kick log to GitHub (/banlog)"),
-    ("log_approve", "Approve a GitHub log (/log_approve)"),
-    ("banlog_update", "Update a GitHub log (/banlog_update)"),
-    ("banlog_collect", "Collect screenshots for a log (/banlog_collect)"),
-    ("banlog_delete", "Delete a GitHub log (/banlog_delete)"),
-    ("ghlog_backfill_cases", "Backfill case numbers (/ghlog_backfill_cases)"),
-    ("ghlog_set_channel", "Set the evidence channel (/ghlog_set_channel)"),
+    ("banlog_log", "Post a ban/kick log to GitHub (/banlog log)"),
+    ("banlog_approve", "Approve a GitHub log (/banlog log approve)"),
+    ("banlog_update", "Update a GitHub log (/banlog log update)"),
+    ("banlog_collect", "Collect screenshots for a log (/banlog log collect)"),
+    ("banlog_delete", "Delete a GitHub log (/banlog log delete)"),
+    ("banlog_backfill_cases", "Backfill case numbers (/banlog log backfill_cases)"),
+    ("banlog_set_channel", "Set the evidence channel (/banlog log set_channel)"),
     # Level / XP admin commands (Level_system.py). These are powerful --
     # cleardata wipes all level data for the server -- so only grant
     # them to roles you trust. The admin decides who gets what.
@@ -62,6 +63,8 @@ GRANTABLE_COMMANDS = [
     ("no_xp_bulk", "Turn XP off/on in many channels at once (/no_xp_bulk)"),
     ("bot_settings", "Show every bot system's on/off state and config (/bot_settings)"),
     ("toggle_levels", "Turn the level system on/off (/toggle_levels)"),
+    ("level_settings", "Show the level system's full configuration (/level_settings)"),
+    ("toggle_thread_xp", "Turn XP on/off for messages in threads (/toggle_thread_xp)"),
     ("xp_event", "Start a bonus XP event (/xp_event)"),
     ("xp_event_end", "End the bonus XP event early (/xp_event_end)"),
     # Admin panel / role commands (admin_cog.py).
@@ -106,28 +109,29 @@ GRANTABLE_COMMANDS = [
     ("ticket_show", "Show the ticket settings (/ticket show)"),
     ("ticket_list", "List this server's open tickets (/ticket list)"),
     # Modlogs (Modlogs.py).
-    ("modlogs", "Show moderation cases (/modlogs)"),
-    ("modlogs_recap", "Show a moderator's recent cases (/modlogs_recap)"),
-    ("modlogs_edit", "Edit a moderation case (/modlogs_edit)"),
-    ("mod_actions", "List a moderator's actions (/mod_actions)"),
+    ("modlogs_list", "Show moderation cases (/modlogs list)"),
+    ("modlogs_recap", "Show a moderator's recent cases (/modlogs list recap)"),
+    ("modlogs_edit", "Edit a moderation case (/modlogs list edit)"),
+    ("modlogs_actions", "List a moderator's actions (/modlogs list actions)"),
+    ("modlogs_scan", "Scan the mod-log channel for missing cases (/modlogs list scan)"),
     # Introduction tracking (Introduction.py).
-    ("intro_set_channel", "Set the introductions channel (/intro_set_channel)"),
-    ("intro_set_role", "Set the role given after an introduction (/intro_set_role)"),
-    ("intro_settings", "Show introduction settings (/intro_settings)"),
-    ("intro_toggle", "Turn introduction tracking on or off (/intro_toggle)"),
-    ("intro_scan", "Scan members for missing introductions (/intro_scan)"),
-    ("intro_check", "Check one member's introduction (/intro_check)"),
+    ("intro_set_channel", "Set the introductions channel (/intro set_channel)"),
+    ("intro_set_role", "Set the role given after an introduction (/intro set_role)"),
+    ("intro_settings", "Show introduction settings (/intro settings)"),
+    ("intro_toggle", "Turn introduction tracking on or off (/intro toggle)"),
+    ("intro_scan", "Scan members for missing introductions (/intro scan)"),
+    ("intro_check", "Check one member's introduction (/intro check)"),
     ("intro_check_ctx", "Check Introduction (right-click a member)"),
     # WatchList (WatchList.py).
-    ("watch_add", "Add a user to the watch list (/watch_add)"),
-    ("watch_remove", "Remove a user from the watch list (/watch_remove)"),
-    ("watch_add_id", "Add a user to the watch list by ID (/watch_add_id)"),
-    ("watch_remove_id", "Remove a user from the watch list by ID (/watch_remove_id)"),
-    ("watch_list", "Show everyone on the watch list (/watch_list)"),
-    ("watch_status", "Show the watch-list system status (/watch_status)"),
-    ("watch_info", "Show information about a watched user (/watch_info)"),
-    ("watch_set_channel", "Set the watch-list log channel (/watch_set_channel)"),
-    ("watch_clear", "Remove everyone from the watch list (/watch_clear)"),
+    ("watch_add", "Add a user to the watch list (/watch add)"),
+    ("watch_remove", "Remove a user from the watch list (/watch remove)"),
+    ("watch_add_id", "Add a user to the watch list by ID (/watch add_id)"),
+    ("watch_remove_id", "Remove a user from the watch list by ID (/watch remove_id)"),
+    ("watch_list", "Show everyone on the watch list (/watch list)"),
+    ("watch_status", "Show the watch-list system status (/watch status)"),
+    ("watch_info", "Show information about a watched user (/watch info)"),
+    ("watch_set_channel", "Set the watch-list log channel (/watch set_channel)"),
+    ("watch_clear", "Remove everyone from the watch list (/watch clear)"),
     # Appeals (Appeals.py).
     ("appeal_config", "Set the appeals channel / staff role (/appeal config)"),
     ("appeal_list", "List appeals (/appeal list)"),
@@ -146,6 +150,19 @@ GRANTABLE_COMMANDS = [
     ("debug_off", "Disable debug logging (/debug off)"),
     ("debug_status", "Show debug status (/debug status)"),
     ("debug_test", "Print a test debug line to the console (/debug test)"),
+    # Auto-threads (AutoThreads.py). Manage Channels by default.
+    ("auto_thread_toggle", "Toggle auto-threads for the current channel (/auto_thread toggle)"),
+    ("auto_thread_set_channel", "Designate a channel for auto-threads (/auto_thread toggle set_channel)"),
+    ("auto_thread_remove_channel", "Stop auto-threading a channel (/auto_thread toggle remove_channel)"),
+    ("auto_thread_status", "List auto-thread channels (/auto_thread toggle status)"),
+    # Logger (cogs/Logger/commands.py). Administrator by default.
+    ("logs_setup", "Create log channels and configure the logger (/logs setup)"),
+    ("logs_change_channel", "Point one log category at a different channel (/logs change_channel)"),
+    ("log_toggle_message", "Toggle message event logging (/log_toggle message)"),
+    ("log_toggle_member", "Toggle member event logging (/log_toggle member)"),
+    ("log_toggle_voice", "Toggle voice event logging (/log_toggle voice)"),
+    ("log_toggle_server", "Toggle server event logging (/log_toggle server)"),
+    ("log_toggle_moderation", "Toggle moderation event logging (/log_toggle moderation)"),
 ]
 
 GRANTABLE_NAMES = [name for name, _ in GRANTABLE_COMMANDS]
@@ -156,18 +173,18 @@ def is_grantable(command):
     return command in GRANTABLE_NAMES
 
 
-# Categories for the /perm_bulk multi-select builder. Each category
+# Categories for the /perm bulk multi-select builder. Each category
 # holds at most 25 commands (Discord's select limit), so the builder
 # can offer every grantable command without hitting the cap.
 GRANTABLE_CATEGORIES = [
     ("Moderation & roles", [
-        "ban", "kick", "timeout", "warn", "clear_user", "banlog",
+        "ban", "kick", "timeout", "warn", "clear_user", "banlog_log",
         "userinfo", "add_user_role", "remove_user_role", "rename_bot",
         "rename_user", "reset_user_name", "timeout_board",
     ]),
     ("GitHub log", [
-        "ghlog_set_channel", "log_approve", "banlog_update",
-        "banlog_collect", "banlog_delete", "ghlog_backfill_cases",
+        "banlog_set_channel", "banlog_approve", "banlog_update",
+        "banlog_collect", "banlog_delete", "banlog_backfill_cases",
     ]),
     ("Level & XP", [
         "add_xp", "resetxp", "cleardata", "set_xp_rate", "set_cooldown",
@@ -175,6 +192,7 @@ GRANTABLE_CATEGORIES = [
         "set_levelup_message", "toggle_game_xp", "toggle_no_xp",
         "toggle_levels", "no_xp_bulk",
         "xp_event", "xp_event_end",
+        "level_settings", "toggle_thread_xp",
     ]),
     ("Voice XP", [
         "voicexp_config", "voicexp_setrate", "voicexp_setcap",
@@ -194,7 +212,8 @@ GRANTABLE_CATEGORIES = [
         "ticket_panel", "ticket_config", "ticket_show", "ticket_list",
     ]),
     ("Modlogs", [
-        "modlogs", "modlogs_recap", "modlogs_edit", "mod_actions",
+        "modlogs_list", "modlogs_recap", "modlogs_edit", "modlogs_actions",
+        "modlogs_scan",
     ]),
     ("Intro tracking", [
         "intro_set_channel", "intro_set_role", "intro_settings",
@@ -215,6 +234,15 @@ GRANTABLE_CATEGORIES = [
     ]),
     ("Debug", ["debug_on", "debug_off", "debug_status", "debug_test"]),
     ("Server overview", ["bot_settings"]),
+    ("AutoThreads", [
+        "auto_thread_toggle", "auto_thread_set_channel",
+        "auto_thread_remove_channel", "auto_thread_status",
+    ]),
+    ("Logger", [
+        "logs_setup", "logs_change_channel",
+        "log_toggle_message", "log_toggle_member", "log_toggle_voice",
+        "log_toggle_server", "log_toggle_moderation",
+    ]),
 ]
 
 
@@ -315,6 +343,26 @@ def _default_manage_channels_or_admin(member):
     return bool(perms.manage_channels or perms.administrator)
 
 
+def mod_target_blocked(guild, target_id, actor_id):
+    """P2-32: refuse a moderation action aimed at yourself, the bot,
+    or the server owner.
+
+    Returns a human-readable refusal, or None when the target is fine.
+    The server owner may act on themselves (they already own the
+    server); everyone else is refused for self, bot, and owner targets.
+    Pure id comparison on guild.me / guild.owner_id -- no Discord calls.
+    """
+    if target_id == actor_id and actor_id != getattr(guild, "owner_id", None):
+        return "You can't use moderation actions on yourself."
+    bot_id = getattr(getattr(guild, "me", None), "id", None)
+    if bot_id is not None and target_id == bot_id:
+        return "You can't use moderation actions on me."
+    owner_id = getattr(guild, "owner_id", None)
+    if owner_id is not None and target_id == owner_id and actor_id != owner_id:
+        return "You can't use moderation actions on the server owner."
+    return None
+
+
 async def check_slash_permission(ctx, command, default_check):
     """Gate for a slash command. Sends an ephemeral denial and returns
     False when the caller may not use ``command``; returns True when
@@ -329,7 +377,7 @@ async def check_slash_permission(ctx, command, default_check):
         return True
     await ctx.respond(
         "You don't have permission to use `%s`. Ask a server admin to "
-        "grant it with /perm_allow." % command,
+        "grant it with /perm allow." % command,
         ephemeral=True,
     )
     return False
@@ -349,29 +397,40 @@ async def check_interaction_permission(interaction, command, default_check):
         return True
     await interaction.response.send_message(
         "You don't have permission to use `%s`. Ask a server admin to "
-        "grant it with /perm_allow." % command,
+        "grant it with /perm allow." % command,
         ephemeral=True,
     )
     return False
 
-# The /perm_bulk builder shows every grantable command at once, in
-# four multi-select dropdowns (Discord caps a select at 25 options
-# and a message at 5 action rows). Each group holds at most 25.
+# The /perm bulk builder shows every grantable command at once, in
+# multi-select dropdowns (Discord caps a select at 25 options and a
+# message at 5 action rows). Each group holds at most 25. There are
+# five groups now, so BulkCommandView pages them four at a time --
+# a fifth select plus the Grant/Back buttons would need a sixth
+# action row, which Discord rejects.
 BULK_COMMAND_GROUPS = [
     ("Moderation & logs", [
-        "ban", "kick", "timeout", "warn", "clear_user", "banlog",
+        "ban", "kick", "timeout", "warn", "clear_user", "banlog_log",
         "userinfo", "add_user_role", "remove_user_role", "rename_bot",
         "rename_user", "reset_user_name", "timeout_board",
-        "ghlog_set_channel", "log_approve", "banlog_update",
-        "banlog_collect", "banlog_delete", "ghlog_backfill_cases",
+        "banlog_set_channel", "banlog_approve", "banlog_update",
+        "banlog_collect", "banlog_delete", "banlog_backfill_cases",
         "automod_status", "automod_toggle", "automod_config",
     ]),
-    ("Levels, XP & badges", [
+    # Split 2026-11-11: "Levels, XP & badges" sat at Discord's 25-choice
+    # cap, so adding level_settings + toggle_thread_xp would have pushed
+    # it to 27. It is now two groups: the level commands, and voice XP
+    # + badges. The /perm bulk pagination is generic (4 groups per
+    # page), so the extra group just adds a second page entry.
+    ("Levels & XP", [
         "add_xp", "resetxp", "cleardata", "set_xp_rate", "set_cooldown",
         "set_level_channel", "set_level_role", "remove_level_role",
         "set_levelup_message", "toggle_game_xp", "toggle_no_xp",
         "toggle_levels", "no_xp_bulk",
         "xp_event", "xp_event_end",
+        "level_settings", "toggle_thread_xp",
+    ]),
+    ("Voice XP & badges", [
         "voicexp_config", "voicexp_setrate", "voicexp_setcap",
         "voicexp_enable", "voicexp_disable",
         "badge_create", "badge_award", "badge_remove", "badge_delete",
@@ -382,7 +441,8 @@ BULK_COMMAND_GROUPS = [
         "lockdown_unlockall", "lockdown_slowmode", "lockdown_status",
         "backup_now", "backup_status",
         "ticket_panel", "ticket_config", "ticket_show", "ticket_list",
-        "modlogs", "modlogs_recap", "modlogs_edit", "mod_actions",
+        "modlogs_list", "modlogs_recap", "modlogs_edit", "modlogs_actions",
+        "modlogs_scan",
         "intro_set_channel", "intro_set_role", "intro_settings",
         "intro_toggle", "intro_scan", "intro_check", "intro_check_ctx",
         "bot_settings",
@@ -396,5 +456,12 @@ BULK_COMMAND_GROUPS = [
         "qotd_post", "qotd_skip", "qotd_config", "qotd_pending",
         "qotd_approve", "qotd_reject", "qotd_remove",
         "debug_on", "debug_off", "debug_status", "debug_test",
+    ]),
+    ("Logger & AutoThreads", [
+        "logs_setup", "logs_change_channel",
+        "log_toggle_message", "log_toggle_member", "log_toggle_voice",
+        "log_toggle_server", "log_toggle_moderation",
+        "auto_thread_toggle", "auto_thread_set_channel",
+        "auto_thread_remove_channel", "auto_thread_status",
     ]),
 ]

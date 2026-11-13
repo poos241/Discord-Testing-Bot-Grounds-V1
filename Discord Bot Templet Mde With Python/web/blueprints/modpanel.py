@@ -11,7 +11,7 @@
 # are pure storage helpers and import standalone in this process
 # (verified by the migration harness import test).
 #
-# The WatchList cog is NOT used any more: its watch_add/watch_remove
+# The WatchList cog is NOT used any more: its watch add/watch remove
 # are Discord slash-command handlers (they take a ctx), so the old
 # web code calling them with plain ids never worked. Watch state is
 # read/written directly on watchlist_data.json via config.load_json /
@@ -625,7 +625,7 @@ def modpanel_watch(guild_id, user_id):
         return jsonify({"success": False, "error": "Watch list unavailable."}), 503
     if isinstance(existing, dict):
         # Already watched: keep the original entry, refresh the
-        # reason/attribution (as the old code did after watch_add).
+        # reason/attribution (as the old code did after watch add).
         entry = {**existing, "reason": reason,
                  "added_by": mod_label, "added_by_name": mod_name}
     if not _watch_put_entry(guild_id, user_id, entry):
