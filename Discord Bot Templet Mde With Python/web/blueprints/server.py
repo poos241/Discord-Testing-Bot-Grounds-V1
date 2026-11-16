@@ -9,7 +9,7 @@ from web.services.permissions import (
     get_access_level,
     is_guild_owner,
 )
-from web.security.decorators import require_guild_manage, require_login, require_guild_moderator
+from web.security.decorators import require_login, require_web_api_access
 
 
 servers_api = Blueprint(
@@ -79,6 +79,14 @@ def servers():
             continue
 
 
+        # Web permission gate: may this user actually enter this
+        # guild's dashboard? (Fresh unverified check; the servers
+        # page renders locked cards for the ones they cannot enter,
+        # with the reason, instead of offering a dead link.)
+        from web.services.web_access import can_enter_guild
+
+        can_enter, blocked_reason = can_enter_guild(guild_id)
+
         try:
 
             result.append({
@@ -118,6 +126,12 @@ def servers():
 
                 "access_level":
                     level,
+
+                "can_enter":
+                    can_enter,
+
+                "blocked_reason":
+                    blocked_reason,
 
                 "can_manage":
                     level
@@ -174,7 +188,7 @@ def servers():
 @servers_api.get(
     "/servers/<int:guild_id>/channels"
 )
-@require_guild_moderator
+@require_web_api_access("web:view_channels")
 def get_server_channels(
     guild_id
 ):

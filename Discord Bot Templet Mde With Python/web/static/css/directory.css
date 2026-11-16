@@ -42,7 +42,7 @@
 .directory-tag {
     padding: 6px 12px;
     border-radius: 999px;
-    border: 1px solid #5865f2;
+    border: 1px solid #8b5cf6;
     background: #2b2d31;
     color: #fff;
     cursor: pointer;
@@ -50,7 +50,7 @@
 }
 
 .directory-tag.selected {
-    background: #5865f2;
+    background: #8b5cf6;
 }
 
 .directory-count {
@@ -121,12 +121,12 @@
     padding: 3px 9px;
     border-radius: 999px;
     background: #1e1f22;
-    border: 1px solid #5865f2;
+    border: 1px solid #8b5cf6;
     font-size: 0.85rem;
 }
 
 .directory-card-tag.selected {
-    background: #5865f2;
+    background: #8b5cf6;
 }
 
 .directory-card-stats {
@@ -148,7 +148,7 @@
 }
 
 .directory-card-socials a {
-    color: #8ea2ff;
+    color: #c4b5fd;
     word-break: break-all;
 }
 

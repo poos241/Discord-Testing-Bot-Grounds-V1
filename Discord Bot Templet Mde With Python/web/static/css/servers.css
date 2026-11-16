@@ -1311,3 +1311,33 @@
         17px;
 
 }
+
+/* =========================================================
+   LOCKED SERVER CARD (web permission system)
+   Guilds the user cannot enter: dimmed, no hover lift,
+   not-allowed cursor -- the card is a <div>, not a link.
+========================================================= */
+
+.server-card-locked {
+
+    opacity:
+        .55;
+
+    cursor:
+        not-allowed;
+
+}
+
+
+.server-card-locked:hover {
+
+    transform:
+        none;
+
+    border-color:
+        #252b36;
+
+    box-shadow:
+        none;
+
+}

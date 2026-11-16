@@ -42,7 +42,7 @@ COGS = [
     "cogs.admin_cog",
     "cogs.fun_cog",
     "cogs.Level_system",
-    ##"cogs.VoiceXP",
+    "cogs.VoiceXP",
     "cogs.WatchList",
     "cogs.DebugCog",
     "cogs.QOTD",
@@ -63,37 +63,6 @@ COGS = [
     "cogs.Help_Info_Doc",
 ]
 
-# Worker cogs (Havenly Helper): background / data work + setup commands.
-# The worker loads ONLY these; the main bot loads the full COGS list
-# (plus cogs.Logger, loaded below in both modes -- see its comment).
-# The 7 commented-out cogs stay commented out in both modes.
-# Per-cog reasons (see README for the full table):
-#   Introduction -- /intro scan job + intro commands; its 4 real-time
-#       listeners are gated to the main bot (see cogs/Introduction.py).
-#   Modlogs -- /modlogs scan job + modlog commands; no loops/listeners.
-#   GHLog -- /banlog collect/backfill jobs + ban-log commands.
-#   Backup -- daily snapshot loop (worker-only) + /backup commands.
-#   admin_cog -- timeout-board refresh + tempban sweep loops
-#       (worker-only) + mod commands. Its on_member_update listener is
-#       gated to the main bot so manual timeouts are recorded once.
-#   KumaHeartbeat -- worker heartbeat (WORKER_KUMA_PUSH_URL; off if
-#       unset, so it never pushes to the main bot's Kuma monitor).
-#   Logger -- ONLY its /logs + /log_toggle commands (setup, worker-only).
-#       Its 8 event-listener cogs are gated to the main bot in
-#       cogs/Logger/__init__.py, so the worker never double-logs.
-#   WatchList -- ONLY /watch set_channel (setup, worker-only). Its
-#       on_message listener is gated to the main bot in cogs/WatchList.py.
-#   QOTD -- ONLY /qotd config (setup, worker-only). Its daily posting
-#       loop is gated to the main bot in cogs/QOTD.py.
-#   Permissions -- /perm commands (setup, worker-only). The custom
-#       permission system reads the shared command_permissions table,
-#       so grants written by the Helper are enforced by both bots.
-#   ServerSettings -- /bot_settings (view, worker-only). Command-only.
-# NOT loaded by the worker: cogs.Level_system (levels -- the worker
-# must not write level data; its only level writes are admin_cog's
-# /userinfo panel buttons, which go through the shared Postgres
-# advisory lock), cogs.Lockdown, and all user-facing / game cogs
-# (fun, Help, DebugCog) plus the 7 disabled cogs.
 WORKER_COGS = [
     "cogs.Introduction",
     "cogs.Modlogs",
@@ -106,6 +75,7 @@ WORKER_COGS = [
     "cogs.QOTD",
     "cogs.Permissions",
     "cogs.ServerSettings",
+    "cogs.Help_Info_Doc",
 ]
 
 for cog in (WORKER_COGS if WORKER_MODE else COGS):

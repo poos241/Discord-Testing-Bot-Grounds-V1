@@ -1,7 +1,7 @@
 from flask import Blueprint, jsonify, request
 
 from web.services.event_store import event_store
-from web.security.decorators import require_guild_manage, require_login, require_guild_moderator
+from web.security.decorators import require_guild_manage, require_login, require_web_api_access
 
 
 events_api = Blueprint(
@@ -156,7 +156,7 @@ def get_events():
 @events_api.get(
     "/servers/<int:guild_id>/events"
 )
-@require_guild_moderator
+@require_web_api_access("web:view_activity")
 def get_server_events(
     guild_id
 ):
@@ -379,7 +379,7 @@ def event_status():
 @events_api.get(
     "/events/summary"
 )
-@require_guild_moderator
+@require_web_api_access("web:view_activity")
 def event_summary():
 
     guild_id = request.args.get(

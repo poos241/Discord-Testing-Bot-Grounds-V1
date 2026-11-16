@@ -19,8 +19,8 @@ from web.services.server_service import ServerService
 
 from web.services.event_store import publish_event
 
-from web.blueprints.auth import (get_auth_session, user_can_manage_guild, get_csrf_token)
-from web.security.decorators import require_guild_manage, require_login, require_guild_moderator
+from web.blueprints.auth import (get_auth_session, get_csrf_token)
+from web.security.decorators import require_guild_manage, require_login, require_web_api_access
 
 
 api = Blueprint(
@@ -404,7 +404,7 @@ def stats():
 # =========================================================
 
 @api.route("/servers/<int:guild_id>")
-@require_guild_moderator
+@require_web_api_access("web:view_dashboard")
 def server_info(guild_id):
 
     denied = _bot_error(guild_id)
@@ -439,7 +439,7 @@ def server_info(guild_id):
 # =========================================================
 
 @api.get("/servers/<int:guild_id>/overview")
-@require_guild_moderator
+@require_web_api_access("web:view_dashboard")
 def server_overview(guild_id):
 
     guild, error = _guild_or_error(guild_id)
@@ -585,7 +585,7 @@ def server_overview(guild_id):
 @api.route(
     "/servers/<int:guild_id>/events"
 )
-@require_guild_moderator
+@require_web_api_access("web:view_activity")
 def server_events(guild_id):
 
     search = request.args.get(
@@ -670,7 +670,7 @@ def server_events(guild_id):
 @api.route(
     "/servers/<int:guild_id>/events/<int:event_id>"
 )
-@require_guild_moderator
+@require_web_api_access("web:view_activity")
 def event_details(
     guild_id,
     event_id
@@ -698,7 +698,7 @@ def event_details(
 @api.get(
     "/servers/<int:guild_id>/channels/<int:channel_id>"
 )
-@require_guild_moderator
+@require_web_api_access("web:view_channels")
 def server_channel(
     guild_id,
     channel_id
@@ -774,7 +774,7 @@ def server_channel(
 @api.get(
     "/servers/<int:guild_id>/channels/summary"
 )
-@require_guild_moderator
+@require_web_api_access("web:view_channels")
 def server_channels_summary(guild_id):
 
     guild, error = _guild_or_error(guild_id)
@@ -865,24 +865,9 @@ _LOG_TYPES = (
 )
 
 
-def _require_logger_management(guild_id):
-    if not get_auth_session():
-        return jsonify({"success": False, "error": "Authentication required."}), 401
-    if not user_can_manage_guild(guild_id):
-        return jsonify({
-            "success": False,
-            "error": "You do not have permission to manage logger settings for this server."
-        }), 403
-    return None
-
-
 @api.route("/servers/<int:guild_id>/logging", methods=["GET"])
-@require_guild_moderator
+@require_web_api_access("web:manage_logs")
 def server_logging(guild_id):
-    denied = _require_logger_management(guild_id)
-    if denied:
-        return denied
-
     settings = {}
     for log_type in _LOG_TYPES:
         channel_id = database.get_log_channel(guild_id, log_type)
@@ -892,12 +877,8 @@ def server_logging(guild_id):
 
 
 @api.route("/servers/<int:guild_id>/logging/channels", methods=["GET"])
-@require_guild_moderator
+@require_web_api_access("web:manage_logs")
 def logger_channels(guild_id):
-    denied = _require_logger_management(guild_id)
-    if denied:
-        return denied
-
     guild, error = _guild_or_error(guild_id)
     if error:
         return error
@@ -931,12 +912,8 @@ def logger_channels(guild_id):
 
 
 @api.route("/servers/<int:guild_id>/logging", methods=["POST"])
-@require_guild_moderator
+@require_web_api_access("web:manage_logs")
 def save_server_logging(guild_id):
-    denied = _require_logger_management(guild_id)
-    if denied:
-        return denied
-
     supplied = (
         request.headers.get("X-CSRF-Token")
         or request.headers.get("X-CSRFToken")
@@ -990,7 +967,7 @@ def save_server_logging(guild_id):
 @api.route(
     "/servers/<int:guild_id>/view"
 )
-@require_guild_moderator
+@require_web_api_access("web:view_dashboard")
 def server_page_view(
     guild_id
 ):
@@ -1011,7 +988,7 @@ def server_page_view(
 @api.route(
     "/servers/<int:guild_id>/members/view"
 )
-@require_guild_moderator
+@require_web_api_access("web:view_members")
 def server_members_page(guild_id):
 
     return render_template(
@@ -1024,7 +1001,7 @@ def server_members_page(guild_id):
 # =========================================================
 
 @api.get("/servers/<int:guild_id>/dashboard")
-@require_guild_moderator
+@require_web_api_access("web:view_dashboard")
 def server_dashboard_data(guild_id):
 
     denied = _bot_error()
@@ -1231,7 +1208,7 @@ def get_events():
 @api.get(
     "/servers/<int:guild_id>/health"
 )
-@require_guild_moderator
+@require_web_api_access("web:view_dashboard")
 def server_health(
     guild_id
 ):
@@ -1381,7 +1358,7 @@ def server_health(
 # =========================================================
 
 @api.get("/servers/<int:guild_id>/channels/<int:channel_id>")
-@require_guild_moderator
+@require_web_api_access("web:view_channels")
 def channel_details(guild_id, channel_id):
 
     guild, error = _guild_or_error(guild_id)
@@ -1438,7 +1415,7 @@ def channel_details(guild_id, channel_id):
 # =========================================================
 
 @api.get("/servers/<int:guild_id>/channels/summary")
-@require_guild_moderator
+@require_web_api_access("web:view_channels")
 def channel_summary(guild_id):
 
     guild, error = _guild_or_error(guild_id)
@@ -1507,7 +1484,7 @@ def channel_summary(guild_id):
 # =========================================================
 
 @api.get("/servers/<int:guild_id>/roles/<int:role_id>")
-@require_guild_moderator
+@require_web_api_access("web:view_roles")
 def role_details(guild_id, role_id):
 
     guild, error = _guild_or_error(guild_id)
@@ -1710,7 +1687,7 @@ def api_info():
 # =========================================================
 
 @api.get("/servers/<int:guild_id>/statistics")
-@require_guild_moderator
+@require_web_api_access("web:view_dashboard")
 def server_statistics(guild_id):
 
     denied = _bot_error()
@@ -1741,7 +1718,7 @@ def server_statistics(guild_id):
 # =========================================================
 
 @api.get("/servers/<int:guild_id>/activity")
-@require_guild_moderator
+@require_web_api_access("web:view_dashboard")
 def server_activity(guild_id):
 
     guild, error = _guild_or_error(guild_id)
@@ -1902,7 +1879,7 @@ def server_activity(guild_id):
 @api.get(
     "/servers/<int:guild_id>/activity/summary"
 )
-@require_guild_moderator
+@require_web_api_access("web:view_dashboard")
 def server_activity_summary(
     guild_id
 ):
@@ -2030,7 +2007,7 @@ def test_event_system():
 @api.get(
     "/servers/<int:guild_id>/analytics"
 )
-@require_guild_moderator
+@require_web_api_access("web:view_dashboard")
 def server_analytics(
     guild_id
 ):

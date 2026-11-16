@@ -1,7 +1,7 @@
 from flask import Blueprint, jsonify, request
 
 from web.services.member_service import MemberService
-from web.security.decorators import require_guild_manage, require_login, require_guild_moderator
+from web.security.decorators import require_guild_manage, require_login, require_web_api_access
 
 
 members_api = Blueprint(
@@ -113,7 +113,7 @@ def check_bot():
 # =========================================================
 
 @members_api.get("/members")
-@require_guild_moderator
+@require_web_api_access("web:view_members")
 def get_members():
 
     guild_id = request.args.get(
@@ -189,7 +189,7 @@ def get_members():
 # =========================================================
 
 @members_api.get("/members/<int:user_id>")
-@require_guild_moderator
+@require_web_api_access("web:view_members")
 def get_member(user_id):
 
     bot, error, status = check_bot()
@@ -262,7 +262,7 @@ def get_member(user_id):
 @members_api.get(
     "/servers/<int:guild_id>/members/<int:user_id>"
 )
-@require_guild_moderator
+@require_web_api_access("web:view_members")
 def get_server_member(
     guild_id,
     user_id
@@ -326,7 +326,7 @@ def get_server_member(
 @members_api.get(
     "/servers/<int:guild_id>/members"
 )
-@require_guild_moderator
+@require_web_api_access("web:view_members")
 def get_server_members(guild_id):
 
     bot, error, status = check_bot()
@@ -421,7 +421,7 @@ def get_server_members(guild_id):
 @members_api.get(
     "/servers/<int:guild_id>/members/summary"
 )
-@require_guild_moderator
+@require_web_api_access("web:view_members")
 def member_summary(guild_id):
 
     bot, error, status = check_bot()
@@ -529,7 +529,7 @@ def member_summary(guild_id):
 @members_api.get(
     "/servers/<int:guild_id>/members/search"
 )
-@require_guild_moderator
+@require_web_api_access("web:view_members")
 def search_server_members(guild_id):
 
     bot, error, status = check_bot()

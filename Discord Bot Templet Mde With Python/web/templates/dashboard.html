@@ -17,10 +17,11 @@
         href="{{ url_for('static', filename='css/dashboard.css') }}"
     >
 
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/havenly-theme.css') }}">
 </head>
 
 
-<body>
+<body class="havenly-theme">
 
 <div class="app page-fade">
 
@@ -28,7 +29,7 @@
     <!-- SIDEBAR -->
     <!-- ================================================= -->
 
-    <aside class="sidebar">
+    <aside class="sidebar" id="dashboard-sidebar">
 
         <div class="brand">
 
@@ -42,7 +43,7 @@
                 >
 
                 <span id="bot-avatar-fallback">
-                    KB
+                    <img src="{{ url_for('static', filename='img/little-haven-web-pfp.webp') }}" alt="Little Haven" style="width:100%;height:100%;object-fit:cover;border-radius:inherit;display:block;">
                 </span>
 
             </div>
@@ -68,13 +69,16 @@
                 DASHBOARD
             </div>
 
-            <a
+            {% if web_can('web:view_dashboard', guild_id) %}
+<a
                 href="/servers/{{ guild_id }}/dashboard"
                 class="nav-item active"
+                aria-current="page"
             >
                 <span>⌂</span>
                 Overview
             </a>
+{% endif %}
 
         </div>
 
@@ -85,15 +89,18 @@
                 SERVER
             </div>
 
-            <a
+            {% if web_can('web:view_dashboard', guild_id) %}
+<a
                 href="/servers/{{ guild_id }}"
                 class="nav-item"
             >
                 <span>◉</span>
                 Server
             </a>
+{% endif %}
 
-            <a
+            {% if web_can('web:view_members', guild_id) %}
+<a
                 href="/servers/{{ guild_id }}/members"
                 class="nav-item"
                 data-dashboard-link
@@ -101,8 +108,10 @@
                 <span>♙</span>
                 Members
             </a>
+{% endif %}
 
-            <a
+            {% if web_can('web:view_leaderboard', guild_id) %}
+<a
                 href="/servers/{{ guild_id }}/leaderboard"
                 class="nav-item"
                 data-dashboard-link
@@ -110,8 +119,10 @@
                 <span>🏆</span>
                 Leaderboard
             </a>
+{% endif %}
 
-            <a
+            {% if web_can('web:view_channels', guild_id) %}
+<a
                 href="/servers/{{ guild_id }}/channels"
                 class="nav-item"
                 data-dashboard-link
@@ -119,8 +130,10 @@
                 <span>▤</span>
                 Channels
             </a>
+{% endif %}
 
-            <a
+            {% if web_can('web:view_roles', guild_id) %}
+<a
                 href="/servers/{{ guild_id }}/roles"
                 class="nav-item"
                 id="nav-roles"
@@ -128,17 +141,20 @@
                 <span>◆</span>
                 Roles
             </a>
+{% endif %}
 
         </div>
 
 
-        <div class="sidebar-section">
+        {% if web_can('web:view_logger', guild_id) or web_can('web:view_activity', guild_id) %}
+<div class="sidebar-section">
 
             <div class="sidebar-label">
                 LOGGING
             </div>
 
-            <a
+            {% if web_can('web:view_logger', guild_id) %}
+<a
                 href="/servers/{{ guild_id }}/logger"
                 class="nav-item"
                 data-dashboard-link
@@ -146,35 +162,10 @@
                 <span>⚡</span>
                 Logger
             </a>
-
-            <a
-                href="/servers/{{ guild_id }}/logging"
-                class="nav-item"
-                data-dashboard-link
-            >
-                <span>⚙</span>
-                Logger Settings
-            </a>
-
-            <a
-                href="/servers/{{ guild_id }}/logger?view=analytics"
-                class="nav-item"
-                data-dashboard-link
-            >
-                <span>◷</span>
-                Logger Analytics
-            </a>
-
-            <a
-                href="/servers/{{ guild_id }}/logger"
-                class="nav-item"
-                id="nav-events"
-            >
-                <span>≡</span>
-                Event History
-            </a>
+{% endif %}
 
         </div>
+{% endif %}
 
 
         <div class="sidebar-section">
@@ -192,14 +183,16 @@
                 Moderation
             </a>
 
+            {% if web_can('web:manage_permissions', guild_id) or web_can('web:manage_logs', guild_id) %}
             <a
-                href="/servers/{{ guild_id }}/logging"
+                href="/servers/{{ guild_id }}/permissions"
                 class="nav-item"
-                id="nav-settings"
+                id="nav-permissions"
             >
-                <span>⚙</span>
-                Settings
+                <span>🔑</span>
+                Permissions
             </a>
+            {% endif %}
 
         </div>
 
@@ -231,17 +224,22 @@
 
     </aside>
 
+    <div class="sidebar-backdrop" id="sidebar-backdrop" hidden></div>
 
-   
 
+    <main class="main">
 
-        <!-- CONTENT -->
+        <header class="dash-topbar">
+            <button type="button" class="sidebar-toggle" id="sidebar-toggle" aria-label="Open navigation menu" aria-expanded="false" aria-controls="dashboard-sidebar">&#9776;</button>
+            <div class="dash-topbar-titles">
+                <div class="dash-eyebrow">Little Haven</div>
+                <h1 class="dash-title">Dashboard</h1>
+                <p class="dash-subtitle"><span id="server-subtitle">Loading&hellip;</span> &middot; Server overview</p>
+            </div>
+            <a href="/servers" class="dash-topbar-link">&larr; All servers</a>
+        </header>
 
         <section class="content">
-
-            <!-- ================================================= -->
-            <!-- STAT CARDS -->
-            <!-- ================================================= -->
 
             <div class="stats-grid">
 
@@ -346,6 +344,7 @@
             <!-- ================================================= -->
 <!-- QUICK ACTIONS -->
 <!-- ================================================= -->
+
 
 <section class="quick-actions-section reveal">
 
@@ -485,7 +484,7 @@
 
 
         <a
-            href="#"
+            href="/servers/{{ guild_id }}/logger?view=live"
             id="quick-logger"
             class="quick-action"
         >
@@ -546,177 +545,189 @@
 </section>
 
 
-<!-- =====================================================
-     SERVER BREAKDOWN
-===================================================== -->
-
-<section class="dashboard-section reveal">
-
-    <div class="section-header">
-
-        <div>
-
-            <h2>
-                Server Breakdown
-            </h2>
-
-            <p>
-                A quick look at your server.
-            </p>
-
-        </div>
-
-    </div>
+            <div class="dashboard-grid">
 
 
-    <div class="stats-grid secondary-stats">
+                <section class="panel activity-panel reveal">
+
+                    <div class="panel-header">
+
+                        <div>
+
+                            <h2>
+                                Recent Activity
+                            </h2>
+
+                            <p>
+                                Latest events from your server
+                            </p>
+
+                        </div>
+
+                        <button
+                            class="text-button"
+                            onclick="loadActivity()"
+                        >
+                            Refresh
+                        </button>
+
+                    </div>
+
+                    <div class="activity-panel-filters">
+                        <span class="activity-panel-filters-label">Filter</span>
+                            <div class="activity-filter-row">
+
+                                <button
+                                    class="activity-filter active"
+                                    data-filter="all"
+                                    onclick="filterActivity('all')"
+                                >
+                                    All
+                                </button>
+
+                                <button
+                                    class="activity-filter"
+                                    data-filter="message"
+                                    onclick="filterActivity('message')"
+                                >
+                                    Messages
+                                </button>
+
+                                <button
+                                    class="activity-filter"
+                                    data-filter="member"
+                                    onclick="filterActivity('member')"
+                                >
+                                    Members
+                                </button>
+
+                                <button
+                                    class="activity-filter"
+                                    data-filter="channel"
+                                    onclick="filterActivity('channel')"
+                                >
+                                    Channels
+                                </button>
+
+                                <button
+                                    class="activity-filter"
+                                    data-filter="role"
+                                    onclick="filterActivity('role')"
+                                >
+                                    Roles
+                                </button>
+
+                                <button
+                                    class="activity-filter"
+                                    data-filter="moderation"
+                                    onclick="filterActivity('moderation')"
+                                >
+                                    Moderation
+                                </button>
+
+                            </div>
+                    </div>
+
+                    <div
+                        id="activity-list"
+                        class="activity-list"
+                    >
+
+                        <div class="loading">
+                            Loading activity...
+                        </div>
+
+                    </div>
+
+                </section>
 
 
-        <div class="stat-card">
-
-            <div class="stat-card-icon">
-                👥
-            </div>
-
-            <div>
-
-                <span class="stat-label">
-                    Online Members
-                </span>
-
-                <strong
-                    id="online-members"
-                >
-                    0
-                </strong>
-
-            </div>
-
-        </div>
+                <div class="dashboard-side">
 
 
-        <div class="stat-card">
+                <section class="panel reveal">
 
-            <div class="stat-card-icon">
-                👤
-            </div>
+                    <div class="panel-header">
 
-            <div>
+                        <div>
 
-                <span class="stat-label">
-                    Human Members
-                </span>
+                            <h2>
+                                Server
+                            </h2>
 
-                <strong
-                    id="human-members"
-                >
-                    0
-                </strong>
+                            <p>
+                                Server information
+                            </p>
 
-            </div>
+                        </div>
 
-        </div>
+                    </div>
 
 
-        <div class="stat-card">
+                    <div class="server-profile">
 
-            <div class="stat-card-icon">
-                🤖
-            </div>
+                        <div>
 
-            <div>
+                            <h3 id="server-name">
+                                Loading...
+                            </h3>
 
-                <span class="stat-label">
-                    Bots
-                </span>
+                            <span
+                                class="server-id"
+                                id="server-id"
+                            >
+                                --
+                            </span>
 
-                <strong
-                    id="bot-members"
-                >
-                    0
-                </strong>
+                        </div>
 
-            </div>
-
-        </div>
+                    </div>
 
 
-        <div class="stat-card">
+                    <div class="server-details">
 
-            <div class="stat-card-icon">
-                💬
-            </div>
+                        <div class="detail-row">
 
-            <div>
+                            <span>
+                                Owner
+                            </span>
 
-                <span class="stat-label">
-                    Text Channels
-                </span>
+                            <strong id="server-owner">
+                                --
+                            </strong>
 
-                <strong
-                    id="text-channels"
-                >
-                    0
-                </strong>
-
-            </div>
-
-        </div>
+                        </div>
 
 
-        <div class="stat-card">
+                        <div class="detail-row">
 
-            <div class="stat-card-icon">
-                🔊
-            </div>
+                            <span>
+                                Created
+                            </span>
 
-            <div>
+                            <strong id="server-created">
+                                --
+                            </strong>
 
-                <span class="stat-label">
-                    Voice Channels
-                </span>
-
-                <strong
-                    id="voice-channels"
-                >
-                    0
-                </strong>
-
-            </div>
-
-        </div>
+                        </div>
 
 
-        <div class="stat-card">
+                        <div class="detail-row">
 
-            <div class="stat-card-icon">
-                📁
-            </div>
+                            <span>
+                                Members
+                            </span>
 
-            <div>
+                            <strong id="server-members">
+                                --
+                            </strong>
 
-                <span class="stat-label">
-                    Categories
-                </span>
+                        </div>
 
-                <strong
-                    id="categories"
-                >
-                    0
-                </strong>
+                    </div>
 
-            </div>
+                </section>
 
-        </div>
-
-
-    </div>
-
-</section>
-
-<!-- ================================================= -->
-<!-- SERVER HEALTH -->
-<!-- ================================================= -->
 
 <section class="dashboard-health panel reveal">
 
@@ -882,228 +893,178 @@
 </section>
 
 
-<!-- ================================================= -->
-<!-- ACTIVITY FILTER -->
-<!-- ================================================= -->
+                </div>
 
-<section class="activity-controls panel reveal">
 
-    <div>
+            </div>
 
-        <h2>
-            Activity Filters
-        </h2>
 
-        <p>
-            Filter the activity feed without leaving the dashboard.
-        </p>
+<section class="dashboard-section reveal">
+
+    <div class="section-header">
+
+        <div>
+
+            <h2>
+                Server Breakdown
+            </h2>
+
+            <p>
+                A quick look at your server.
+            </p>
+
+        </div>
 
     </div>
 
 
-    <div class="activity-filter-row">
+    <div class="stats-grid secondary-stats">
 
-        <button
-            class="activity-filter active"
-            data-filter="all"
-            onclick="filterActivity('all')"
-        >
-            All
-        </button>
 
-        <button
-            class="activity-filter"
-            data-filter="message"
-            onclick="filterActivity('message')"
-        >
-            Messages
-        </button>
+        <div class="stat-card">
 
-        <button
-            class="activity-filter"
-            data-filter="member"
-            onclick="filterActivity('member')"
-        >
-            Members
-        </button>
+            <div class="stat-card-icon">
+                👥
+            </div>
 
-        <button
-            class="activity-filter"
-            data-filter="channel"
-            onclick="filterActivity('channel')"
-        >
-            Channels
-        </button>
+            <div>
 
-        <button
-            class="activity-filter"
-            data-filter="role"
-            onclick="filterActivity('role')"
-        >
-            Roles
-        </button>
+                <span class="stat-label">
+                    Online Members
+                </span>
 
-        <button
-            class="activity-filter"
-            data-filter="moderation"
-            onclick="filterActivity('moderation')"
-        >
-            Moderation
-        </button>
+                <strong
+                    id="online-members"
+                >
+                    0
+                </strong>
+
+            </div>
+
+        </div>
+
+
+        <div class="stat-card">
+
+            <div class="stat-card-icon">
+                👤
+            </div>
+
+            <div>
+
+                <span class="stat-label">
+                    Human Members
+                </span>
+
+                <strong
+                    id="human-members"
+                >
+                    0
+                </strong>
+
+            </div>
+
+        </div>
+
+
+        <div class="stat-card">
+
+            <div class="stat-card-icon">
+                🤖
+            </div>
+
+            <div>
+
+                <span class="stat-label">
+                    Bots
+                </span>
+
+                <strong
+                    id="bot-members"
+                >
+                    0
+                </strong>
+
+            </div>
+
+        </div>
+
+
+        <div class="stat-card">
+
+            <div class="stat-card-icon">
+                💬
+            </div>
+
+            <div>
+
+                <span class="stat-label">
+                    Text Channels
+                </span>
+
+                <strong
+                    id="text-channels"
+                >
+                    0
+                </strong>
+
+            </div>
+
+        </div>
+
+
+        <div class="stat-card">
+
+            <div class="stat-card-icon">
+                🔊
+            </div>
+
+            <div>
+
+                <span class="stat-label">
+                    Voice Channels
+                </span>
+
+                <strong
+                    id="voice-channels"
+                >
+                    0
+                </strong>
+
+            </div>
+
+        </div>
+
+
+        <div class="stat-card">
+
+            <div class="stat-card-icon">
+                📁
+            </div>
+
+            <div>
+
+                <span class="stat-label">
+                    Categories
+                </span>
+
+                <strong
+                    id="categories"
+                >
+                    0
+                </strong>
+
+            </div>
+
+        </div>
+
 
     </div>
 
 </section>
 
-            <!-- ================================================= -->
-            <!-- TWO COLUMN AREA -->
-            <!-- ================================================= -->
 
-            <div class="dashboard-grid">
-
-
-                <!-- ACTIVITY -->
-
-                <section class="panel activity-panel reveal">
-
-                    <div class="panel-header">
-
-                        <div>
-
-                            <h2>
-                                Recent Activity
-                            </h2>
-
-                            <p>
-                                Latest events from your server
-                            </p>
-
-                        </div>
-
-                        <button
-                            class="text-button"
-                            onclick="loadActivity()"
-                        >
-                            Refresh
-                        </button>
-
-                    </div>
-
-
-                    <div
-                        id="activity-list"
-                        class="activity-list"
-                    >
-
-                        <div class="loading">
-                            Loading activity...
-                        </div>
-
-                    </div>
-
-                </section>
-
-
-                <!-- SERVER -->
-
-                <section class="panel reveal">
-
-                    <div class="panel-header">
-
-                        <div>
-
-                            <h2>
-                                Server
-                            </h2>
-
-                            <p>
-                                Server information
-                            </p>
-
-                        </div>
-
-                    </div>
-
-
-                    <div class="server-profile">
-
-                        <div
-                            class="server-avatar"
-                            id="server-avatar"
-                        >
-                            ?
-                        </div>
-
-                        <div>
-
-                            <h3 id="server-name">
-                                Loading...
-                            </h3>
-
-                            <span
-                                class="server-id"
-                                id="server-id"
-                            >
-                                --
-                            </span>
-
-                        </div>
-
-                    </div>
-
-
-                    <div class="server-details">
-
-                        <div class="detail-row">
-
-                            <span>
-                                Owner
-                            </span>
-
-                            <strong id="server-owner">
-                                --
-                            </strong>
-
-                        </div>
-
-
-                        <div class="detail-row">
-
-                            <span>
-                                Created
-                            </span>
-
-                            <strong id="server-created">
-                                --
-                            </strong>
-
-                        </div>
-
-
-                        <div class="detail-row">
-
-                            <span>
-                                Members
-                            </span>
-
-                            <strong id="server-members">
-                                --
-                            </strong>
-
-                        </div>
-
-                    </div>
-
-                </section>
-
-            </div>
-
-
-            <!-- ================================================= -->
-            <!-- ANALYTICS -->
-            <!-- ================================================= -->
-
-            <section class="panel dashboard-analytics reveal">
+<section class="panel dashboard-analytics reveal">
 
                 <div class="panel-header">
 
@@ -1485,6 +1446,7 @@
                 </div>
 
             </section>
+        </section>
     </main>
 
 </div>
@@ -1528,6 +1490,31 @@ window.GUILD_ID =
         var r = el.getBoundingClientRect();
         if (r.bottom > 0 && r.top < window.innerHeight) { show(el); }
         else { el.classList.add("reveal-pending"); io.observe(el); }
+    });
+})();
+</script>
+
+<script>
+/* Mobile sidebar drawer (dashboard standalone page). */
+(function () {
+    var toggle = document.getElementById("sidebar-toggle");
+    var backdrop = document.getElementById("sidebar-backdrop");
+    if (!toggle) return;
+    function setOpen(open) {
+        document.body.classList.toggle("sidebar-open", open);
+        toggle.setAttribute("aria-expanded", open ? "true" : "false");
+        toggle.setAttribute("aria-label", open ? "Close navigation menu" : "Open navigation menu");
+        if (backdrop) backdrop.hidden = !open;
+    }
+    toggle.addEventListener("click", function () {
+        setOpen(!document.body.classList.contains("sidebar-open"));
+    });
+    if (backdrop) backdrop.addEventListener("click", function () { setOpen(false); });
+    document.querySelectorAll(".sidebar .nav-item").forEach(function (link) {
+        link.addEventListener("click", function () { setOpen(false); });
+    });
+    window.addEventListener("resize", function () {
+        if (window.innerWidth > 700) setOpen(false);
     });
 })();
 </script>

@@ -20,10 +20,11 @@
         href="{{ url_for('static', filename='css/dashboard.css') }}"
     >
 
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/havenly-theme.css') }}">
 </head>
 
 
-<body>
+<body class="havenly-theme">
 
 <div class="app">
 
@@ -31,7 +32,7 @@
     <!-- SIDEBAR -->
     <!-- ================================================= -->
 
-    <aside class="sidebar">
+    <aside class="sidebar" id="members-sidebar">
 
         <div class="brand">
 
@@ -45,7 +46,7 @@
                 >
 
                 <span id="bot-avatar-fallback">
-                    KB
+                    <img src="{{ url_for('static', filename='img/little-haven-web-pfp.webp') }}" alt="Little Haven" style="width:100%;height:100%;object-fit:cover;border-radius:inherit;display:block;">
                 </span>
 
             </div>
@@ -88,21 +89,26 @@
                 SERVER
             </div>
 
-            <a
+            {% if web_can('web:view_dashboard', guild_id) %}
+<a
                 href="/servers/{{ guild_id }}"
                 class="nav-item"
             >
                 <span>◉</span>
                 Server
             </a>
+{% endif %}
 
-            <a
+            {% if web_can('web:view_members', guild_id) %}
+<a
                 href="/servers/{{ guild_id }}/members"
                 class="nav-item active"
+                aria-current="page"
             >
                 <span>♙</span>
                 Members
             </a>
+{% endif %}
 
             <a
                 href="#"
@@ -123,29 +129,35 @@
         </div>
 
 
-        <div class="sidebar-section">
+        {% if web_can('web:view_logger', guild_id) or web_can('web:view_activity', guild_id) %}
+<div class="sidebar-section">
 
             <div class="sidebar-label">
                 LOGGING
             </div>
 
-            <a
+            {% if web_can('web:view_activity', guild_id) %}
+<a
                 href="/servers/{{ guild_id }}/activity"
                 class="nav-item"
             >
                 <span>◷</span>
                 Activity
             </a>
+{% endif %}
 
-            <a
+            {% if web_can('web:view_activity', guild_id) %}
+<a
                 href="/servers/{{ guild_id }}/activity"
                 class="nav-item"
             >
                 <span>⚡</span>
                 Events
             </a>
+{% endif %}
 
         </div>
+{% endif %}
 
 
         <div class="sidebar-section">
@@ -162,13 +174,15 @@
                 Moderation
             </a>
 
+            {% if web_can('web:manage_permissions', guild_id) or web_can('web:manage_logs', guild_id) %}
             <a
-                href="/servers/{{ guild_id }}/logging"
+                href="/servers/{{ guild_id }}/permissions"
                 class="nav-item"
             >
-                <span>⚙</span>
-                Settings
+                <span>🔑</span>
+                Permissions
             </a>
+            {% endif %}
 
         </div>
 
@@ -200,6 +214,8 @@
 
     </aside>
 
+    <div class="sidebar-backdrop" id="sidebar-backdrop" hidden></div>
+
 
     <!-- ================================================= -->
     <!-- MAIN -->
@@ -207,9 +223,15 @@
 
     <main class="main">
 
-        <header class="topbar">
+        <header class="topbar members-topbar">
 
-            <div>
+            <button type="button" class="sidebar-toggle" id="sidebar-toggle" aria-label="Open navigation menu" aria-expanded="false" aria-controls="members-sidebar">&#9776;</button>
+
+            <div class="members-topbar-titles">
+
+                <div class="members-eyebrow">
+                    Little Haven
+                </div>
 
                 <div class="page-title">
                     Members
@@ -350,6 +372,7 @@
                         type="text"
                         placeholder="Search members..."
                         autocomplete="off"
+                        aria-label="Search members"
                     >
 
                 </div>
@@ -357,7 +380,7 @@
 
                 <div class="member-filter">
 
-                    <select id="member-filter">
+                    <select id="member-filter" aria-label="Filter members">
 
                         <option value="all">
                             All members
@@ -595,19 +618,14 @@
         ></div>
 
 
-        <div class="member-modal-section" id="modpanel-section" style="display:none;
-            background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.08);
-            border-radius:14px;padding:16px;margin-top:8px;">
+        <div class="member-modal-section modpanel-section" id="modpanel-section" style="display:none;">
 
-            <div class="member-modal-section-title" style="
-                font-size:1rem;font-weight:800;letter-spacing:.02em;
-                padding-bottom:10px;margin-bottom:12px;
-                border-bottom:1px solid rgba(255,255,255,.08);">
+            <div class="member-modal-section-title modpanel-title">
                 🛡️ Moderation Panel
             </div>
 
 
-            <div class="member-modal-grid" style="margin-bottom:12px;">
+            <div class="member-modal-grid modpanel-stats">
 
                 <div class="member-detail-card">
                     <span>Warns</span>
@@ -632,60 +650,63 @@
             </div>
 
 
-            <style>
-                .modpanel-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
-                .modpanel-actions .btn {
-                    border: none; font-weight: 600; padding: 7px 14px; border-radius: 8px;
-                    cursor: pointer; transition: transform .08s, filter .12s; font-size: .82rem;
-                }
-                .modpanel-actions .btn:hover { filter: brightness(1.15); transform: translateY(-1px); }
-                .modpanel-actions .btn:active { transform: translateY(0); }
-                .btn-mod-warn    { background: #e8a020; color: #1a1a1a; }
-                .btn-mod-timeout { background: #e07b24; color: #fff; }
-                .btn-mod-kick    { background: #d6543c; color: #fff; }
-                .btn-mod-ban     { background: #c0392b; color: #fff; }
-                .btn-mod-danger  { background: #8e2a20; color: #fff; }
-                .btn-mod-info    { background: #2980b9; color: #fff; }
-                .btn-mod-neutral { background: #4a4e57; color: #fff; }
-                .btn-mod-unban   { background: #27ae60; color: #fff; }
-            </style>
 
-            <div class="modpanel-actions">
+            <div class="modpanel-group">
+                <div class="modpanel-group-label">Moderation</div>
+                <div class="modpanel-actions">
 
-                <button type="button" class="btn btn-mod-warn" data-action="warn">⚠️ Warn</button>
-                <button type="button" class="btn btn-mod-timeout" data-action="timeout">⏱️ Timeout</button>
-                <button type="button" class="btn btn-mod-neutral" data-action="untimeout">Remove Timeout</button>
-                <button type="button" class="btn btn-mod-kick" data-action="kick">👢 Kick</button>
-                <button type="button" class="btn btn-mod-ban" data-action="ban">🔨 Ban</button>
-                <button type="button" class="btn btn-mod-unban" data-action="unban">🔓 Unban</button>
-                <button type="button" class="btn btn-mod-neutral" data-action="clear">🧹 Clear Msgs</button>
-                <button type="button" class="btn btn-mod-info" data-action="note">📝 Add Note</button>
-                <button type="button" class="btn btn-mod-info" data-action="watch">👁️ Watch / Unwatch</button>
-                <button type="button" class="btn btn-mod-info" data-action="xp">⭐ Add / Remove XP</button>
-                <button type="button" class="btn btn-mod-neutral" data-action="rename">✏️ Rename</button>
-                <button type="button" class="btn btn-mod-danger" data-action="strip">🎭 Strip Roles</button>
-                <button type="button" class="btn btn-mod-danger" data-action="wipe">🗑️ Wipe Data</button>
+                {# Web permission system: each button only renders when
+                   the viewer holds the action it calls -- the matching
+                   API route would reject it otherwise. #}
+                {% if web_can('warn', guild_id) %}<button type="button" class="btn btn-mod-warn" data-action="warn">⚠️ Warn</button>{% endif %}
+                {% if web_can('timeout', guild_id) %}<button type="button" class="btn btn-mod-timeout" data-action="timeout">⏱️ Timeout</button>{% endif %}
+                {% if web_can('timeout', guild_id) %}<button type="button" class="btn btn-mod-neutral" data-action="untimeout">Remove Timeout</button>{% endif %}
+                {% if web_can('kick', guild_id) %}<button type="button" class="btn btn-mod-kick" data-action="kick">👢 Kick</button>{% endif %}
+                {% if web_can('ban', guild_id) %}<button type="button" class="btn btn-mod-ban" data-action="ban">🔨 Ban</button>{% endif %}
+                {% if web_can('ban', guild_id) %}<button type="button" class="btn btn-mod-unban" data-action="unban">🔓 Unban</button>{% endif %}
+                </div>
+            </div>
 
+            <div class="modpanel-group">
+                <div class="modpanel-group-label">Manage</div>
+                <div class="modpanel-actions">
+                {% if web_can('clear_user', guild_id) %}<button type="button" class="btn btn-mod-neutral" data-action="clear">🧹 Clear Msgs</button>{% endif %}
+                {% if web_can('web:manage_notes', guild_id) %}<button type="button" class="btn btn-mod-info" data-action="note">📝 Add Note</button>{% endif %}
+                {% if web_can('watch_add', guild_id) or web_can('watch_remove', guild_id) %}<button type="button" class="btn btn-mod-info" data-action="watch">👁️ Watch / Unwatch</button>{% endif %}
+                {% if web_can('add_xp', guild_id) %}<button type="button" class="btn btn-mod-info" data-action="xp">⭐ Add / Remove XP</button>{% endif %}
+                {% if web_can('rename_user', guild_id) %}<button type="button" class="btn btn-mod-neutral" data-action="rename">✏️ Rename</button>{% endif %}
+                </div>
+            </div>
+
+            <div class="modpanel-group">
+                <div class="modpanel-group-label">Danger zone</div>
+                <div class="modpanel-actions">
+                {% if web_can('remove_user_role', guild_id) %}<button type="button" class="btn btn-mod-danger" data-action="strip">🎭 Strip Roles</button>{% endif %}
+                {% if web_can('web:wipe_member', guild_id) %}<button type="button" class="btn btn-mod-danger" data-action="wipe">🗑️ Wipe Data</button>{% endif %}
+                </div>
             </div>
 
 
+
+            <div class="modpanel-records">
+                <div class="modpanel-group-label">Records</div>
+
             <div class="member-modal-section-title">Warns</div>
-            <div id="modpanel-warn-list" class="member-role-list" style="margin-bottom:12px;">None</div>
+            <div id="modpanel-warn-list" class="member-role-list modpanel-list">None</div>
 
             <div class="member-modal-section-title">Notes</div>
-            <div id="modpanel-note-list" class="member-role-list" style="margin-bottom:12px;">None</div>
+            <div id="modpanel-note-list" class="member-role-list modpanel-list">None</div>
 
             <div class="member-modal-section-title">Case History</div>
-            <div id="modpanel-case-target" style="display:flex;align-items:center;gap:10px;
-                padding:10px 12px;background:rgba(255,255,255,.03);border-radius:10px;margin-bottom:8px;">
-                <img id="modpanel-case-target-avatar" src="" alt=""
-                    style="width:36px;height:36px;border-radius:50%;">
+            <div id="modpanel-case-target" class="modpanel-case-target">
+                <img id="modpanel-case-target-avatar" class="modpanel-case-target-avatar" src="" alt="">
                 <div>
-                    <div id="modpanel-case-target-name" style="font-weight:700;font-size:.9rem;"></div>
-                    <div id="modpanel-case-target-id" style="font-size:.75rem;opacity:.6;"></div>
+                    <div id="modpanel-case-target-name" class="modpanel-case-target-name"></div>
+                    <div id="modpanel-case-target-id" class="modpanel-case-target-id"></div>
                 </div>
             </div>
             <div id="modpanel-case-list" class="member-role-list">None</div>
+            </div>
 
         </div>
 
@@ -693,70 +714,6 @@
 
 </div>
 
-<style>
-    .member-row {
-        display: flex; align-items: center; gap: 14px;
-        width: 100%; text-align: left;
-        background: rgba(255,255,255,.025);
-        border: 1px solid rgba(255,255,255,.07);
-        border-radius: 12px;
-        margin-bottom: 8px;
-        padding: 10px 16px;
-        cursor: pointer; color: inherit; font: inherit;
-        transition: background .12s, border-color .12s, transform .08s;
-    }
-    .member-row:hover {
-        background: rgba(255,255,255,.06);
-        border-color: rgba(255,255,255,.16);
-        transform: translateY(-1px);
-    }
-    .member-avatar { position: relative; flex-shrink: 0; }
-    .member-avatar img, .member-avatar span {
-        width: 44px; height: 44px; border-radius: 50%;
-        display: block; object-fit: cover;
-    }
-    .member-avatar span {
-        display: flex; align-items: center; justify-content: center;
-        background: #5865f2; color: #fff; font-weight: 700;
-    }
-    .member-avatar .member-status {
-        position: absolute !important; bottom: 0 !important; right: 0 !important;
-        width: 14px !important; height: 14px !important; border-radius: 50% !important;
-        border: 3px solid #1e1f22 !important;
-        display: block !important; padding: 0 !important; margin: 0 !important;
-    }
-    .member-status.online { background: #23a55a; }
-    .member-status.idle { background: #f0b232; }
-    .member-status.dnd { background: #f23f43; }
-    .member-status.offline { background: #80848e; }
-    .member-main { flex: 1; min-width: 0; }
-    .member-name {
-        font-weight: 700; font-size: .95rem;
-        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-    }
-    .bot-badge {
-        background: #5865f2; color: #fff; font-size: .65rem;
-        padding: 1px 6px; border-radius: 6px; margin-left: 6px;
-        vertical-align: middle;
-    }
-    .member-username {
-        font-size: .78rem; opacity: .55;
-        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-    }
-    .member-role { flex-shrink: 0; display: flex; align-items: center; gap: 6px; }
-    .member-role-chip {
-        font-size: .75rem; padding: 3px 10px; border-radius: 99px;
-        background: rgba(255,255,255,.07); white-space: nowrap;
-    }
-    .member-role small { opacity: .5; font-size: .7rem; }
-    .member-status-label { flex-shrink: 0; min-width: 52px; text-align: right; }
-    .member-status-text { font-size: .78rem; text-transform: capitalize; }
-    .member-status-text.online { color: #23a55a; }
-    .member-status-text.idle { color: #f0b232; }
-    .member-status-text.dnd { color: #f23f43; }
-    .member-status-text.offline { color: #80848e; }
-    .member-row-arrow { flex-shrink: 0; opacity: .4; font-size: 1.1rem; }
-</style>
 
 <script>
 
@@ -1926,6 +1883,28 @@ async function modpanelFetch(url, method, body) {
 }
 
 
+// Web permission system: modpanel button (data-action) -> the action
+// the API route checks. The buttons are also Jinja-gated at render
+// time; this re-hides them from the live per-action map the panel
+// data carries, so a button never stays visible that the API would
+// reject. `watch` shows when either watch action is allowed.
+const MODPANEL_ACTION_KEYS = {
+    warn: "warn",
+    timeout: "timeout",
+    untimeout: "timeout",
+    kick: "kick",
+    ban: "ban",
+    unban: "ban",
+    clear: "clear_user",
+    note: "web:manage_notes",
+    watch: null,
+    xp: "add_xp",
+    rename: "rename_user",
+    strip: "remove_user_role",
+    wipe: "web:wipe_member",
+};
+
+
 async function loadModPanel(memberId) {
 
     modpanelMemberId = memberId;
@@ -1948,6 +1927,16 @@ async function loadModPanel(memberId) {
 
         modpanelData = result;
         section.style.display = "block";
+
+        const allowedActions = result.web_actions || {};
+        document.querySelectorAll("#modpanel-section [data-action]").forEach(btn => {
+            const key = MODPANEL_ACTION_KEYS[btn.dataset.action];
+            if (key === undefined) return;
+            const allowed = key === null
+                ? (allowedActions.watch_add || allowedActions.watch_remove)
+                : allowedActions[key];
+            btn.style.display = allowed ? "" : "none";
+        });
 
         document.getElementById("modpanel-warns").textContent =
             (result.warns || []).length;
@@ -2062,7 +2051,7 @@ function renderModpanelLists(data) {
                          <div style="opacity:.55;margin-bottom:4px;">EVIDENCE</div>
                          <div style="background:rgba(255,255,255,.04);border-radius:8px;padding:8px 10px;">${
                              /^https?:\/\//i.test(evidence)
-                                 ? `<a href="${escapeHtml(evidence)}" target="_blank" rel="noopener" style="color:#7aa2ff;">${escapeHtml(evidence)}</a>`
+                                 ? `<a href="${escapeHtml(evidence)}" target="_blank" rel="noopener" style="color:#a78bfa;">${escapeHtml(evidence)}</a>`
                                  : escapeHtml(evidence)
                          }</div>
                        </div>`
@@ -2608,6 +2597,31 @@ setInterval(function() {
 
 <script src="{{ url_for('static', filename='js/server_context.js') }}"></script>
 
+<script>
+/* Mobile sidebar drawer (members standalone page). */
+(function () {
+    var toggle = document.getElementById("sidebar-toggle");
+    var backdrop = document.getElementById("sidebar-backdrop");
+    if (!toggle) return;
+    function setOpen(open) {
+        document.body.classList.toggle("sidebar-open", open);
+        toggle.setAttribute("aria-expanded", open ? "true" : "false");
+        toggle.setAttribute("aria-label", open ? "Close navigation menu" : "Open navigation menu");
+        if (backdrop) backdrop.hidden = !open;
+    }
+    toggle.addEventListener("click", function () {
+        setOpen(!document.body.classList.contains("sidebar-open"));
+    });
+    if (backdrop) backdrop.addEventListener("click", function () { setOpen(false); });
+    document.querySelectorAll(".sidebar .nav-item").forEach(function (link) {
+        link.addEventListener("click", function () { setOpen(false); });
+    });
+    window.addEventListener("resize", function () {
+        if (window.innerWidth > 700) setOpen(false);
+    });
+})();
+</script>
+
 </body>
 
-</html>
+</html>

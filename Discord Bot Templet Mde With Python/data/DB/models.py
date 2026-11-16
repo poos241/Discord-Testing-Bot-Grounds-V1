@@ -631,3 +631,30 @@ vrchat_accounts = sqlalchemy.Table(
     sqlalchemy.Column("created_at", sqlalchemy.DateTime, server_default=func.now()),
     sqlalchemy.Column("updated_at", sqlalchemy.DateTime, server_default=func.now(), onupdate=func.now())
 )
+
+# Web permission system (built 2026-11-15; see utils/permissions.py
+# web_default_check and bridge_api.py /bridge/guilds/{gid}/web_settings).
+# One row per guild: the role id that marks a member "unverified" for
+# the website gate (the website blocks members who still hold it).
+# Empty string = no unverified role configured for that guild. A new
+# table, so metadata.create_all creates it on the next bot boot.
+web_guild_settings = sqlalchemy.Table(
+    "web_guild_settings", metadata,
+    sqlalchemy.Column("guild_id", sqlalchemy.String, primary_key=True),
+    sqlalchemy.Column("unverified_role_id", sqlalchemy.String, default=""),
+    sqlalchemy.Column("updated_at", sqlalchemy.DateTime, server_default=func.now(), onupdate=func.now()),
+)
+
+# Website bypass users (built 2026-11-16; see bridge_api.py
+# /bridge/bypass and web/services/web_access.py is_owner_bypass).
+# Global list of Discord user ids that may open any guild's website
+# without needing any permission -- the editable form of the bypass
+# the hardcoded WEB_BYPASS_USER_IDS used to give Emily + the LH
+# owner. Seeded with those two ids. A new table, so
+# metadata.create_all creates it on the next bot/website boot.
+web_bypass_users = sqlalchemy.Table(
+    "web_bypass_users", metadata,
+    sqlalchemy.Column("user_id", sqlalchemy.String, primary_key=True),
+    sqlalchemy.Column("added_by", sqlalchemy.String, default=""),
+    sqlalchemy.Column("created_at", sqlalchemy.DateTime, server_default=func.now()),
+)

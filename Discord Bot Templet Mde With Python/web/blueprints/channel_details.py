@@ -2,7 +2,7 @@ from flask import Blueprint, jsonify
 
 from web.services import bridge
 from web.services.bridge import BridgeUnavailable
-from web.security.decorators import require_guild_manage, require_login, require_guild_moderator
+from web.security.decorators import require_guild_manage, require_login, require_web_api_access
 
 
 channel_details_api = Blueprint(
@@ -30,7 +30,7 @@ def get_guild(guild_id):
 @channel_details_api.get(
     "/api/servers/<int:guild_id>/channels/<int:channel_id>/details"
 )
-@require_guild_moderator
+@require_web_api_access("web:view_channels")
 def channel_details(
     guild_id,
     channel_id

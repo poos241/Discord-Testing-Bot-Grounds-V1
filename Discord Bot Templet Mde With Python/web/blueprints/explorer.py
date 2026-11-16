@@ -5,7 +5,7 @@ import discord
 from web.services import bridge
 from web.services.event_store import event_store
 from web.services.member_service import MemberService
-from web.security.decorators import require_guild_manage, require_login, require_guild_moderator
+from web.security.decorators import require_guild_manage, require_login, require_web_api_access
 
 
 explorer_api = Blueprint(
@@ -57,7 +57,7 @@ def get_guild(guild_id):
 @explorer_api.get(
     "/api/servers/<int:guild_id>/search"
 )
-@require_guild_moderator
+@require_web_api_access("web:view_dashboard")
 def server_search(guild_id):
 
     guild, error = get_guild(
@@ -315,7 +315,7 @@ def server_search(guild_id):
 @explorer_api.get(
     "/api/servers/<int:guild_id>/permissions"
 )
-@require_guild_moderator
+@require_web_api_access("web:view_dashboard")
 def server_permissions(guild_id):
 
     guild, error = get_guild(
@@ -457,7 +457,7 @@ def server_permissions(guild_id):
 @explorer_api.get(
     "/api/servers/<int:guild_id>/activity"
 )
-@require_guild_moderator
+@require_web_api_access("web:view_activity")
 def server_activity(guild_id):
 
     guild, error = get_guild(
@@ -571,7 +571,7 @@ def server_activity(guild_id):
 @explorer_api.get(
     "/api/servers/<int:guild_id>/members/top"
 )
-@require_guild_moderator
+@require_web_api_access("web:view_members")
 def top_members(guild_id):
 
     guild, error = get_guild(

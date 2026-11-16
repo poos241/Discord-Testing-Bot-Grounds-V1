@@ -2,7 +2,7 @@ from data.DB.db import database
 import asyncio
 
 from sqlalchemy.exc import IntegrityError as SQLAlchemyIntegrityError
-from data.DB.models import welcome_data, main_vc_map, xp_timestamps, threads_settings, levels, ticket_config, active_tickets, ticket_records, profiles, profile_activity, qotd_questions, qotd_config, qotd_history, qotd_guild_exclusions, ticket_guild_config, support_tickets, appeal_guild_config, appeals, friendships, friend_settings, voice_xp_config, voice_xp_users, lockdown_channels, automod_config, auto_thread_channels, custom_badges, custom_badge_awards, ghlog_items, ghlog_settings, command_permissions, introduction_status, introduction_config, timeout_board_config, vrchat_accounts
+from data.DB.models import welcome_data, main_vc_map, xp_timestamps, threads_settings, levels, ticket_config, active_tickets, ticket_records, profiles, profile_activity, qotd_questions, qotd_config, qotd_history, qotd_guild_exclusions, ticket_guild_config, support_tickets, appeal_guild_config, appeals, friendships, friend_settings, voice_xp_config, voice_xp_users, lockdown_channels, automod_config, auto_thread_channels, custom_badges, custom_badge_awards, ghlog_items, ghlog_settings, command_permissions, introduction_status, introduction_config, timeout_board_config, vrchat_accounts, web_guild_settings, web_bypass_users
 from datetime import datetime
 import time
 
@@ -1212,6 +1212,92 @@ async def save_ghlog_settings(guild_id: str, payload: dict):
     )
 
 
+# Web permission system (built 2026-11-15; see bridge_api.py
+# /bridge/guilds/{gid}/web_settings). One row per guild holding the
+# unverified-role id the website gate checks. Empty string = none set.
+async def get_web_guild_settings(guild_id: str):
+    """{"unverified_role_id": str} -- "" when no row exists yet."""
+    row = await database.fetch_one(
+        web_guild_settings.select().where(
+            web_guild_settings.c.guild_id == str(guild_id)
+        )
+    )
+    if not row:
+        return {"unverified_role_id": ""}
+    return {"unverified_role_id": str(row["unverified_role_id"] or "")}
+
+
+async def set_unverified_role_id(guild_id: str, role_id: str):
+    """Upsert the guild's unverified role id. ``role_id`` must be a
+    Discord role id (digits) or empty to clear it. Raises ValueError
+    on anything else -- callers turn that into a 400."""
+    role_id = str(role_id or "")
+    if role_id and not role_id.isdigit():
+        raise ValueError(
+            "unverified_role_id must be a Discord role id (digits) "
+            "or empty to clear it."
+        )
+    await database.execute(
+        _upsert(web_guild_settings, dict(
+            guild_id=str(guild_id), unverified_role_id=role_id))
+    )
+
+
+# Website bypass users (built 2026-11-16). Global list of Discord
+# user ids that bypass every website permission gate. The two seeded
+# ids are the permanent bypass floor (Emily + the LH owner); they
+# are also stored here so the permissions page can list them, but
+# they cannot be removed (remove_bypass_user refuses them).
+SEEDED_BYPASS_USER_IDS = ("287282266261159937", "762550157765902356")
+
+
+async def list_bypass_users():
+    """Every bypass user, ordered by user id. Returns a list of
+    dicts with user_id, added_by, created_at."""
+    rows = await database.fetch_all(
+        web_bypass_users.select().order_by(web_bypass_users.c.user_id)
+    )
+    return [dict(row) for row in rows]
+
+
+async def get_bypass_user_ids():
+    """Set of Discord user ids on the website bypass list."""
+    rows = await database.fetch_all(web_bypass_users.select())
+    return {str(r["user_id"]) for r in rows}
+
+
+async def add_bypass_user(user_id: str, added_by: str = ""):
+    """Add a user id to the bypass list (upsert). Raises ValueError
+    on a non-digit id."""
+    user_id = str(user_id or "")
+    if not user_id.isdigit():
+        raise ValueError(
+            "bypass user id must be a Discord user id (digits)."
+        )
+    await database.execute(
+        _upsert(web_bypass_users, dict(
+            user_id=user_id, added_by=str(added_by or "")))
+    )
+
+
+async def remove_bypass_user(user_id: str):
+    """Remove a user id from the bypass list. Returns True when a
+    row was removed. Raises ValueError for the two seeded ids (they
+    are the permanent bypass floor and cannot be removed)."""
+    user_id = str(user_id or "")
+    if user_id in SEEDED_BYPASS_USER_IDS:
+        raise ValueError(
+            "That user is a permanent bypass user and cannot be "
+            "removed."
+        )
+    row = await database.fetch_one(
+        web_bypass_users.delete()
+        .where(web_bypass_users.c.user_id == user_id)
+        .returning(web_bypass_users.c.user_id)
+    )
+    return row is not None
+
+
 # Custom per-command permissions (built 2026-11-05; see
 # utils/permissions.py and cogs/Permissions.py). One row per grant.
 # Upserts use _upsert like the other config helpers in this file.
@@ -1265,16 +1351,27 @@ async def save_command_permission(
 async def delete_command_permission(
     guild_id: str, command: str, target_type: str, target_id: str,
 ):
-    """Remove one grant. Returns True when a row was deleted."""
-    result = await database.execute(
+    """Remove one grant. Returns True when a row was deleted.
+
+    NOTE (2026-11-15): the old body did ``bool(await
+    database.execute(delete...))`` -- but on this stack (``databases``
+    + asyncpg) execute() returns None for a DELETE, so it always
+    returned False even when the row was deleted (which also made
+    /perm remove always answer "There was no grant to remove").
+    DELETE ... RETURNING reports the deleted row, so the bool is
+    truthful now. The sibling bulk-delete helpers below still use
+    the old execute() shape and return 0 for the same reason -- see
+    SUMMARY-bot.md; left alone here on purpose.
+    """
+    row = await database.fetch_one(
         command_permissions.delete().where(
             (command_permissions.c.guild_id == str(guild_id))
             & (command_permissions.c.command == command)
             & (command_permissions.c.target_type == target_type)
             & (command_permissions.c.target_id == str(target_id))
-        )
+        ).returning(command_permissions.c.command)
     )
-    return bool(result)
+    return row is not None
 
 
 async def delete_command_permissions_for_target(

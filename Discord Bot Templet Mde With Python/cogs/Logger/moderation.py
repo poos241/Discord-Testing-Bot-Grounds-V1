@@ -4,8 +4,8 @@ from discord.ext import commands
 
 from .audit import resolve_moderator
 from .base import BaseLogger
-from .config import MODERATION, COLORS, EV_BAN, EV_UNBAN, EV_TIMEOUT
-from .embeds import LoggerEmbed
+from .config import MODERATION, EV_BAN, EV_UNBAN, EV_TIMEOUT
+from .embeds import LoggerEmbed, user_line
 from .database import db
 
 
@@ -24,7 +24,7 @@ class ModerationLogger(BaseLogger):
         # original's "Powered by Havenly Bot", re-applied AFTER
         # finalize() (the shared footer is now the same string, so
         # this just makes the ban embed's footer explicit).
-        embed = LoggerEmbed.base("🔨 User Banned", COLORS[MODERATION])
+        embed = LoggerEmbed.base("🔨 User Banned", LoggerEmbed.RED)
         embed.description = (
             f"**User:** {user.mention} [{user.name}] ({user.id})\n"
             f"**Moderator:** {mod['mention']} [{mod['name']}]\n"
@@ -50,9 +50,14 @@ class ModerationLogger(BaseLogger):
         mod = await resolve_moderator(
             guild, self.bot, discord.AuditLogAction.unban, user.id, ("unban",)
         )
-        embed = LoggerEmbed.base("♻ Member Unbanned", COLORS[MODERATION])
-        LoggerEmbed.field(embed, "User", f"{user} (`{user.id}`)")
-        LoggerEmbed.field(embed, "Moderator", mod["display"], inline=True)
+        embed = LoggerEmbed.base(
+            "♻ Member Unbanned",
+            LoggerEmbed.GREEN,
+            description=(
+                f"**User:** {user_line(user)}\n"
+                f"**Moderator:** {mod['mention']} [{mod['name']}]"
+            ),
+        )
         LoggerEmbed.finalize(embed)
         await self.send(guild, MODERATION, embed)
 
@@ -69,17 +74,24 @@ class ModerationLogger(BaseLogger):
                 after.guild, self.bot, discord.AuditLogAction.member_update,
                 after.id, ("timeout",),
             )
-            embed = LoggerEmbed.base("⏱ Member Timed Out", COLORS[MODERATION])
-            LoggerEmbed.author(embed, after)
-            LoggerEmbed.field(
-                embed, "Until",
-                discord.utils.format_dt(after_to, style="F"),
-                inline=True,
+            embed = LoggerEmbed.base(
+                "⏱ Member Timed Out",
+                LoggerEmbed.RED,
+                description=(
+                    f"**User:** {user_line(after)}\n"
+                    f"**Until:** "
+                    f"{discord.utils.format_dt(after_to, style='F')}\n"
+                    f"**Moderator:** {mod['mention']} [{mod['name']}]\n"
+                    f"**Reason:** {mod['reason'] or 'No reason provided.'}"
+                ),
             )
-            LoggerEmbed.field(embed, "Moderator", mod["display"], inline=True)
-            LoggerEmbed.field(embed, "Reason", mod["reason"] or "No reason provided.")
+            LoggerEmbed.author(embed, after)
         else:
-            embed = LoggerEmbed.base("⏱ Timeout Removed", COLORS[MODERATION])
+            embed = LoggerEmbed.base(
+                "⏱ Timeout Removed",
+                LoggerEmbed.GREEN,
+                description=f"**User:** {user_line(after)}",
+            )
             LoggerEmbed.author(embed, after)
         LoggerEmbed.finalize(embed)
         await self.send(after.guild, MODERATION, embed)

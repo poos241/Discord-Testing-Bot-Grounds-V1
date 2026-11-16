@@ -5,10 +5,7 @@ import discord
 from web.services import bridge
 from web.services.member_service import MemberService
 
-from web.blueprints.auth import (
-    user_can_manage_guild
-)
-from web.security.decorators import require_guild_manage, require_login, require_guild_moderator
+from web.security.decorators import require_web_api_access
 
 role_details_api = Blueprint(
     "role_details",
@@ -19,7 +16,7 @@ role_details_api = Blueprint(
 @role_details_api.get(
     "/api/servers/<int:guild_id>/roles/<int:role_id>/details"
 )
-@require_guild_moderator
+@require_web_api_access("web:view_roles")
 def role_details(
     guild_id,
     role_id
@@ -31,21 +28,6 @@ def role_details(
             "success": False,
             "error": "Discord bot is not connected."
         }), 503
-
-
-    if not user_can_manage_guild(
-        guild_id
-    ):
-
-        return jsonify({
-
-            "success":
-                False,
-
-            "error":
-                "You do not have permission to view this role."
-
-        }), 403
 
 
     guild = bridge.get_guild(

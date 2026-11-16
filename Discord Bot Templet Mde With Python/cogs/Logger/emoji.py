@@ -2,7 +2,7 @@
 from discord.ext import commands
 
 from .base import BaseLogger
-from .config import SERVER, COLORS, EV_EMOJI_CREATE, EV_EMOJI_DELETE, EV_EMOJI_RENAME
+from .config import SERVER, EV_EMOJI_CREATE, EV_EMOJI_DELETE, EV_EMOJI_RENAME
 from .embeds import LoggerEmbed
 from .database import db
 
@@ -26,26 +26,37 @@ class EmojiLogger(BaseLogger):
     async def _created(self, guild, emoji):
         if not db.is_enabled(guild.id, EV_EMOJI_CREATE):
             return
-        embed = LoggerEmbed.base("😀 Emoji Created", COLORS[SERVER])
+        embed = LoggerEmbed.base(
+            "😀 Emoji Created",
+            LoggerEmbed.GREEN,
+            description=f"**Emoji:** :{emoji.name}:",
+        )
         embed.set_thumbnail(url=emoji.url)
-        LoggerEmbed.field(embed, "Name", f":{emoji.name}:")
         LoggerEmbed.finalize(embed)
         await self.send(guild, SERVER, embed)
 
     async def _deleted(self, guild, emoji):
         if not db.is_enabled(guild.id, EV_EMOJI_DELETE):
             return
-        embed = LoggerEmbed.base("❌ Emoji Deleted", COLORS[SERVER])
-        LoggerEmbed.field(embed, "Name", f":{emoji.name}:")
+        embed = LoggerEmbed.base(
+            "❌ Emoji Deleted",
+            LoggerEmbed.RED,
+            description=f"**Emoji:** :{emoji.name}:",
+        )
         LoggerEmbed.finalize(embed)
         await self.send(guild, SERVER, embed)
 
     async def _renamed(self, guild, before, after):
         if not db.is_enabled(guild.id, EV_EMOJI_RENAME):
             return
-        embed = LoggerEmbed.base("✏ Emoji Renamed", COLORS[SERVER])
+        embed = LoggerEmbed.base(
+            "✏ Emoji Renamed",
+            LoggerEmbed.BLUE,
+            description=(
+                f"**Before:** :{before.name}:\n"
+                f"**After:** :{after.name}:"
+            ),
+        )
         embed.set_thumbnail(url=after.url)
-        LoggerEmbed.field(embed, "Before", f":{before.name}:")
-        LoggerEmbed.field(embed, "After", f":{after.name}:")
         LoggerEmbed.finalize(embed)
         await self.send(guild, SERVER, embed)

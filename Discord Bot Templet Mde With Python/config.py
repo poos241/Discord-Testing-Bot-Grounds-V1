@@ -53,8 +53,7 @@ emojis = {
 
 COMMAND_TAGS = {
     "moderation": ["kick", "ban", "warn"],
-    "levels": ["level", "leaderboard", "set_xp_rate", "set_cooldown", "set_level_channel", "add_xp", "resetxp", "cleardata", "getxpsettings"],
-    "voicexp": ["voicexp optin", "voicexp optout", "voicexp status", "voicexp leaderboard", "voicexp config", "voicexp setrate", "voicexp setcap", "voicexp enable", "voicexp disable"],
+    "levels": ["level", "leaderboard", "set_xp_rate", "set_cooldown", "set_level_channel", "set_spam_channel", "add_xp", "resetxp", "cleardata", "getxpsettings"],
     "backups": ["backup now", "backup status"],
     "tickets": ["ticket panel", "ticket config", "ticket show", "ticket open", "ticket close", "ticket reopen", "ticket claim", "ticket delete", "ticket add", "ticket remove", "ticket list"],
     "fun": ["eatyeet", "eatyeet_end", "eatyeet_leaderboard", "eatyeet_stats", "eatyeet_suggest", "eatyeet_history", "flip_coin", "conch", "roll", "rps", "leaderboard_rps", "clear_leaderboard_rps"],

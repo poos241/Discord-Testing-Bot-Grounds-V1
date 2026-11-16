@@ -7,7 +7,7 @@ from flask import (
 
 from web.services import bridge
 from web.services.event_store import event_store
-from web.security.decorators import require_guild_manage, require_login, require_guild_moderator
+from web.security.decorators import require_guild_manage, require_login, require_web_api_access
 
 
 event_stats_api = Blueprint(
@@ -19,7 +19,7 @@ event_stats_api = Blueprint(
 @event_stats_api.get(
     "/api/servers/<int:guild_id>/event-stats"
 )
-@require_guild_moderator
+@require_web_api_access("web:view_activity")
 def event_stats(
     guild_id
 ):

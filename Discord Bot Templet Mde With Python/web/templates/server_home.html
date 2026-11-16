@@ -31,14 +31,14 @@
     </p>
 
     <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; margin: 20px 0;">
-        <div style="background: #1e1f24; border: 1px solid #333; border-radius: 12px; padding: 18px;">
+        <div style="background: #1e1f24; border: 1px solid #2e2e44; border-radius: 12px; padding: 18px;">
             <h2 style="margin: 0 0 10px; font-size: 1.25rem;">This server</h2>
             <p style="color: #aaa; margin: 4px 0;">CPU temp: <strong id="stat-temp">…</strong></p>
             <p style="color: #aaa; margin: 4px 0;">RAM: <strong id="stat-mem">…</strong></p>
             <p style="color: #aaa; margin: 4px 0;">Disk: <strong id="stat-disk">…</strong></p>
             <p style="color: #aaa; margin: 4px 0;">Bot uptime: <strong id="stat-bot-uptime">…</strong></p>
         </div>
-        <div style="background: #1e1f24; border: 1px solid #333; border-radius: 12px; padding: 18px;">
+        <div style="background: #1e1f24; border: 1px solid #2e2e44; border-radius: 12px; padding: 18px;">
             <h2 style="margin: 0 0 10px; font-size: 1.25rem;">Bot</h2>
             <p style="color: #aaa; margin: 4px 0;">Servers: <strong id="stat-guilds">…</strong></p>
             <p style="color: #aaa; margin: 4px 0;">Members: <strong id="stat-members">…</strong></p>
@@ -47,7 +47,7 @@
     </div>
 
     {% if can_any("admin") %}
-    <div style="background: #1e1f24; border: 1px solid #333; border-radius: 12px; padding: 18px; margin: 20px 0;">
+    <div style="background: #1e1f24; border: 1px solid #2e2e44; border-radius: 12px; padding: 18px; margin: 20px 0;">
         <h2 style="margin: 0 0 8px; font-size: 1.25rem;">Restart controls</h2>
         <p style="color: #aaa; margin: 0 0 14px;">
             Restart only, for now. The bot and the website are separate
@@ -72,7 +72,7 @@
 
     <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; margin-top: 20px;">
         {% for svc in services %}
-        <div style="background: #1e1f24; border: 1px solid #333; border-radius: 12px; padding: 18px;">
+        <div style="background: #1e1f24; border: 1px solid #2e2e44; border-radius: 12px; padding: 18px;">
             <div style="display: flex; align-items: center; gap: 10px;">
                 <span id="dot-{{ svc.key }}" style="width: 12px; height: 12px; border-radius: 50%; background: #888; display: inline-block;" title="checking…"></span>
                 <h2 style="margin: 0; font-size: 1.25rem;">{{ svc.name }}</h2>

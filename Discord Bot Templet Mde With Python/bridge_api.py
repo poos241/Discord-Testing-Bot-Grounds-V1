@@ -456,6 +456,493 @@ async def _bans(request):
 
 
 # ----------------------------------------------------------------------
+# Web permission system (built 2026-11-15)
+#
+# The website asks the bot (source of truth) whether a user may see
+# or do things on the site: is the user verified, is the user a
+# bypass (Emily or the guild owner), and does the user hold each
+# requested action under the SAME command_permissions rules Discord
+# uses (custom rules first, then the per-action default in
+# utils/permissions.web_default_check). "web:*" keys are just rows
+# in the same table, so custom_perm_decision works unchanged.
+#
+# Main bot only: these routes are registered in _build_app's
+# non-worker branch. The worker hub (5002) serves status + jobs
+# only and never gets them.
+# ----------------------------------------------------------------------
+
+# Emily's user id, plus the other guild owner's id. The website
+# bypass is EXACTLY these two user ids, in addition to the guild
+# owner of whichever guild is being checked (config.OWNER_IDS has
+# a second entry, 765094342279954509, but that user matches neither
+# guild owner and must NOT bypass -- do not widen this list without
+# Emily's say-so). This list is web-only: it does not change what
+# OWNER_IDS means for Discord.
+_WEB_BYPASS_USER_IDS = frozenset({
+    287282266261159937,  # Emily
+    762550157765902356,  # Little Haven owner
+})
+
+
+async def _try_resolve_member(guild, uid):
+    """Like _resolve_member, but returns None instead of raising
+    when the user is not a member of the guild -- web_access needs
+    member-or-null, not a 404."""
+    member = guild.get_member(uid)
+    if member is None:
+        try:
+            member = await guild.fetch_member(uid)
+        except (discord.NotFound, discord.Forbidden):
+            return None
+        except Exception:
+            return None
+    return member
+
+
+async def _web_access(request):
+    _require_ready()
+    guild = _get_guild(request.match_info["gid"])
+    uid = _parse_int(request.match_info["uid"], "member id")
+    actions_raw = request.query.get("actions", "")
+    actions = [a.strip() for a in actions_raw.split(",") if a.strip()]
+    if len(actions) > 50:
+        raise _BridgeError(400, "Too many actions (max 50).")
+    from data.DB.Storage.storage import (
+        get_bypass_user_ids,
+        get_web_guild_settings,
+    )
+    from utils.permissions import has_command_permission, web_default_check
+
+    settings = await get_web_guild_settings(str(guild.id))
+    unverified_role_id = settings.get("unverified_role_id") or ""
+    member = await _try_resolve_member(guild, uid)
+    # Bypass = the permanent floor (Emily + the LH owner) OR any id
+    # on the stored bypass list (editable on the permissions page),
+    # OR the guild owner. The stored list is read fresh every call
+    # (it is a tiny table), so a user added to the list gets in on
+    # their very next page load.
+    stored_bypass_ids = await get_bypass_user_ids()
+    is_bypass = (
+        uid in _WEB_BYPASS_USER_IDS
+        or uid in stored_bypass_ids
+        or uid == getattr(guild, "owner_id", None)
+    )
+    role_ids = (
+        [str(r.id) for r in (getattr(member, "roles", None) or [])]
+        if member is not None else []
+    )
+    is_unverified = bool(
+        member is not None
+        and unverified_role_id
+        and unverified_role_id in role_ids
+    )
+    permissions = {}
+    for action in actions:
+        if is_bypass:
+            permissions[action] = True
+        elif member is None:
+            permissions[action] = False
+        else:
+            permissions[action] = await has_command_permission(
+                guild, member, action,
+                lambda m, a=action: web_default_check(a, m),
+            )
+    return _ok({
+        "member": (
+            {"id": str(uid), "roles": role_ids}
+            if member is not None else None
+        ),
+        "is_bypass": bool(is_bypass),
+        "is_unverified": is_unverified,
+        "unverified_role_id": unverified_role_id,
+        "permissions": permissions,
+    })
+
+
+def _permission_rule_dict(row):
+    """One command_permissions row as the website reads it."""
+    created_at = row.get("created_at")
+    if created_at is not None:
+        try:
+            created_at = created_at.isoformat()
+        except Exception:
+            created_at = str(created_at)
+    return {
+        "command": row.get("command"),
+        "target_type": row.get("target_type"),
+        "target_id": str(row.get("target_id")),
+        "allowed": bool(row.get("allowed")),
+        "created_by": str(row.get("created_by") or ""),
+        "created_at": created_at,
+    }
+
+
+async def _web_permissions_list(request):
+    _require_ready()
+    guild = _get_guild(request.match_info["gid"])
+    from data.DB.Storage.storage import get_all_command_permissions
+
+    rows = await get_all_command_permissions(str(guild.id))
+    return _ok({"rules": [_permission_rule_dict(r) for r in rows]})
+
+
+async def _web_permissions_create(request):
+    _require_ready()
+    guild = _get_guild(request.match_info["gid"])
+    body = await _json_body(request)
+    command = body.get("command")
+    target_type = body.get("target_type")
+    target_id = body.get("target_id")
+    allowed = body.get("allowed")
+    created_by = body.get("created_by") or ""
+    from utils.permissions import (
+        is_grantable,
+        is_valid_custom_action_name,
+    )
+
+    if not isinstance(command, str) or not command:
+        raise _BridgeError(400, "command must be a non-empty string.")
+    if not (
+        is_grantable(command) or is_valid_custom_action_name(command)
+    ):
+        raise _BridgeError(
+            400, "command is not a known action or a valid custom "
+            "action name: %s." % command
+        )
+    if target_type not in ("role", "user"):
+        raise _BridgeError(
+            400, 'target_type must be "role" or "user".'
+        )
+    if not isinstance(target_id, (str, int)) or (
+        isinstance(target_id, bool)
+        or not str(target_id).isdigit()
+    ):
+        raise _BridgeError(
+            400, "target_id must be a Discord id (digits)."
+        )
+    if not isinstance(allowed, bool):
+        raise _BridgeError(400, "allowed must be true or false.")
+    from data.DB.Storage.storage import save_command_permission
+
+    await save_command_permission(
+        str(guild.id), command, target_type, str(target_id),
+        allowed, str(created_by),
+    )
+    return _ok({"ok": True})
+
+
+async def _web_permissions_delete(request):
+    _require_ready()
+    guild = _get_guild(request.match_info["gid"])
+    body = await _json_body(request)
+    command = body.get("command")
+    target_type = body.get("target_type")
+    target_id = body.get("target_id")
+    if not isinstance(command, str) or not command:
+        raise _BridgeError(400, "command must be a non-empty string.")
+    if target_type not in ("role", "user"):
+        raise _BridgeError(
+            400, 'target_type must be "role" or "user".'
+        )
+    if not isinstance(target_id, (str, int)) or (
+        isinstance(target_id, bool)
+        or not str(target_id).isdigit()
+    ):
+        raise _BridgeError(
+            400, "target_id must be a Discord id (digits)."
+        )
+    from data.DB.Storage.storage import delete_command_permission
+
+    deleted = await delete_command_permission(
+        str(guild.id), command, target_type, str(target_id)
+    )
+    return _ok({"ok": True, "deleted": bool(deleted)})
+
+
+BULK_PERMISSIONS_MAX = 200
+
+
+def _validate_permission_rule_item(item):
+    """Validate one bulk rule dict. Returns
+    (command, target_type, target_id, allowed) or raises
+    _BridgeError(400, ...). Same checks as the single-rule create."""
+    from utils.permissions import (
+        is_grantable,
+        is_valid_custom_action_name,
+    )
+
+    if not isinstance(item, dict):
+        raise _BridgeError(400, "each rule must be an object.")
+    command = item.get("command")
+    target_type = item.get("target_type")
+    target_id = item.get("target_id")
+    allowed = item.get("allowed")
+    if not isinstance(command, str) or not command:
+        raise _BridgeError(400, "command must be a non-empty string.")
+    if not (
+        is_grantable(command) or is_valid_custom_action_name(command)
+    ):
+        raise _BridgeError(
+            400, "command is not a known action or a valid custom "
+            "action name: %s." % command
+        )
+    if target_type not in ("role", "user"):
+        raise _BridgeError(
+            400, 'target_type must be "role" or "user".'
+        )
+    if not isinstance(target_id, (str, int)) or (
+        isinstance(target_id, bool) or not str(target_id).isdigit()
+    ):
+        raise _BridgeError(
+            400, "target_id must be a Discord id (digits)."
+        )
+    if not isinstance(allowed, bool):
+        raise _BridgeError(400, "allowed must be true or false.")
+    return command, target_type, str(target_id), allowed
+
+
+async def _web_permissions_bulk_create(request):
+    """POST /bridge/guilds/{gid}/permissions/bulk -- save many rules
+    in one call. Body: {"rules": [...], "created_by": "..."}.
+
+    Every rule is validated before anything is written, so a bad
+    rule rejects the whole batch and nothing is half-saved. Each
+    rule reports created / updated (same target, different allow) /
+    skipped (identical rule already exists, or repeated in the
+    request)."""
+    _require_ready()
+    guild = _get_guild(request.match_info["gid"])
+    body = await _json_body(request)
+    rules = body.get("rules")
+    created_by = body.get("created_by") or ""
+    if not isinstance(rules, list) or not rules:
+        raise _BridgeError(400, "rules must be a non-empty list.")
+    if len(rules) > BULK_PERMISSIONS_MAX:
+        raise _BridgeError(
+            400, "at most %d rules per bulk request." % BULK_PERMISSIONS_MAX
+        )
+    cleaned = [_validate_permission_rule_item(item) for item in rules]
+    from data.DB.Storage.storage import (
+        get_all_command_permissions,
+        save_command_permission,
+    )
+
+    existing = {
+        (row.get("command"), row.get("target_type"), str(row.get("target_id"))):
+            bool(row.get("allowed"))
+        for row in await get_all_command_permissions(str(guild.id))
+    }
+    results = []
+    created = updated = skipped = 0
+    seen = set()
+    for command, target_type, target_id, allowed in cleaned:
+        key = (command, target_type, target_id)
+        if key in seen:
+            status = "skipped"
+        elif key not in existing:
+            status = "created"
+        elif existing[key] == allowed:
+            status = "skipped"
+        else:
+            status = "updated"
+        if status in ("created", "updated"):
+            await save_command_permission(
+                str(guild.id), command, target_type, target_id,
+                allowed, str(created_by),
+            )
+            existing[key] = allowed
+        seen.add(key)
+        if status == "created":
+            created += 1
+        elif status == "updated":
+            updated += 1
+        else:
+            skipped += 1
+        results.append({
+            "command": command,
+            "target_type": target_type,
+            "target_id": target_id,
+            "allowed": allowed,
+            "status": status,
+        })
+    return _ok({
+        "ok": True,
+        "created": created,
+        "updated": updated,
+        "skipped": skipped,
+        "results": results,
+    })
+
+
+async def _web_permissions_bulk_delete(request):
+    """DELETE /bridge/guilds/{gid}/permissions/bulk -- remove many
+    rules in one call. Body: {"rules": [{command, target_type,
+    target_id}, ...]}. Each rule reports whether a row was deleted."""
+    _require_ready()
+    guild = _get_guild(request.match_info["gid"])
+    body = await _json_body(request)
+    rules = body.get("rules")
+    if not isinstance(rules, list) or not rules:
+        raise _BridgeError(400, "rules must be a non-empty list.")
+    if len(rules) > BULK_PERMISSIONS_MAX:
+        raise _BridgeError(
+            400, "at most %d rules per bulk request." % BULK_PERMISSIONS_MAX
+        )
+    cleaned = []
+    for item in rules:
+        if not isinstance(item, dict):
+            raise _BridgeError(400, "each rule must be an object.")
+        command = item.get("command")
+        target_type = item.get("target_type")
+        target_id = item.get("target_id")
+        if not isinstance(command, str) or not command:
+            raise _BridgeError(400, "command must be a non-empty string.")
+        if target_type not in ("role", "user"):
+            raise _BridgeError(
+                400, 'target_type must be "role" or "user".'
+            )
+        if not isinstance(target_id, (str, int)) or (
+            isinstance(target_id, bool) or not str(target_id).isdigit()
+        ):
+            raise _BridgeError(
+                400, "target_id must be a Discord id (digits)."
+            )
+        cleaned.append((command, target_type, str(target_id)))
+    from data.DB.Storage.storage import delete_command_permission
+
+    results = []
+    deleted = 0
+    seen = set()
+    for command, target_type, target_id in cleaned:
+        key = (command, target_type, target_id)
+        if key in seen:
+            results.append({
+                "command": command,
+                "target_type": target_type,
+                "target_id": target_id,
+                "deleted": False,
+            })
+            continue
+        seen.add(key)
+        gone = await delete_command_permission(
+            str(guild.id), command, target_type, target_id
+        )
+        deleted += 1 if gone else 0
+        results.append({
+            "command": command,
+            "target_type": target_type,
+            "target_id": target_id,
+            "deleted": bool(gone),
+        })
+    return _ok({"ok": True, "deleted": deleted, "results": results})
+
+
+async def _web_settings_get(request):
+    _require_ready()
+    guild = _get_guild(request.match_info["gid"])
+    from data.DB.Storage.storage import get_web_guild_settings
+
+    settings = await get_web_guild_settings(str(guild.id))
+    return _ok({
+        "unverified_role_id": settings.get("unverified_role_id") or "",
+    })
+
+
+async def _web_settings_set(request):
+    _require_ready()
+    guild = _get_guild(request.match_info["gid"])
+    body = await _json_body(request)
+    role_id = body.get("unverified_role_id")
+    if role_id is None:
+        raise _BridgeError(
+            400,
+            "unverified_role_id is required (empty string clears it).",
+        )
+    role_id = str(role_id)
+    if role_id and not role_id.isdigit():
+        raise _BridgeError(
+            400,
+            "unverified_role_id must be a Discord role id (digits) "
+            "or empty to clear it.",
+        )
+    from data.DB.Storage.storage import set_unverified_role_id
+
+    await set_unverified_role_id(str(guild.id), role_id)
+    return _ok({"ok": True, "unverified_role_id": role_id})
+
+
+# ----------------------------------------------------------------------
+# Website bypass users (built 2026-11-16). Global list: a user on it
+# may open any guild's website without needing any permission.
+# Managed from the permissions page; the two seeded ids (Emily + the
+# LH owner) are the permanent floor and cannot be removed.
+# ----------------------------------------------------------------------
+
+def _bypass_user_dict(row):
+    """One web_bypass_users row as the website reads it."""
+    created_at = row.get("created_at")
+    if created_at is not None:
+        try:
+            created_at = created_at.isoformat()
+        except Exception:
+            created_at = str(created_at)
+    return {
+        "user_id": str(row.get("user_id")),
+        "added_by": str(row.get("added_by") or ""),
+        "created_at": created_at,
+    }
+
+
+async def _web_bypass_list(request):
+    _require_ready()
+    from data.DB.Storage.storage import list_bypass_users
+
+    rows = await list_bypass_users()
+    return _ok({"users": [_bypass_user_dict(r) for r in rows]})
+
+
+async def _web_bypass_add(request):
+    _require_ready()
+    body = await _json_body(request)
+    user_id = body.get("user_id")
+    added_by = body.get("added_by") or ""
+    if user_id is None:
+        raise _BridgeError(400, "user_id is required.")
+    user_id = str(user_id)
+    if not user_id.isdigit():
+        raise _BridgeError(
+            400, "user_id must be a Discord user id (digits)."
+        )
+    from data.DB.Storage.storage import add_bypass_user
+
+    try:
+        await add_bypass_user(user_id, str(added_by))
+    except ValueError as exc:
+        raise _BridgeError(400, str(exc))
+    return _ok({"ok": True, "user_id": user_id})
+
+
+async def _web_bypass_remove(request):
+    _require_ready()
+    body = await _json_body(request)
+    user_id = body.get("user_id")
+    if user_id is None:
+        raise _BridgeError(400, "user_id is required.")
+    user_id = str(user_id)
+    if not user_id.isdigit():
+        raise _BridgeError(
+            400, "user_id must be a Discord user id (digits)."
+        )
+    from data.DB.Storage.storage import remove_bypass_user
+
+    try:
+        deleted = await remove_bypass_user(user_id)
+    except ValueError as exc:
+        raise _BridgeError(400, str(exc))
+    return _ok({"ok": True, "user_id": user_id, "deleted": bool(deleted)})
+
+
+# ----------------------------------------------------------------------
 # Actions (POST)
 # ----------------------------------------------------------------------
 
@@ -913,6 +1400,42 @@ def _build_app(worker=False):
     app.router.add_post("/bridge/guilds/{gid}/channels/{cid}/purge", _purge)
     app.router.add_post("/bridge/guilds/{gid}/members/{uid}/dm", _dm)
     app.router.add_post("/bridge/guilds/{gid}/members/{uid}/xp", _xp)
+    # Web permission system (built 2026-11-15): the website asks the
+    # bot for a member's web access, reads/writes the shared
+    # command_permissions rules, and reads/writes the per-guild
+    # unverified-role setting. Main bot only -- the worker branch
+    # above never registers these.
+    app.router.add_get(
+        "/bridge/guilds/{gid}/members/{uid}/web_access", _web_access
+    )
+    app.router.add_get(
+        "/bridge/guilds/{gid}/permissions", _web_permissions_list
+    )
+    app.router.add_post(
+        "/bridge/guilds/{gid}/permissions", _web_permissions_create
+    )
+    app.router.add_route(
+        "DELETE", "/bridge/guilds/{gid}/permissions",
+        _web_permissions_delete,
+    )
+    app.router.add_post(
+        "/bridge/guilds/{gid}/permissions/bulk",
+        _web_permissions_bulk_create,
+    )
+    app.router.add_route(
+        "DELETE", "/bridge/guilds/{gid}/permissions/bulk",
+        _web_permissions_bulk_delete,
+    )
+    app.router.add_get(
+        "/bridge/guilds/{gid}/web_settings", _web_settings_get
+    )
+    app.router.add_post(
+        "/bridge/guilds/{gid}/web_settings", _web_settings_set
+    )
+    # Website bypass users (global, not per-guild).
+    app.router.add_get("/bridge/bypass", _web_bypass_list)
+    app.router.add_post("/bridge/bypass", _web_bypass_add)
+    app.router.add_route("DELETE", "/bridge/bypass", _web_bypass_remove)
     app.router.add_post("/bridge/restart", _restart)
     # Jobs (same dispatcher as the worker hub): the e2e test runs the
     # e2e_marker job on BOTH bridges to prove the two bots share the

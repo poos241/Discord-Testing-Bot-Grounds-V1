@@ -16,7 +16,7 @@
 .feed-filter {
     padding: 6px 12px;
     border-radius: 999px;
-    border: 1px solid #5865f2;
+    border: 1px solid #8b5cf6;
     background: #2b2d31;
     color: #fff;
     cursor: pointer;
@@ -24,7 +24,7 @@
 }
 
 .feed-filter.selected {
-    background: #5865f2;
+    background: #8b5cf6;
 }
 
 .feed-refresh {

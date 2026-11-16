@@ -6,9 +6,9 @@ from discord.ext import commands, tasks
 
 from .audit import resolve_moderator
 from .base import BaseLogger
-from .config import (MEMBER, COLORS, MODERATION, EV_MEMBER_JOIN, EV_MEMBER_LEAVE,
+from .config import (MEMBER, MODERATION, EV_MEMBER_JOIN, EV_MEMBER_LEAVE,
     EV_MEMBER_KICK, EV_NICKNAME, EV_AVATAR, EV_ROLE_MEMBER)
-from .embeds import LoggerEmbed
+from .embeds import LoggerEmbed, user_line
 from .database import db
 
 # Role-batch windows (see _queue_role_changes / _flush_due_role_batches).
@@ -75,15 +75,17 @@ class MemberLogger(BaseLogger):
     async def on_member_join(self, member):
         if not db.is_enabled(member.guild.id, EV_MEMBER_JOIN):
             return
-        embed = LoggerEmbed.base("📥 Member Joined", COLORS[MEMBER])
-        LoggerEmbed.author(embed, member)
-        LoggerEmbed.field(
-            embed, "Account Created",
-            discord.utils.format_dt(member.created_at, style="R"),
-            inline=True,
+        embed = LoggerEmbed.base(
+            "📥 Member Joined",
+            LoggerEmbed.GREEN,
+            description=(
+                f"**User:** {user_line(member)}\n"
+                f"**Account Created:** "
+                f"{discord.utils.format_dt(member.created_at, style='R')}\n"
+                f"**Member Count:** {member.guild.member_count}"
+            ),
         )
-        LoggerEmbed.field(embed, "Member Count", member.guild.member_count, inline=True)
-        embed.set_thumbnail(url=member.display_avatar.url)
+        LoggerEmbed.author(embed, member)
         LoggerEmbed.finalize(embed)
         await self.send(member.guild, MEMBER, embed)
 
@@ -100,25 +102,34 @@ class MemberLogger(BaseLogger):
                     member.guild, self.bot, discord.AuditLogAction.kick,
                     member.id, ("kick",), entry=entry,
                 )
-                embed = LoggerEmbed.base("👢 Member Kicked", COLORS[MODERATION])
+                embed = LoggerEmbed.base(
+                    "👢 Member Kicked",
+                    LoggerEmbed.RED,
+                    description=(
+                        f"**User:** {user_line(member)}\n"
+                        f"**Moderator:** {mod['mention']} [{mod['name']}]\n"
+                        f"**Reason:** {mod['reason'] or 'No reason provided.'}"
+                    ),
+                )
                 LoggerEmbed.author(embed, member)
-                LoggerEmbed.field(embed, "Moderator", mod["display"], inline=True)
-                LoggerEmbed.field(embed, "Reason", mod["reason"] or "No reason provided.")
-                embed.set_thumbnail(url=member.display_avatar.url)
                 LoggerEmbed.finalize(embed)
                 await self.send(member.guild, MODERATION, embed)
                 return
         if not db.is_enabled(member.guild.id, EV_MEMBER_LEAVE):
             return
-        embed = LoggerEmbed.base("📤 Member Left", COLORS[MEMBER])
+        embed = LoggerEmbed.base(
+            "📤 Member Left",
+            LoggerEmbed.RED,
+            description=(
+                f"**User:** {user_line(member)}"
+                + (
+                    f"\n**Joined:** "
+                    f"{discord.utils.format_dt(member.joined_at, style='R')}"
+                    if member.joined_at else ""
+                )
+            ),
+        )
         LoggerEmbed.author(embed, member)
-        if member.joined_at:
-            LoggerEmbed.field(
-                embed, "Joined",
-                discord.utils.format_dt(member.joined_at, style="R"),
-                inline=True,
-            )
-        embed.set_thumbnail(url=member.display_avatar.url)
         LoggerEmbed.finalize(embed)
         await self.send(member.guild, MEMBER, embed)
 
@@ -266,7 +277,19 @@ class MemberLogger(BaseLogger):
         if not db.is_enabled(guild.id, EV_ROLE_MEMBER):
             return
         member = guild.get_member(entry["user_id"]) or entry["member"]
-        embed = LoggerEmbed.base("🎭 Roles Updated", COLORS[MEMBER])
+        # Semantic color: green when only roles were added, red when
+        # only removed, yellow when the batch mixed both.
+        if entry["added"] and not entry["removed"]:
+            color = LoggerEmbed.GREEN
+        elif entry["removed"] and not entry["added"]:
+            color = LoggerEmbed.RED
+        else:
+            color = LoggerEmbed.YELLOW
+        embed = LoggerEmbed.base(
+            "🎭 Roles Updated",
+            color,
+            description=f"**User:** {user_line(member)}",
+        )
         LoggerEmbed.author(embed, member)
         added_text = _role_mentions(entry["added"])
         removed_text = _role_mentions(entry["removed"])
@@ -280,17 +303,27 @@ class MemberLogger(BaseLogger):
     async def _nickname_change(self, before, after):
         if not db.is_enabled(after.guild.id, EV_NICKNAME):
             return
-        embed = LoggerEmbed.base("✏ Nickname Changed", COLORS[MEMBER])
+        embed = LoggerEmbed.base(
+            "✏ Nickname Changed",
+            LoggerEmbed.BLUE,
+            description=(
+                f"**User:** {user_line(after)}\n"
+                f"**Before:** {before.nick or '*None*'}\n"
+                f"**After:** {after.nick or '*None*'}"
+            ),
+        )
         LoggerEmbed.author(embed, after)
-        LoggerEmbed.field(embed, "Before", before.nick or "*None*")
-        LoggerEmbed.field(embed, "After", after.nick or "*None*")
         LoggerEmbed.finalize(embed)
         await self.send(after.guild, MEMBER, embed)
 
     async def _avatar_change(self, member):
         if not db.is_enabled(member.guild.id, EV_AVATAR):
             return
-        embed = LoggerEmbed.base("🖼 Avatar Changed", COLORS[MEMBER])
+        embed = LoggerEmbed.base(
+            "🖼 Avatar Changed",
+            LoggerEmbed.BLUE,
+            description=f"**User:** {user_line(member)}",
+        )
         LoggerEmbed.author(embed, member)
         embed.set_image(url=member.display_avatar.url)
         LoggerEmbed.finalize(embed)

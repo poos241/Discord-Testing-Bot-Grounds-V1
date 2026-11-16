@@ -3,7 +3,7 @@ from flask import Blueprint, jsonify
 import discord
 
 from web.services import bridge
-from web.security.decorators import require_guild_manage, require_login, require_guild_moderator
+from web.security.decorators import require_guild_manage, require_login, require_web_api_access
 
 
 member_details_api = Blueprint(
@@ -15,7 +15,7 @@ member_details_api = Blueprint(
 @member_details_api.get(
     "/api/servers/<int:guild_id>/members/<int:user_id>/details"
 )
-@require_guild_moderator
+@require_web_api_access("web:view_members")
 def member_details(
     guild_id,
     user_id
@@ -86,6 +86,17 @@ def member_details(
         int(member.get("guild_permissions") or 0)
     )
 
+    # Per-action map for the VIEWER (not the target member): the
+    # frontend hides the Timeout/Kick/Ban buttons when the viewer
+    # lacks the action. Same decisions the gate above made.
+    try:
+        from web.services.web_access import get_web_access
+
+        _access = get_web_access(guild_id, ["timeout", "kick", "ban"])
+        viewer_web_actions = dict(_access.get("permissions") or {})
+    except Exception:
+        viewer_web_actions = {}
+
     permissions = [
         name
         for name, enabled in guild_permissions
@@ -99,6 +110,8 @@ def member_details(
 
         "guild_id":
             str(guild.get("id")),
+
+        "viewer_web_actions": viewer_web_actions,
 
         "member": {
 

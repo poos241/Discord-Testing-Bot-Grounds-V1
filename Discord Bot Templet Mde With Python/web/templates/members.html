@@ -19,10 +19,11 @@
         href="{{ url_for('static', filename='css/dashboard.css') }}"
     >
 
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/havenly-theme.css') }}">
 </head>
 
 
-<body>
+<body class="havenly-theme">
 
 <div class="app">
 
@@ -31,12 +32,12 @@
          SIDEBAR
     ====================================================== -->
 
-    <aside class="sidebar">
+    <aside class="sidebar" id="members-sidebar">
 
         <div class="brand">
 
             <div class="brand-icon">
-                KB
+                <img src="{{ url_for('static', filename='img/little-haven-web-pfp.webp') }}" alt="Little Haven" style="width:100%;height:100%;object-fit:cover;border-radius:inherit;display:block;">
             </div>
 
             <div>
@@ -61,31 +62,38 @@
             </div>
 
 
-            <a
+            {% if web_can('web:view_dashboard', guild_id) %}
+<a
                 href="/servers/{{ guild_id }}/dashboard"
                 class="nav-item"
             >
                 <span>◉</span>
                 Server
             </a>
+{% endif %}
 
 
-            <a
+            {% if web_can('web:view_members', guild_id) %}
+<a
                 href="/servers/{{ guild_id }}/members"
                 class="nav-item active"
+                aria-current="page"
             >
                 <span>♙</span>
                 Members
             </a>
+{% endif %}
 
 
-            <a
+            {% if web_can('web:view_channels', guild_id) %}
+<a
                 href="/servers/{{ guild_id }}/channels"
                 class="nav-item"
             >
                 <span>▤</span>
                 Channels
             </a>
+{% endif %}
 
 
             <a
@@ -99,20 +107,23 @@
         </div>
 
 
-        <div class="sidebar-section">
+        {% if web_can('web:view_logger', guild_id) or web_can('web:view_activity', guild_id) %}
+<div class="sidebar-section">
 
             <div class="sidebar-label">
                 LOGGING
             </div>
 
 
-            <a
+            {% if web_can('web:view_activity', guild_id) %}
+<a
                 href="/servers/{{ guild_id }}/activity"
                 class="nav-item"
             >
                 <span>◷</span>
                 Activity
             </a>
+{% endif %}
 
 
             <a
@@ -124,6 +135,7 @@
             </a>
 
         </div>
+{% endif %}
 
 
         <div class="sidebar-section">
@@ -149,6 +161,16 @@
                 <span>⚙</span>
                 Settings
             </a>
+
+            {% if web_can('web:manage_permissions', guild_id) or web_can('web:manage_logs', guild_id) %}
+            <a
+                href="/servers/{{ guild_id }}/permissions"
+                class="nav-item"
+            >
+                <span>🔑</span>
+                Permissions
+            </a>
+            {% endif %}
 
         </div>
 
@@ -179,6 +201,8 @@
 
     </aside>
 
+    <div class="sidebar-backdrop" id="sidebar-backdrop" hidden></div>
+
 
 
     <!-- =====================================================
@@ -188,9 +212,15 @@
     <main class="main">
 
 
-        <header class="topbar">
+        <header class="topbar members-topbar">
 
-            <div>
+            <button type="button" class="sidebar-toggle" id="sidebar-toggle" aria-label="Open navigation menu" aria-expanded="false" aria-controls="members-sidebar">&#9776;</button>
+
+            <div class="members-topbar-titles">
+
+                <div class="members-eyebrow">
+                    Little Haven
+                </div>
 
                 <div class="page-title">
                     Members
@@ -1262,6 +1292,14 @@ async function openMemberModal(
             result.member;
 
 
+        // Web permission system: the viewer's own actions for this
+        // guild (the API would reject the call otherwise). The old
+        // conditions below only checked the TARGET member's Discord
+        // permissions, which says nothing about the viewer.
+        const viewerActions =
+            result.viewer_web_actions || {};
+
+
         const avatar =
             member.avatar;
 
@@ -1472,8 +1510,11 @@ async function openMemberModal(
             <div class="member-modal-actions">
 
                 ${
-                    member.administrator ||
-                    member.moderate_members
+                    viewerActions.timeout &&
+                    (
+                        member.administrator ||
+                        member.moderate_members
+                    )
                         ? `
                             <button
                                 class="member-action danger"
@@ -1486,6 +1527,7 @@ async function openMemberModal(
                 }
 
                 ${
+                    viewerActions.kick &&
                     member.kick_members
                         ? `
                             <button
@@ -1499,6 +1541,7 @@ async function openMemberModal(
                 }
 
                 ${
+                    viewerActions.ban &&
                     member.ban_members
                         ? `
                             <button
@@ -1863,6 +1906,31 @@ initializeMembersPage();
 </script>
 
 
+<script>
+/* Mobile sidebar drawer (members standalone page). */
+(function () {
+    var toggle = document.getElementById("sidebar-toggle");
+    var backdrop = document.getElementById("sidebar-backdrop");
+    if (!toggle) return;
+    function setOpen(open) {
+        document.body.classList.toggle("sidebar-open", open);
+        toggle.setAttribute("aria-expanded", open ? "true" : "false");
+        toggle.setAttribute("aria-label", open ? "Close navigation menu" : "Open navigation menu");
+        if (backdrop) backdrop.hidden = !open;
+    }
+    toggle.addEventListener("click", function () {
+        setOpen(!document.body.classList.contains("sidebar-open"));
+    });
+    if (backdrop) backdrop.addEventListener("click", function () { setOpen(false); });
+    document.querySelectorAll(".sidebar .nav-item").forEach(function (link) {
+        link.addEventListener("click", function () { setOpen(false); });
+    });
+    window.addEventListener("resize", function () {
+        if (window.innerWidth > 700) setOpen(false);
+    });
+})();
+</script>
+
 </body>
 
-</html>
+</html>

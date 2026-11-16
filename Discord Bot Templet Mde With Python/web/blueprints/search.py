@@ -2,7 +2,7 @@ from flask import Blueprint, jsonify, request
 
 from web.services import bridge
 from web.services.member_service import MemberService
-from web.security.decorators import require_guild_manage, require_login, require_guild_moderator
+from web.security.decorators import require_guild_manage, require_login, require_web_api_access
 
 
 search_api = Blueprint(
@@ -25,7 +25,7 @@ def get_guild(guild_id):
 @search_api.get(
     "/api/servers/<int:guild_id>/search"
 )
-@require_guild_moderator
+@require_web_api_access("web:view_dashboard")
 def search_server(guild_id):
 
     if not bridge.bot_is_ready():

@@ -7,18 +7,9 @@ from datetime import datetime, timezone
 from flask import Blueprint, Response, jsonify, request, session
 
 from web.services.event_store import event_store
-from web.blueprints.auth import get_auth_session, user_can_manage_guild
-from web.security.decorators import require_guild_access, require_guild_manage, require_login
+from web.security.decorators import require_web_api_access
 
 logger_api = Blueprint("logger_api", __name__, url_prefix="/api")
-
-
-def _require_logger_access(guild_id):
-    if not get_auth_session():
-        return jsonify({"success": False, "error": "Authentication required."}), 401
-    if not user_can_manage_guild(guild_id):
-        return jsonify({"success": False, "error": "You do not have permission to view the logger for this server."}), 403
-    return None
 
 
 def _int_arg(name, default, minimum, maximum):
@@ -42,11 +33,8 @@ def _filters():
 
 
 @logger_api.get("/servers/<int:guild_id>/logger/summary")
-@require_guild_access
+@require_web_api_access("web:view_logger")
 def logger_summary(guild_id):
-    denied = _require_logger_access(guild_id)
-    if denied:
-        return denied
     breakdown = event_store.guild_breakdown(guild_id)
     return jsonify({
         "success": True,
@@ -59,20 +47,14 @@ def logger_summary(guild_id):
 
 
 @logger_api.get("/servers/<int:guild_id>/logger/options")
-@require_guild_access
+@require_web_api_access("web:view_logger")
 def logger_options(guild_id):
-    denied = _require_logger_access(guild_id)
-    if denied:
-        return denied
     return jsonify({"success": True, "guild_id": str(guild_id), **event_store.guild_event_options(guild_id)})
 
 
 @logger_api.get("/servers/<int:guild_id>/logger/trend")
-@require_guild_access
+@require_web_api_access("web:view_logger")
 def logger_trend(guild_id):
-    denied = _require_logger_access(guild_id)
-    if denied:
-        return denied
     hours = _int_arg("hours", 24, 1, 168)
     return jsonify({
         "success": True,
@@ -84,11 +66,8 @@ def logger_trend(guild_id):
 
 
 @logger_api.get("/servers/<int:guild_id>/logger/events")
-@require_guild_access
+@require_web_api_access("web:view_logger")
 def logger_events(guild_id):
-    denied = _require_logger_access(guild_id)
-    if denied:
-        return denied
     page = _int_arg("page", 1, 1, 100000)
     per_page = _int_arg("limit", 50, 1, 100)
     result = event_store.query_page(page=page, per_page=per_page, guild_id=guild_id, **_filters())
@@ -96,11 +75,8 @@ def logger_events(guild_id):
 
 
 @logger_api.get("/servers/<int:guild_id>/logger/events/<int:event_id>")
-@require_guild_access
+@require_web_api_access("web:view_logger")
 def logger_event_detail(guild_id, event_id):
-    denied = _require_logger_access(guild_id)
-    if denied:
-        return denied
     event = event_store.get(guild_id, event_id)
     if event is None:
         return jsonify({"success": False, "error": "Logger event not found."}), 404
@@ -108,11 +84,8 @@ def logger_event_detail(guild_id, event_id):
 
 
 @logger_api.get("/servers/<int:guild_id>/logger/export")
-@require_guild_access
+@require_web_api_access("web:view_logger")
 def logger_export(guild_id):
-    denied = _require_logger_access(guild_id)
-    if denied:
-        return denied
 
     filters = _filters()
     # Same filters the Logger history page sends: category, event type,
@@ -155,7 +128,7 @@ def logger_export(guild_id):
 # ============================================================
 
 @logger_api.get("/servers/<int:guild_id>/logger/toggles")
-@require_guild_access
+@require_web_api_access("web:manage_logs")
 def logger_toggles(guild_id):
     from web.services.logger_db import logger_db
     from cogs.Logger.config import EVENT_GROUPS
@@ -175,7 +148,7 @@ def logger_toggles(guild_id):
 
 
 @logger_api.post("/servers/<int:guild_id>/logger/toggles")
-@require_guild_access
+@require_web_api_access("web:manage_logs")
 def logger_set_toggle(guild_id):
     import secrets
     from web.blueprints.auth import get_csrf_token
@@ -231,11 +204,8 @@ def _automod_db(call, *args):
 
 
 @logger_api.get("/servers/<int:guild_id>/logger/automod")
-@require_guild_access
+@require_web_api_access("web:manage_logs")
 def logger_automod_get(guild_id):
-    denied = _require_logger_access(guild_id)
-    if denied:
-        return denied
     try:
         from data.DB.Storage.storage import get_automod_config
         cfg = _automod_db(get_automod_config, str(guild_id))
@@ -247,14 +217,11 @@ def logger_automod_get(guild_id):
 
 
 @logger_api.post("/servers/<int:guild_id>/logger/automod")
-@require_guild_access
+@require_web_api_access("web:manage_logs")
 def logger_automod_set(guild_id):
     import secrets
     from web.blueprints.auth import get_csrf_token
 
-    denied = _require_logger_access(guild_id)
-    if denied:
-        return denied
     supplied = (
         request.headers.get("X-CSRF-Token")
         or request.headers.get("X-CSRFToken")

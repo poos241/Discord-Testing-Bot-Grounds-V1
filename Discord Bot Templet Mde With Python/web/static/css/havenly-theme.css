@@ -1,0 +1,1499 @@
+/* =========================================================
+   HAVENLY THEME — handbook palette for the web UI
+   (site default since the 2026-11-15 rollout; it started as
+   a test on the permissions page + server select screen)
+
+   Linked from base.html and every standalone template, and
+   every rule is scoped under body.havenly-theme. A page opts
+   out by overriding the body_class block in base.html.
+
+   Palette is the bot handbook's (website/src/css/custom.css):
+   dark mode default. Primary purple #7c3aed, havenly pink
+   #ec4899, purple #8b5cf6, indigo #6366f1, mint #2dd4bf,
+   gold #f59e0b, blue #38bdf8, rose #fb7185.
+   ========================================================= */
+
+body.havenly-theme {
+    /* --- handbook palette --- */
+    --hv-bg: #16161f;
+    --hv-surface: #1e1e2e;
+    --hv-surface-2: #262640;
+    --hv-navbar: #1a1a28;
+    --hv-text: #e8e8f2;
+    --hv-text-2: #b8b8cc;
+    --hv-text-3: #8f8fa8;
+    --hv-border: #2e2e44;
+    --hv-border-soft: #262640;
+    --hv-primary: #a78bfa;
+    --hv-primary-deep: #7c3aed;
+    --hv-primary-dark: #6d28d9;
+    --hv-primary-darkest: #4c1d95;
+    --hv-pink: #ec4899;
+    --hv-pink-deep: #db2777;
+    --hv-pink-soft: #f472b6;
+    --hv-purple: #8b5cf6;
+    --hv-purple-soft: #a78bfa;
+    --hv-indigo: #6366f1;
+    --hv-indigo-deep: #4f46e5;
+    --hv-mint: #2dd4bf;
+    --hv-mint-soft: #5eead4;
+    --hv-gold: #f59e0b;
+    --hv-gold-soft: #fbbf24;
+    --hv-blue: #38bdf8;
+    --hv-rose: #fb7185;
+    --hv-link: #c4b5fd;
+    --hv-gradient-hero: linear-gradient(135deg, #db2777 0%, #8b5cf6 55%, #4f46e5 100%);
+    --hv-gradient-btn: linear-gradient(135deg, #ec4899, #8b5cf6);
+    --hv-gradient-btn-hover: linear-gradient(135deg, #db2777, #7c3aed);
+    --hv-allow: #2dd4bf;
+    --hv-allow-bg: rgba(45, 212, 191, 0.10);
+    --hv-deny: #fb7185;
+    --hv-deny-bg: rgba(251, 113, 133, 0.10);
+    --hv-radius: 12px;
+    --hv-radius-sm: 8px;
+
+    /* --- override the shared app.css variables, so the
+           navbar / panels / text that use them follow the
+           handbook palette on these pages only --- */
+    --bg-main: #16161f;
+    --bg-panel: #1e1e2e;
+    --bg-panel-hover: #262640;
+    --border: #2e2e44;
+    --border-hover: #8b5cf6;
+    --text-main: #e8e8f2;
+    --text-muted: #b8b8cc;
+    --text-soft: #d5d5e8;
+    --accent: #a78bfa;
+
+    background-color: var(--hv-bg);
+    color: var(--hv-text);
+}
+
+/* --- links --- */
+body.havenly-theme a { color: var(--hv-link); }
+body.havenly-theme a:hover { color: var(--hv-pink-soft); }
+
+/* --- shared chrome on these pages only --- */
+body.havenly-theme .top-navbar {
+    background: var(--hv-navbar);
+    border-color: rgba(167, 139, 250, 0.18);
+}
+body.havenly-theme #scroll-progress {
+    background: var(--hv-gradient-hero);
+}
+body.havenly-theme #back-to-top {
+    background: var(--hv-surface);
+    border-color: rgba(167, 139, 250, 0.35);
+}
+
+/* =========================================================
+   PAGE WRAPPER + HERO HEADER
+   ========================================================= */
+
+body.havenly-theme .hv-page {
+    max-width: 1020px;
+    margin: 0 auto;
+    padding: 8px 16px 48px;
+}
+
+body.havenly-theme .hv-hero {
+    position: relative;
+    overflow: hidden;
+    border: 1px solid rgba(167, 139, 250, 0.25);
+    border-radius: 16px;
+    padding: 28px 28px 24px;
+    margin-bottom: 24px;
+    background:
+        radial-gradient(circle at 88% 0%, rgba(236, 72, 153, 0.22), transparent 42%),
+        radial-gradient(circle at 8% 110%, rgba(99, 102, 241, 0.20), transparent 45%),
+        var(--hv-surface);
+}
+body.havenly-theme .hv-hero::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 4px;
+    background: var(--hv-gradient-hero);
+}
+body.havenly-theme .hv-eyebrow {
+    color: var(--hv-purple-soft);
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+}
+body.havenly-theme .hv-hero h1 {
+    margin: 0;
+    font-size: 32px;
+    font-weight: 800;
+    color: var(--hv-text);
+    line-height: 1.15;
+}
+body.havenly-theme .hv-hero p {
+    margin: 10px 0 0;
+    color: var(--hv-text-2);
+    font-size: 15px;
+    line-height: 1.55;
+    max-width: 720px;
+}
+body.havenly-theme .hv-hero p code,
+body.havenly-theme .hv-card p code {
+    background: var(--hv-surface-2);
+    color: var(--hv-link);
+    padding: 1px 6px;
+    border-radius: 5px;
+    font-size: 0.88em;
+}
+body.havenly-theme .hv-hero-logo {
+    width: 72px;
+    height: 72px;
+    border-radius: 18px;
+    object-fit: cover;
+    border: 2px solid rgba(167, 139, 250, 0.45);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+    flex: none;
+}
+body.havenly-theme .hv-hero-row {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+}
+body.havenly-theme .hv-back-link {
+    display: inline-block;
+    margin-bottom: 16px;
+    font-size: 14px;
+}
+
+/* =========================================================
+   SECTIONS / CARDS
+   ========================================================= */
+
+body.havenly-theme .hv-card {
+    background: var(--hv-surface);
+    border: 1px solid var(--hv-border);
+    border-radius: var(--hv-radius);
+    padding: 20px 22px;
+    margin-bottom: 24px;
+}
+body.havenly-theme .hv-card > h2:first-child,
+body.havenly-theme .hv-section-title {
+    margin: 0 0 4px;
+    font-size: 20px;
+    font-weight: 800;
+    color: var(--hv-text);
+}
+body.havenly-theme .hv-card > p.hv-lede {
+    margin: 0 0 16px;
+    color: var(--hv-text-2);
+    font-size: 14px;
+    line-height: 1.55;
+}
+body.havenly-theme .hv-section-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 12px;
+}
+body.havenly-theme .hv-section-head h2 {
+    margin: 0;
+    font-size: 20px;
+    font-weight: 800;
+}
+body.havenly-theme .hv-count-badge {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 999px;
+    background: rgba(139, 92, 246, 0.14);
+    border: 1px solid rgba(139, 92, 246, 0.30);
+    color: var(--hv-primary);
+    font-size: 12px;
+    font-weight: 700;
+}
+
+/* --- notice / error banners --- */
+body.havenly-theme .hv-notice {
+    background: rgba(45, 212, 191, 0.10);
+    border: 1px solid rgba(45, 212, 191, 0.35);
+    color: var(--hv-mint-soft);
+    padding: 12px 16px;
+    border-radius: var(--hv-radius-sm);
+    margin: 0 0 20px;
+}
+body.havenly-theme .hv-error {
+    background: rgba(251, 113, 133, 0.10);
+    border: 1px solid rgba(251, 113, 133, 0.40);
+    color: var(--hv-rose);
+    padding: 12px 16px;
+    border-radius: var(--hv-radius-sm);
+    margin: 0 0 20px;
+}
+
+/* =========================================================
+   FORMS
+   ========================================================= */
+
+body.havenly-theme .hv-grid-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+}
+body.havenly-theme .hv-fieldset {
+    border: 1px solid var(--hv-border);
+    border-radius: var(--hv-radius-sm);
+    padding: 14px;
+    background: rgba(255, 255, 255, 0.015);
+}
+body.havenly-theme .hv-fieldset legend {
+    padding: 0 6px;
+    font-weight: 700;
+    color: var(--hv-text);
+}
+body.havenly-theme .hv-fieldset legend,
+body.havenly-theme .hv-fieldset > strong { font-size: 14px; }
+body.havenly-theme .hv-stack { margin-top: 16px; }
+
+body.havenly-theme .hv-input,
+body.havenly-theme .hv-select,
+body.havenly-theme .hv-textarea {
+    width: 100%;
+    padding: 9px 11px;
+    background: var(--hv-bg);
+    border: 1px solid var(--hv-border);
+    border-radius: var(--hv-radius-sm);
+    color: var(--hv-text);
+    font-size: 14px;
+    outline: none;
+}
+body.havenly-theme .hv-input:focus,
+body.havenly-theme .hv-select:focus,
+body.havenly-theme .hv-textarea:focus {
+    border-color: var(--hv-purple);
+    box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.18);
+}
+body.havenly-theme .hv-input::placeholder,
+body.havenly-theme .hv-textarea::placeholder { color: var(--hv-text-3); }
+body.havenly-theme .hv-select { width: auto; }
+body.havenly-theme .hv-textarea { resize: vertical; }
+
+body.havenly-theme .hv-scrollbox {
+    max-height: 220px;
+    overflow-y: auto;
+    border: 1px solid var(--hv-border);
+    border-radius: 6px;
+    padding: 8px 10px;
+    background: var(--hv-bg);
+}
+body.havenly-theme .hv-scrollbox label {
+    display: block;
+    padding: 4px 0;
+    font-size: 14px;
+    cursor: pointer;
+}
+body.havenly-theme .hv-scrollbox label:hover { color: var(--hv-primary); }
+body.havenly-theme .hv-muted { color: var(--hv-text-3); font-size: 0.85rem; }
+body.havenly-theme .hv-hint { color: var(--hv-text-3); margin: 8px 0 0; font-size: 13px; }
+
+body.havenly-theme input[type="checkbox"].hv-check,
+body.havenly-theme input[type="checkbox"].role-check,
+body.havenly-theme input[type="checkbox"].action-check,
+body.havenly-theme input[type="checkbox"].rule-check {
+    accent-color: var(--hv-primary-deep);
+    width: 15px;
+    height: 15px;
+    vertical-align: -2px;
+}
+body.havenly-theme input[type="radio"] { accent-color: var(--hv-primary-deep); }
+
+body.havenly-theme .hv-action-chip {
+    display: inline-block;
+    margin: 4px 14px 4px 0;
+    font-size: 13px;
+    cursor: pointer;
+}
+body.havenly-theme .hv-action-chip code {
+    background: var(--hv-surface-2);
+    color: var(--hv-link);
+    padding: 2px 7px;
+    border-radius: 6px;
+    font-size: 0.9em;
+}
+body.havenly-theme .hv-action-chip:hover code {
+    background: rgba(139, 92, 246, 0.25);
+    color: var(--hv-text);
+}
+body.havenly-theme .hv-family { margin-bottom: 14px; }
+body.havenly-theme .hv-family:last-child { margin-bottom: 0; }
+body.havenly-theme .hv-family-head { margin-bottom: 4px; font-size: 14px; }
+
+/* --- buttons --- */
+body.havenly-theme .hv-btn {
+    display: inline-block;
+    padding: 10px 20px;
+    border-radius: 10px;
+    border: 1px solid var(--hv-border);
+    background: var(--hv-surface-2);
+    color: var(--hv-text);
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+    text-decoration: none;
+    transition: filter 0.15s ease, transform 0.15s ease, background 0.15s ease;
+}
+body.havenly-theme .hv-btn:hover { filter: brightness(1.12); }
+body.havenly-theme .hv-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    filter: none;
+}
+body.havenly-theme .hv-btn-primary {
+    background: var(--hv-gradient-btn);
+    border: none;
+    color: #ffffff;
+}
+body.havenly-theme .hv-btn-primary:hover {
+    background: var(--hv-gradient-btn-hover);
+    filter: none;
+}
+body.havenly-theme .hv-btn-danger {
+    background: rgba(251, 113, 133, 0.12);
+    border-color: rgba(251, 113, 133, 0.45);
+    color: var(--hv-rose);
+}
+body.havenly-theme .hv-btn-danger:hover { background: rgba(251, 113, 133, 0.22); }
+body.havenly-theme .hv-btn-small { padding: 5px 12px; font-size: 13px; border-radius: 8px; }
+body.havenly-theme .hv-btn-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-top: 14px;
+}
+body.havenly-theme .hv-radio-row {
+    display: flex;
+    gap: 20px;
+    margin-top: 16px;
+    font-size: 14px;
+}
+body.havenly-theme .hv-radio-row label { cursor: pointer; }
+
+/* --- allow / deny pills --- */
+body.havenly-theme .hv-pill {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 700;
+}
+body.havenly-theme .hv-pill-allow {
+    background: var(--hv-allow-bg);
+    border: 1px solid rgba(45, 212, 191, 0.35);
+    color: var(--hv-mint);
+}
+body.havenly-theme .hv-pill-deny {
+    background: var(--hv-deny-bg);
+    border: 1px solid rgba(251, 113, 133, 0.40);
+    color: var(--hv-rose);
+}
+
+/* =========================================================
+   RULES TABLE
+   ========================================================= */
+
+body.havenly-theme .hv-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+/* Compact rules list (2026-11-16): the filter toolbar sticks to
+   the top of the viewport while scrolling the long list, so the
+   search + filters stay in reach. */
+body.havenly-theme .hv-rules-list .hv-toolbar {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    background: var(--hv-surface);
+    padding: 8px 0;
+    border-bottom: 1px solid var(--hv-border-soft);
+}
+body.havenly-theme .hv-rules-list table.hv-table { font-size: 13px; }
+body.havenly-theme .hv-rules-list table.hv-table th { padding: 6px 8px; }
+body.havenly-theme .hv-rules-list table.hv-table td { padding: 5px 8px; }
+body.havenly-theme .hv-toolbar .hv-input { flex: 2; min-width: 180px; }
+body.havenly-theme .hv-toolbar .hv-select { flex: 1; min-width: 140px; }
+
+body.havenly-theme table.hv-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+}
+body.havenly-theme table.hv-table th {
+    text-align: left;
+    padding: 8px;
+    color: var(--hv-text-2);
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    border-bottom: 2px solid var(--hv-border);
+}
+body.havenly-theme table.hv-table td {
+    padding: 9px 8px;
+    border-bottom: 1px solid var(--hv-border-soft);
+    vertical-align: middle;
+}
+body.havenly-theme table.hv-table tr:last-child td { border-bottom: none; }
+body.havenly-theme table.hv-table tr:hover td { background: rgba(139, 92, 246, 0.05); }
+body.havenly-theme table.hv-table code {
+    background: var(--hv-surface-2);
+    color: var(--hv-link);
+    padding: 1px 6px;
+    border-radius: 5px;
+    font-size: 0.88em;
+}
+body.havenly-theme .hv-rule-group { margin-bottom: 10px; }
+body.havenly-theme .hv-rule-group:last-child { margin-bottom: 0; }
+/* Group header is a <summary> (groups are <details>, collapsed by
+   default). The native marker is hidden; the chevron below is the
+   toggle affordance. */
+body.havenly-theme .hv-rule-summary {
+    margin: 0 0 4px;
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+    list-style: none;
+}
+body.havenly-theme .hv-rule-summary::-webkit-details-marker { display: none; }
+body.havenly-theme .hv-rule-summary::marker { content: ""; }
+body.havenly-theme .hv-rule-summary .rules-chevron::before {
+    content: "\25B8";
+    display: inline-block;
+    width: 1em;
+    color: var(--hv-primary);
+}
+body.havenly-theme .hv-rule-group[open ] .hv-rule-summary .rules-chevron::before {
+    content: "\25BE";
+}
+body.havenly-theme .hv-rule-summary code {
+    background: var(--hv-surface-2);
+    color: var(--hv-link);
+    padding: 2px 8px;
+    border-radius: 6px;
+}
+
+/* =========================================================
+   SERVER SELECT PAGE (overrides servers.css)
+   ========================================================= */
+
+body.havenly-theme .server-selection-page {
+    max-width: 1100px;
+    padding: 8px 10px 60px;
+}
+body.havenly-theme .server-selection-header {
+    position: relative;
+    overflow: hidden;
+    border: 1px solid rgba(167, 139, 250, 0.25);
+    border-radius: 16px;
+    padding: 26px 28px;
+    margin-bottom: 24px;
+    background:
+        radial-gradient(circle at 88% 0%, rgba(236, 72, 153, 0.22), transparent 42%),
+        radial-gradient(circle at 8% 110%, rgba(99, 102, 241, 0.20), transparent 45%),
+        var(--hv-surface);
+}
+body.havenly-theme .server-selection-header::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 4px;
+    background: var(--hv-gradient-hero);
+}
+body.havenly-theme .server-selection-eyebrow { color: var(--hv-purple-soft); }
+body.havenly-theme .server-selection-header h1 { color: var(--hv-text); }
+body.havenly-theme .server-selection-header p { color: var(--hv-text-2); }
+
+body.havenly-theme .server-selection-status {
+    border-color: rgba(45, 212, 191, 0.30);
+    background: rgba(45, 212, 191, 0.08);
+    color: var(--hv-mint);
+}
+body.havenly-theme .server-selection-status .status-dot {
+    background: var(--hv-mint);
+    box-shadow: 0 0 10px rgba(45, 212, 191, 0.8);
+}
+
+body.havenly-theme .server-search-wrapper input {
+    background: var(--hv-surface);
+    border-color: var(--hv-border);
+    color: var(--hv-text);
+}
+body.havenly-theme .server-search-wrapper input:focus {
+    border-color: var(--hv-purple);
+    box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.18);
+}
+body.havenly-theme .server-search-wrapper input::placeholder { color: var(--hv-text-3); }
+body.havenly-theme .server-count { color: var(--hv-text-2); }
+
+body.havenly-theme .server-card {
+    background: var(--hv-surface);
+    border-color: var(--hv-border);
+    color: var(--hv-text);
+}
+body.havenly-theme .server-card::before {
+    background: radial-gradient(circle at 85% 10%, rgba(139, 92, 246, 0.14), transparent 38%);
+}
+body.havenly-theme .server-card:hover {
+    background: var(--hv-surface-2);
+    border-color: rgba(139, 92, 246, 0.55);
+    box-shadow: 0 14px 35px rgba(0, 0, 0, 0.35);
+}
+body.havenly-theme .server-avatar {
+    background: var(--hv-gradient-hero);
+}
+body.havenly-theme .server-card-arrow { color: var(--hv-text-2); }
+body.havenly-theme .server-card:hover .server-card-arrow {
+    background: var(--hv-gradient-btn);
+    color: #ffffff;
+}
+body.havenly-theme .server-card-name { color: var(--hv-text); }
+body.havenly-theme .server-card-id { color: var(--hv-text-3); }
+body.havenly-theme .server-stat { background: rgba(139, 92, 246, 0.07); }
+body.havenly-theme .server-stat-value { color: var(--hv-text); }
+body.havenly-theme .server-stat-label { color: var(--hv-text-3); }
+body.havenly-theme .server-card-footer {
+    border-top-color: var(--hv-border-soft);
+    color: var(--hv-primary);
+}
+body.havenly-theme .server-recent-badge {
+    background: rgba(139, 92, 246, 0.14);
+    border-color: rgba(139, 92, 246, 0.35);
+    color: var(--hv-primary);
+}
+body.havenly-theme .server-permission-badge {
+    background: var(--hv-allow-bg);
+    border-color: rgba(45, 212, 191, 0.25);
+    color: var(--hv-mint);
+}
+body.havenly-theme .permission-dot {
+    background: var(--hv-mint);
+    box-shadow: 0 0 7px rgba(45, 212, 191, 0.7);
+}
+body.havenly-theme .server-card-extra span:last-child { color: var(--hv-text-2); }
+body.havenly-theme .server-card:hover .server-card-extra span:last-child { color: var(--hv-primary); }
+body.havenly-theme .server-empty-icon {
+    background: rgba(139, 92, 246, 0.12);
+    color: var(--hv-primary);
+}
+body.havenly-theme .server-empty h3,
+body.havenly-theme .server-load-error h3 { color: var(--hv-text); }
+body.havenly-theme .server-empty p,
+body.havenly-theme .server-load-error p { color: var(--hv-text-2); }
+body.havenly-theme .server-retry-button {
+    background: var(--hv-gradient-btn);
+    color: #ffffff;
+}
+body.havenly-theme .server-loading-spinner { border-top-color: var(--hv-purple); }
+body.havenly-theme .server-loading { color: var(--hv-text-2); }
+
+/* Locked cards: clearer than the old dim — rose-tinted border
+   and a muted footer so the lock reason reads at a glance. */
+body.havenly-theme .server-card-locked {
+    opacity: 0.62;
+    border-color: rgba(251, 113, 133, 0.28);
+}
+body.havenly-theme .server-card-locked:hover {
+    transform: none;
+    border-color: rgba(251, 113, 133, 0.28);
+    box-shadow: none;
+    background: var(--hv-surface);
+}
+body.havenly-theme .server-card-locked .server-card-footer,
+body.havenly-theme .server-card-locked .server-card-extra span:last-child {
+    color: var(--hv-rose);
+}
+body.havenly-theme .server-card-locked .server-card-arrow {
+    background: var(--hv-deny-bg);
+    color: var(--hv-rose);
+}
+
+/* =========================================================
+   RESPONSIVE
+   ========================================================= */
+
+@media (max-width: 720px) {
+    body.havenly-theme .hv-grid-2 { grid-template-columns: 1fr; }
+    body.havenly-theme .hv-hero { padding: 20px 18px; }
+    body.havenly-theme .hv-hero h1 { font-size: 26px; }
+    body.havenly-theme .hv-hero-row { align-items: flex-start; }
+    body.havenly-theme .hv-hero-logo { width: 56px; height: 56px; }
+    body.havenly-theme .hv-card { padding: 16px; }
+    body.havenly-theme .server-selection-header { padding: 20px 18px; }
+}
+
+/* =========================================================
+   ROLLOUT (2026-11-15) — theme is now the site default.
+   These rules cover the pages that do not use app.css
+   variables: dashboard.css / server_activity.html define
+   their own --bg/--panel/--accent variables, and Bootstrap
+   components (btn-primary, cards, tables, modals) bring
+   their own light defaults. Everything stays scoped under
+   body.havenly-theme.
+   ========================================================= */
+
+/* --- dashboard.css + server_activity.html variable set --- */
+body.havenly-theme {
+    --bg: #16161f;
+    --sidebar: #1a1a28;
+    --panel: #1e1e2e;
+    --panel-hover: #262640;
+    --border: #2e2e44;
+    --text: #e8e8f2;
+    --muted: #b8b8cc;
+    --accent: #a78bfa;
+    --accent-hover: #8b5cf6;
+    --success: #2dd4bf;
+    --warning: #f59e0b;
+    --danger: #fb7185;
+}
+
+/* --- Bootstrap primary buttons become the gradient --- */
+body.havenly-theme .btn-primary {
+    background: var(--hv-gradient-btn);
+    border: none;
+    color: #ffffff;
+    font-weight: 600;
+}
+body.havenly-theme .btn-primary:hover,
+body.havenly-theme .btn-primary:focus {
+    background: var(--hv-gradient-btn-hover);
+    color: #ffffff;
+}
+body.havenly-theme .btn-secondary {
+    background: var(--hv-surface-2);
+    border-color: var(--hv-border);
+    color: var(--hv-text);
+}
+body.havenly-theme .btn-secondary:hover {
+    background: var(--hv-border);
+    color: var(--hv-text);
+}
+body.havenly-theme .btn-danger {
+    background: rgba(251, 113, 133, 0.12);
+    border-color: rgba(251, 113, 133, 0.45);
+    color: var(--hv-rose);
+}
+body.havenly-theme .btn-danger:hover {
+    background: rgba(251, 113, 133, 0.22);
+    color: var(--hv-rose);
+}
+body.havenly-theme .btn-outline-primary {
+    border-color: var(--hv-purple);
+    color: var(--hv-primary);
+}
+body.havenly-theme .btn-outline-primary:hover {
+    background: var(--hv-gradient-btn);
+    border-color: transparent;
+    color: #ffffff;
+}
+body.havenly-theme .btn-link { color: var(--hv-link); }
+body.havenly-theme .btn-link:hover { color: var(--hv-pink-soft); }
+
+/* --- Bootstrap surfaces: cards, tables, modals, dropdowns --- */
+body.havenly-theme .card {
+    background: var(--hv-surface);
+    border-color: var(--hv-border);
+    color: var(--hv-text);
+}
+body.havenly-theme .card-header,
+body.havenly-theme .card-footer {
+    background: var(--hv-surface-2);
+    border-color: var(--hv-border);
+    color: var(--hv-text);
+}
+body.havenly-theme .table {
+    color: var(--hv-text);
+    --bs-table-bg: transparent;
+    --bs-table-color: var(--hv-text);
+    --bs-table-border-color: var(--hv-border-soft);
+    --bs-table-striped-bg: rgba(167, 139, 250, 0.05);
+    --bs-table-hover-bg: rgba(139, 92, 246, 0.06);
+}
+body.havenly-theme .modal-content {
+    background: var(--hv-surface);
+    border-color: var(--hv-border);
+    color: var(--hv-text);
+}
+body.havenly-theme .modal-header,
+body.havenly-theme .modal-footer { border-color: var(--hv-border); }
+body.havenly-theme .dropdown-menu {
+    background: var(--hv-surface);
+    border-color: var(--hv-border);
+    color: var(--hv-text);
+}
+body.havenly-theme .dropdown-item { color: var(--hv-text); }
+body.havenly-theme .dropdown-item:hover,
+body.havenly-theme .dropdown-item:focus {
+    background: var(--hv-surface-2);
+    color: var(--hv-text);
+}
+body.havenly-theme .text-muted { color: var(--hv-text-2) !important; }
+body.havenly-theme .badge { font-weight: 700; }
+
+/* --- app.css hardcodes form-control colors with !important;
+       beat it with the theme values (same specificity win) --- */
+body.havenly-theme .form-control,
+body.havenly-theme .form-select {
+    background-color: var(--hv-bg) !important;
+    border-color: var(--hv-border) !important;
+    color: var(--hv-text) !important;
+}
+body.havenly-theme .form-control:focus,
+body.havenly-theme .form-select:focus {
+    border-color: var(--hv-purple) !important;
+    box-shadow: 0 0 0 0.2rem rgba(139, 92, 246, 0.15) !important;
+}
+body.havenly-theme .form-control::placeholder { color: var(--hv-text-3) !important; }
+
+/* =========================================================
+   DASHBOARD LAYOUT (2026-11-15) — layout overhaul, page 1.
+   Layout only: arrangement, spacing, hierarchy. Colors stay
+   in the theme variables above. dashboard.css loads first,
+   so these rules win on equal specificity; the
+   body.havenly-theme prefix beats its media queries where
+   the layout intentionally differs (mobile drawer).
+   ========================================================= */
+
+/* --- Sticky sidebar: nav stays reachable on a long page --- */
+body.havenly-theme .sidebar {
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    align-self: flex-start;
+    overflow-y: auto;
+    flex-shrink: 0;
+    scrollbar-width: thin;
+    scrollbar-color: var(--hv-border) transparent;
+}
+
+/* --- Current section is obvious: gradient wash + accent bar --- */
+body.havenly-theme .nav-item.active {
+    background: linear-gradient(90deg, rgba(139, 92, 246, 0.24), rgba(139, 92, 246, 0.07));
+    color: #ffffff;
+    box-shadow: inset 3px 0 0 var(--accent);
+}
+
+/* --- Main column: topbar + content stack --- */
+body.havenly-theme .main {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+body.havenly-theme .content {
+    width: 100%;
+    box-sizing: border-box;
+}
+
+/* --- Page header: sticky, title + server name + back link --- */
+body.havenly-theme .dash-topbar {
+    position: sticky;
+    top: 0;
+    z-index: 40;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 16px 30px;
+    background: rgba(22, 22, 31, 0.94);
+    border-bottom: 1px solid var(--border);
+    backdrop-filter: blur(12px);
+}
+
+body.havenly-theme .dash-topbar-titles {
+    min-width: 0;
+}
+
+body.havenly-theme .dash-eyebrow {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--hv-pink);
+}
+
+body.havenly-theme .dash-title {
+    margin: 2px 0 0;
+    font-size: 22px;
+    font-weight: 800;
+    letter-spacing: -0.01em;
+    color: var(--text);
+}
+
+body.havenly-theme .dash-subtitle {
+    margin: 3px 0 0;
+    font-size: 13px;
+    color: var(--muted);
+}
+
+body.havenly-theme .dash-topbar-link {
+    margin-left: auto;
+    flex-shrink: 0;
+    padding: 8px 14px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--panel);
+    color: var(--text);
+    font-size: 13px;
+    font-weight: 600;
+    text-decoration: none;
+    white-space: nowrap;
+}
+
+body.havenly-theme .dash-topbar-link:hover {
+    border-color: var(--accent);
+    color: var(--text);
+}
+
+/* --- Sidebar toggle + backdrop: desktop hidden, mobile drawer --- */
+body.havenly-theme .sidebar-toggle {
+    display: none;
+    flex-shrink: 0;
+    width: 40px;
+    height: 40px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--panel);
+    color: var(--text);
+    font-size: 18px;
+    line-height: 1;
+    cursor: pointer;
+}
+
+body.havenly-theme .sidebar-backdrop {
+    display: none;
+}
+
+/* --- Right column of the two-column grid: Server + Health stacked --- */
+body.havenly-theme .dashboard-side {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    min-width: 0;
+}
+
+body.havenly-theme .dashboard-side .panel,
+body.havenly-theme .dashboard-side .dashboard-health {
+    margin-bottom: 0;
+}
+
+body.havenly-theme .panel-header {
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+/* --- Health grid inside the narrow side column: 2 across --- */
+body.havenly-theme .dashboard-side .health-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+@media (max-width: 560px) {
+    body.havenly-theme .dashboard-side .health-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* --- Activity filters live inside the activity panel now --- */
+body.havenly-theme .activity-panel-filters {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+    padding: 14px 20px 0;
+}
+
+body.havenly-theme .activity-panel-filters-label {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--muted);
+}
+
+body.havenly-theme .activity-panel-filters .activity-filter-row {
+    flex: 1;
+    min-width: 0;
+}
+
+/* --- Filter active state: purple, not the old blue --- */
+body.havenly-theme .activity-filter.active {
+    color: #ffffff;
+    border-color: rgba(167, 139, 250, 0.55);
+    background: rgba(139, 92, 246, 0.18);
+}
+
+/* --- Mobile (<=700px): sidebar becomes a drawer, not display:none --- */
+@media (max-width: 700px) {
+    body.havenly-theme .sidebar {
+        position: fixed;
+        left: 0;
+        top: 0;
+        bottom: 0;
+        z-index: 60;
+        width: 264px;
+        transform: translateX(-105%);
+        transition: transform 0.22s ease;
+        box-shadow: 0 0 40px rgba(0, 0, 0, 0.5);
+        display: flex;
+    }
+
+    body.havenly-theme.sidebar-open .sidebar {
+        transform: none;
+    }
+
+    body.havenly-theme .sidebar-toggle {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    body.havenly-theme .sidebar-backdrop:not([hidden]) {
+        display: block;
+        position: fixed;
+        inset: 0;
+        z-index: 55;
+        background: rgba(0, 0, 0, 0.55);
+    }
+
+    body.havenly-theme .dash-topbar {
+        padding: 12px 15px;
+        gap: 12px;
+    }
+
+    body.havenly-theme .dash-title {
+        font-size: 18px;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    body.havenly-theme .sidebar {
+        transition: none;
+    }
+}
+/* =========================================================
+   MEMBERS LAYOUT (2026-11-15) — layout overhaul, page 2.
+   Layout only: arrangement, spacing, hierarchy. Colors stay
+   in the theme variables above. dashboard.css loads first,
+   so these rules win on equal specificity; the
+   body.havenly-theme prefix beats its media queries where
+   the layout intentionally differs (mobile drawer, toolbar
+   stacking). The member-row rules below are the inline
+   <style> block that used to live in server_members.html,
+   moved here verbatim (same values) and scoped to
+   .members-list so the directory table's <tr class="member-row">
+   is untouched.
+   ========================================================= */
+
+/* --- Sticky page header: mirrors .dash-topbar --- */
+body.havenly-theme .members-topbar {
+    position: sticky;
+    top: 0;
+    z-index: 40;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    height: auto;
+    padding: 16px 30px;
+    background: rgba(22, 22, 31, 0.94);
+    border-bottom: 1px solid var(--border);
+    backdrop-filter: blur(12px);
+    justify-content: flex-start;
+}
+
+body.havenly-theme .members-topbar-titles {
+    min-width: 0;
+}
+
+body.havenly-theme .members-eyebrow {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--hv-pink);
+}
+
+body.havenly-theme .members-topbar .page-title {
+    margin: 2px 0 0;
+    font-size: 22px;
+    font-weight: 800;
+    letter-spacing: -0.01em;
+    color: var(--text);
+}
+
+body.havenly-theme .members-topbar .page-subtitle {
+    margin: 3px 0 0;
+    font-size: 13px;
+    color: var(--muted);
+}
+
+body.havenly-theme .members-topbar .topbar-actions {
+    margin-left: auto;
+    flex-shrink: 0;
+}
+
+/* --- Server identity band: counts read as mini stat cards --- */
+body.havenly-theme .members-server-header {
+    flex-wrap: wrap;
+    gap: 20px;
+}
+
+body.havenly-theme .members-server-info {
+    min-width: 0;
+    flex: 1;
+}
+
+body.havenly-theme .members-summary {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+body.havenly-theme .member-summary-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    min-width: 92px;
+    padding: 10px 16px;
+    background: var(--hv-surface-2);
+    border: 1px solid var(--hv-border);
+    border-radius: var(--hv-radius);
+}
+
+body.havenly-theme .member-summary-item span {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--hv-text-3);
+}
+
+body.havenly-theme .member-summary-item strong {
+    font-size: 20px;
+    font-weight: 800;
+    color: var(--hv-text);
+}
+
+/* --- Toolbar: search + filter wrap, then stack --- */
+body.havenly-theme .members-toolbar {
+    flex-wrap: wrap;
+}
+
+body.havenly-theme .members-toolbar .member-search {
+    flex: 1 1 240px;
+}
+
+body.havenly-theme .members-toolbar .member-filter {
+    flex-shrink: 0;
+}
+
+body.havenly-theme .members-toolbar .member-search input {
+    width: 100%;
+}
+
+/* --- Member rows (was the inline <style> in server_members.html) --- */
+body.havenly-theme .members-list .member-row {
+    display: flex; align-items: center; gap: 14px;
+    width: 100%; text-align: left;
+    background: rgba(255,255,255,.025);
+    border: 1px solid rgba(255,255,255,.07);
+    border-radius: 12px;
+    margin-bottom: 8px;
+    padding: 10px 16px;
+    cursor: pointer; color: inherit; font: inherit;
+    transition: background .12s, border-color .12s, transform .08s;
+}
+body.havenly-theme .members-list .member-row:hover {
+    background: rgba(255,255,255,.06);
+    border-color: rgba(255,255,255,.16);
+    transform: translateY(-1px);
+}
+body.havenly-theme .members-list .member-avatar { position: relative; flex-shrink: 0; }
+body.havenly-theme .members-list .member-avatar img,
+body.havenly-theme .members-list .member-avatar span {
+    width: 44px; height: 44px; border-radius: 50%;
+    display: block; object-fit: cover;
+}
+body.havenly-theme .members-list .member-avatar span {
+    display: flex; align-items: center; justify-content: center;
+    background: #8b5cf6; color: #fff; font-weight: 700;
+}
+body.havenly-theme .members-list .member-avatar .member-status {
+    position: absolute !important; bottom: 0 !important; right: 0 !important;
+    width: 14px !important; height: 14px !important; border-radius: 50% !important;
+    border: 3px solid #1e1f22 !important;
+    display: block !important; padding: 0 !important; margin: 0 !important;
+}
+body.havenly-theme .members-list .member-status.online { background: #23a55a; }
+body.havenly-theme .members-list .member-status.idle { background: #f0b232; }
+body.havenly-theme .members-list .member-status.dnd { background: #f23f43; }
+body.havenly-theme .members-list .member-status.offline { background: #80848e; }
+body.havenly-theme .members-list .member-main { flex: 1; min-width: 0; }
+body.havenly-theme .members-list .member-name {
+    font-weight: 700; font-size: .95rem;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+body.havenly-theme .members-list .bot-badge {
+    background: #8b5cf6; color: #fff; font-size: .65rem;
+    padding: 1px 6px; border-radius: 6px; margin-left: 6px;
+    vertical-align: middle;
+}
+body.havenly-theme .members-list .member-username {
+    font-size: .78rem; opacity: .55;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+body.havenly-theme .members-list .member-role { flex-shrink: 0; display: flex; align-items: center; gap: 6px; }
+body.havenly-theme .members-list .member-role-chip {
+    font-size: .75rem; padding: 3px 10px; border-radius: 99px;
+    background: rgba(255,255,255,.07); white-space: nowrap;
+}
+body.havenly-theme .members-list .member-role small { opacity: .5; font-size: .7rem; }
+body.havenly-theme .members-list .member-status-label { flex-shrink: 0; min-width: 52px; text-align: right; }
+body.havenly-theme .members-list .member-status-text { font-size: .78rem; text-transform: capitalize; }
+body.havenly-theme .members-list .member-status-text.online { color: #23a55a; }
+body.havenly-theme .members-list .member-status-text.idle { color: #f0b232; }
+body.havenly-theme .members-list .member-status-text.dnd { color: #f23f43; }
+body.havenly-theme .members-list .member-status-text.offline { color: #80848e; }
+body.havenly-theme .members-list .member-row-arrow { flex-shrink: 0; opacity: .4; font-size: 1.1rem; }
+
+/* --- Member detail modal: wider panel, grouped modpanel --- */
+body.havenly-theme .member-modal-panel {
+    width: min(680px, calc(100vw - 32px));
+}
+
+body.havenly-theme .modpanel-section {
+    background: var(--hv-surface-2);
+    border: 1px solid var(--hv-border);
+    border-radius: 14px;
+    padding: 16px;
+    margin-top: 8px;
+}
+
+body.havenly-theme .modpanel-title {
+    font-size: 1rem;
+    font-weight: 800;
+    letter-spacing: .02em;
+    padding-bottom: 10px;
+    margin-bottom: 12px;
+    border-bottom: 1px solid var(--hv-border);
+}
+
+body.havenly-theme .modpanel-stats {
+    margin-bottom: 12px;
+}
+
+body.havenly-theme .modpanel-group {
+    margin-bottom: 14px;
+}
+
+body.havenly-theme .modpanel-group-label {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--hv-text-3);
+    margin-bottom: 8px;
+}
+
+body.havenly-theme .modpanel-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+body.havenly-theme .modpanel-actions .btn {
+    border: none; font-weight: 600; padding: 7px 14px; border-radius: 8px;
+    cursor: pointer; transition: transform .08s, filter .12s; font-size: .82rem;
+}
+body.havenly-theme .modpanel-actions .btn:hover { filter: brightness(1.15); transform: translateY(-1px); }
+body.havenly-theme .modpanel-actions .btn:active { transform: translateY(0); }
+body.havenly-theme .btn-mod-warn    { background: #e8a020; color: #1a1a1a; }
+body.havenly-theme .btn-mod-timeout { background: #e07b24; color: #fff; }
+body.havenly-theme .btn-mod-kick    { background: #d6543c; color: #fff; }
+body.havenly-theme .btn-mod-ban     { background: #c0392b; color: #fff; }
+body.havenly-theme .btn-mod-danger  { background: #8e2a20; color: #fff; }
+body.havenly-theme .btn-mod-info    { background: #2980b9; color: #fff; }
+body.havenly-theme .btn-mod-neutral { background: #4a4e57; color: #fff; }
+body.havenly-theme .btn-mod-unban   { background: #27ae60; color: #fff; }
+
+body.havenly-theme .modpanel-records {
+    margin-top: 16px;
+    padding-top: 14px;
+    border-top: 1px solid var(--hv-border);
+}
+
+body.havenly-theme .modpanel-list {
+    margin-bottom: 12px;
+}
+
+body.havenly-theme .modpanel-case-target {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 12px;
+    background: var(--hv-surface);
+    border: 1px solid var(--hv-border);
+    border-radius: 10px;
+    margin-bottom: 8px;
+}
+
+body.havenly-theme .modpanel-case-target-avatar {
+    width: 36px; height: 36px; border-radius: 50%;
+}
+
+body.havenly-theme .modpanel-case-target-name {
+    font-weight: 700; font-size: .9rem;
+}
+
+body.havenly-theme .modpanel-case-target-id {
+    font-size: .75rem; opacity: .6;
+}
+
+/* --- Directory modal: actions clearly separated from read-only info --- */
+body.havenly-theme .member-modal-card {
+    width: min(650px, calc(100vw - 32px));
+}
+
+body.havenly-theme .member-modal-actions {
+    margin-top: 18px;
+    padding-top: 14px;
+    border-top: 1px solid var(--hv-border);
+}
+
+body.havenly-theme .member-modal-actions::before {
+    content: "Moderation";
+    display: block;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--hv-text-3);
+    margin-bottom: 10px;
+}
+
+/* --- Directory table: scrolls inside the panel, never crushes --- */
+body.havenly-theme .members-table {
+    min-width: 620px;
+}
+
+/* --- Narrow widths --- */
+@media (max-width: 700px) {
+    body.havenly-theme .members-topbar {
+        padding: 12px 15px;
+        gap: 12px;
+    }
+
+    body.havenly-theme .members-topbar .page-title {
+        font-size: 18px;
+    }
+
+    body.havenly-theme .members-server-header {
+        padding: 16px;
+    }
+}
+
+@media (max-width: 650px) {
+    body.havenly-theme .members-toolbar {
+        flex-direction: column;
+    }
+
+    body.havenly-theme .members-toolbar .member-search,
+    body.havenly-theme .members-toolbar .member-filter,
+    body.havenly-theme .members-toolbar .member-filter select {
+        width: 100%;
+    }
+}
+
+@media (max-width: 560px) {
+    body.havenly-theme .members-list .member-status-label,
+    body.havenly-theme .members-list .member-row-arrow {
+        display: none;
+    }
+}
+
+/* ================= LOGGER LAYOUT ================= */
+/* Logger history page: moved verbatim from the page's old inline
+   <style> (2026-11-15); only the dead .logger-topbar rule was
+   dropped, and every rule is now scoped under body.havenly-theme. */
+body.havenly-theme .logger-page{--lg-bg:rgba(255,255,255,.035);--lg-bg2:rgba(255,255,255,.06);--lg-border:rgba(255,255,255,.09);--lg-muted:rgba(255,255,255,.58);--lg-accent:#8b5cf6}
+body.havenly-theme .logger-actions{display:flex;gap:8px;flex-wrap:wrap}
+body.havenly-theme .logger-view-tabs{display:flex;gap:6px;border-bottom:1px solid var(--lg-border);margin-bottom:14px}
+body.havenly-theme .logger-view-tab{border:0;background:transparent;color:rgba(255,255,255,.58);padding:10px 14px;border-bottom:2px solid transparent;cursor:pointer;font-weight:700}
+body.havenly-theme .logger-view-tab:hover{color:#fff}
+body.havenly-theme .logger-view-tab.active{color:#fff;border-bottom-color:var(--lg-accent)}
+body.havenly-theme .logger-stats{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin-bottom:14px}
+body.havenly-theme .logger-stat{padding:14px 15px;border:1px solid var(--lg-border);background:var(--lg-bg);border-radius:13px}
+body.havenly-theme .logger-stat span{display:block;font-size:.72rem;color:var(--lg-muted);text-transform:uppercase;letter-spacing:.05em}
+body.havenly-theme .logger-stat strong{display:block;margin-top:5px;font-size:1.25rem}
+body.havenly-theme .logger-panel{border:1px solid var(--lg-border);background:var(--lg-bg);border-radius:15px;padding:15px}
+body.havenly-theme .logger-panel-header{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:13px}
+body.havenly-theme .logger-panel-header h2{font-size:1rem;margin:0}
+body.havenly-theme .logger-panel-header span{font-size:.76rem;color:var(--lg-muted)}
+body.havenly-theme .logger-pro-grid{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:15px}
+body.havenly-theme .logger-toolbar{display:flex;gap:7px;flex-wrap:wrap}
+body.havenly-theme .logger-tabs{display:flex;gap:7px;overflow-x:auto;padding:3px 2px 10px;scrollbar-width:thin}
+body.havenly-theme .logger-tab{border:1px solid var(--lg-border);background:var(--lg-bg);color:rgba(255,255,255,.68);border-radius:10px;padding:8px 12px;white-space:nowrap;cursor:pointer}
+body.havenly-theme .logger-tab:hover, body.havenly-theme .logger-tab.active{background:rgba(139,92,246,.16);border-color:rgba(139,92,246,.55);color:#fff}
+body.havenly-theme .logger-tab .count{font-size:.7rem;opacity:.65;margin-left:5px}
+body.havenly-theme .logger-subtabs{display:flex;gap:5px;flex-wrap:wrap;margin:-2px 0 12px}
+body.havenly-theme .logger-subtab{border:0;background:transparent;color:rgba(255,255,255,.5);font-size:.75rem;padding:5px 8px;border-radius:7px;cursor:pointer}
+body.havenly-theme .logger-subtab:hover, body.havenly-theme .logger-subtab.active{background:rgba(255,255,255,.07);color:#fff}
+body.havenly-theme .logger-filters{display:grid;grid-template-columns:2fr repeat(2,1fr) repeat(2,1fr) repeat(2,auto);gap:8px;margin-bottom:8px}
+body.havenly-theme .logger-filter-summary{font-size:.76rem;color:rgba(255,255,255,.5);margin:0 0 10px}
+body.havenly-theme .logger-toggle{display:flex;align-items:center;gap:7px}
+body.havenly-theme .logger-mini{font-size:.75rem;color:rgba(255,255,255,.52)}
+body.havenly-theme .logger-event-card{display:grid;grid-template-columns:44px 44px minmax(0,1fr) auto;gap:11px;align-items:start;padding:13px 14px;border:1px solid var(--lg-border);border-left:3px solid var(--event-color,var(--lg-accent));background:var(--lg-bg);border-radius:13px;margin-bottom:8px;cursor:pointer;outline:none;transition:.12s ease}
+body.havenly-theme .logger-event-card:hover, body.havenly-theme .logger-event-card:focus-visible{transform:translateY(-1px);background:var(--lg-bg2);border-color:rgba(255,255,255,.18)}
+body.havenly-theme .logger-avatar{width:44px;height:44px;border-radius:50%;object-fit:cover;background:rgba(255,255,255,.08);display:block}
+body.havenly-theme .logger-avatar-fallback{width:44px;height:44px;border-radius:50%;display:grid;place-items:center;background:rgba(255,255,255,.08);font-weight:800;font-size:.82rem}
+body.havenly-theme .logger-event-icon{width:44px;height:44px;border-radius:12px;display:grid;place-items:center;background:color-mix(in srgb,var(--event-color,var(--lg-accent)) 14%,transparent);font-size:20px}
+body.havenly-theme .logger-event-main{min-width:0}
+body.havenly-theme .logger-event-title{font-weight:750;font-size:.94rem;display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+body.havenly-theme .logger-event-description{margin-top:4px;color:rgba(255,255,255,.72);font-size:.83rem;line-height:1.45;word-break:break-word}
+body.havenly-theme .logger-event-meta{display:flex;gap:4px;flex-wrap:wrap;margin-top:7px}
+body.havenly-theme .logger-chip{display:inline-flex;align-items:center;gap:5px;padding:4px 8px;border-radius:999px;background:rgba(255,255,255,.065);font-size:.69rem;color:rgba(255,255,255,.68)}
+body.havenly-theme .logger-event-time{text-align:right;white-space:nowrap;font-size:.71rem;color:rgba(255,255,255,.46)}
+body.havenly-theme .logger-event-attachment{margin-top:7px;font-size:.71rem;color:rgba(255,255,255,.55)}
+body.havenly-theme .logger-attachments{margin-top:9px;display:flex;flex-direction:column;gap:8px}
+body.havenly-theme .logger-attachment{border:1px solid rgba(255,255,255,.08);border-radius:10px;background:rgba(0,0,0,.12);padding:8px}
+body.havenly-theme .logger-attachment-head{display:flex;align-items:center;gap:7px;font-size:.76rem;min-width:0}
+body.havenly-theme .logger-attachment-head a{color:#c4b5fd;text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+body.havenly-theme .logger-attachment-head a:hover{text-decoration:underline}
+body.havenly-theme .logger-attachment-type{margin-left:auto;font-size:.64rem;text-transform:uppercase;color:rgba(255,255,255,.4)}
+body.havenly-theme .logger-attachment-image-link{display:block;margin-top:7px}
+body.havenly-theme .logger-attachment-image{display:block;max-width:min(100%,520px);max-height:360px;border-radius:8px;object-fit:contain;background:var(--hv-bg)}
+body.havenly-theme .logger-attachment-video{display:block;width:min(100%,620px);max-height:390px;margin-top:7px;border-radius:8px;background:#000}
+body.havenly-theme .logger-attachment-audio{display:block;width:min(100%,520px);margin-top:7px}
+body.havenly-theme .logger-attachment-pdf{display:block;width:100%;height:480px;margin-top:7px;border:0;border-radius:8px;background:#1e1e2e}
+body.havenly-theme .logger-empty{padding:30px;text-align:center;color:rgba(255,255,255,.5)}
+body.havenly-theme .logger-chart{height:210px;display:flex;align-items:end;gap:3px;padding:18px 10px 8px;border-radius:12px;background:rgba(255,255,255,.025);overflow:hidden}
+body.havenly-theme .logger-bar{flex:1;min-width:3px;border-radius:4px 4px 1px 1px;background:currentColor;opacity:.7;position:relative}
+body.havenly-theme .logger-bar:hover{opacity:1}
+body.havenly-theme .logger-bar span{position:absolute;bottom:100%;left:50%;transform:translateX(-50%);font-size:10px;display:none}
+body.havenly-theme .logger-bar:hover span{display:block}
+body.havenly-theme .logger-breakdown-row{margin-bottom:12px}
+body.havenly-theme .logger-breakdown-head{display:flex;justify-content:space-between;font-size:.78rem;margin-bottom:5px}
+body.havenly-theme .logger-breakdown-track{height:6px;border-radius:5px;background:rgba(255,255,255,.07);overflow:hidden}
+body.havenly-theme .logger-breakdown-fill{height:100%;border-radius:5px;background:var(--event-color,var(--lg-accent));opacity:.8}
+body.havenly-theme .logger-detail-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+body.havenly-theme .logger-detail-item{background:rgba(255,255,255,.04);padding:11px;border-radius:10px}
+body.havenly-theme .logger-detail-item small{display:block;color:rgba(255,255,255,.5);margin-bottom:3px}
+body.havenly-theme .logger-detail-content{border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.035);border-radius:12px;padding:14px;white-space:pre-wrap;word-break:break-word;line-height:1.5}
+body.havenly-theme .logger-technical{margin-top:14px;border:1px solid rgba(255,255,255,.08);border-radius:11px;overflow:hidden}
+body.havenly-theme .logger-technical summary{cursor:pointer;padding:11px 13px;color:rgba(255,255,255,.6);font-size:.8rem}
+body.havenly-theme .logger-technical pre{margin:0;padding:14px;background:rgba(0,0,0,.22);white-space:pre-wrap;word-break:break-word;font-size:.72rem}
+body.havenly-theme .logger-copy{border:0;background:transparent;color:rgba(255,255,255,.45);font-size:.7rem;cursor:pointer}
+body.havenly-theme .logger-copy:hover{color:#fff}
+body.havenly-theme .logger-modal{position:fixed;inset:0;background:rgba(0,0,0,.76);z-index:2000;display:none;align-items:center;justify-content:center;padding:20px}
+body.havenly-theme .logger-modal.show{display:flex}
+body.havenly-theme .logger-modal-card{max-width:900px;width:100%;max-height:90vh;overflow:auto;background:var(--panel);border:1px solid var(--hv-border);border-radius:16px;padding:20px;box-shadow:0 14px 40px rgba(0,0,0,.25)}
+body.havenly-theme .logger-avatar-lg{width:54px;height:54px;border-radius:50%;object-fit:cover;background:rgba(255,255,255,.08)}
+
+/* Event detail card overhaul (2026-11-16): the detail modal now renders
+   the event's summary as parsed labeled fields instead of a raw markdown
+   dump. New classes for the rebuilt card. */
+body.havenly-theme .logger-detail-label{font-size:.72rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--hv-text-3);margin:0 0 6px}
+body.havenly-theme .logger-detail-value{word-break:break-word;line-height:1.5}
+body.havenly-theme .logger-detail-value a{color:var(--hv-link);text-decoration:none}
+body.havenly-theme .logger-detail-value a:hover{text-decoration:underline}
+body.havenly-theme .logger-detail-value code, body.havenly-theme .logger-detail-content code, body.havenly-theme .logger-ba-body code{background:rgba(255,255,255,.09);padding:1px 5px;border-radius:5px;font-size:.85em}
+body.havenly-theme .logger-detail-content a, body.havenly-theme .logger-ba-body a{color:var(--hv-link);text-decoration:none}
+body.havenly-theme .logger-detail-content a:hover, body.havenly-theme .logger-ba-body a:hover{text-decoration:underline}
+body.havenly-theme .logger-id{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.78rem;color:var(--hv-text-3);background:rgba(255,255,255,.06);padding:2px 7px;border-radius:6px;word-break:break-all}
+body.havenly-theme .logger-jump{display:inline-flex;align-items:center;gap:7px;background:var(--hv-gradient-btn);color:#fff;font-weight:700;font-size:.88rem;text-decoration:none;padding:9px 18px;border-radius:999px;box-shadow:0 6px 18px rgba(139,92,246,.35)}
+body.havenly-theme .logger-jump:hover{background:var(--hv-gradient-btn-hover);color:#fff;text-decoration:none}
+body.havenly-theme .logger-before-after{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+body.havenly-theme .logger-ba{background:rgba(255,255,255,.04);border:1px solid var(--hv-border);border-radius:12px;padding:13px 14px;min-width:0}
+body.havenly-theme .logger-ba small{display:block;color:var(--hv-text-3);font-size:.72rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;margin-bottom:6px}
+body.havenly-theme .logger-ba.logger-before{border-left:3px solid var(--hv-rose)}
+body.havenly-theme .logger-ba.logger-after{border-left:3px solid var(--hv-mint)}
+body.havenly-theme .logger-ba-body{white-space:pre-wrap;word-break:break-word;line-height:1.55;font-size:.88rem}
+body.havenly-theme .logger-emoji{height:1.25em;width:auto;vertical-align:-0.2em}
+@media(max-width:700px){body.havenly-theme .logger-before-after{grid-template-columns:1fr}
+}
+body.havenly-theme .logger-live{display:inline-flex;align-items:center;gap:7px}
+body.havenly-theme .logger-refresh-dot{width:8px;height:8px;border-radius:50%;display:inline-block;background:#48d597;box-shadow:0 0 10px rgba(72,213,151,.6)}
+@media(max-width:1100px){body.havenly-theme .logger-stats{grid-template-columns:repeat(3,1fr)}
+body.havenly-theme .logger-pro-grid{grid-template-columns:1fr}
+body.havenly-theme .logger-filters{grid-template-columns:repeat(3,1fr)}
+}
+@media(max-width:700px){body.havenly-theme .logger-stats{grid-template-columns:repeat(2,1fr)}
+body.havenly-theme .logger-filters{grid-template-columns:1fr}
+body.havenly-theme .logger-event-card{grid-template-columns:38px 38px minmax(0,1fr)}
+body.havenly-theme .logger-avatar, body.havenly-theme .logger-avatar-fallback, body.havenly-theme .logger-event-icon{width:38px;height:38px}
+body.havenly-theme .logger-event-time{grid-column:3;text-align:left}
+body.havenly-theme .logger-detail-grid{grid-template-columns:1fr}
+}
+/* Logger page frame: same .app/.main shell as dashboard + members. */
+body.havenly-theme .logger-page{max-width:1600px;margin:0 auto;padding:0 30px 30px;width:100%;box-sizing:border-box}
+body.havenly-theme .logger-page .logger-actions{margin-bottom:14px}
+body.havenly-theme .logger-filters-label{font-size:.72rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:14px 0 8px}
+
+/* Logger shell (2026-11-15): this page extends base.html, which never
+   loads dashboard.css — so the .app/.sidebar/.brand rules that make
+   the dashboard + members sidebars work were missing here. Without
+   them the sidebar brand image rendered at its natural 512px and
+   painted over the sidebar links. Mirror dashboard.css values,
+   scoped to the logger page only so no other page changes. */
+body.havenly-theme .logger-app{display:flex;min-height:100vh}
+body.havenly-theme .logger-app .sidebar{width:250px;min-height:100vh;background:var(--sidebar);border-right:1px solid var(--border);display:flex;flex-direction:column;padding:20px 14px}
+body.havenly-theme .logger-app .brand{display:flex;align-items:center;gap:12px;padding:5px 10px 25px}
+body.havenly-theme .logger-app .brand-icon{width:42px;height:42px;flex-shrink:0}
+body.havenly-theme .logger-app .bot-brand-icon{overflow:hidden;position:relative}
+body.havenly-theme .logger-app .bot-brand-icon img{width:100%;height:100%;object-fit:cover;border-radius:inherit}
+body.havenly-theme .logger-app #bot-avatar-fallback{display:block;width:100%;height:100%}
+body.havenly-theme .logger-app .brand-title{font-weight:700;font-size:15px}
+body.havenly-theme .logger-app .brand-subtitle{color:var(--muted);font-size:12px}
+body.havenly-theme .logger-app .sidebar-section{margin-bottom:25px}
+body.havenly-theme .logger-app .sidebar-label{color:#596273;font-size:10px;font-weight:700;letter-spacing:1px;padding:0 12px 8px}
+body.havenly-theme .logger-app .nav-item{display:flex;align-items:center;gap:12px;padding:10px 12px;margin:2px 0;border-radius:8px;color:var(--muted);text-decoration:none;font-size:13px;transition:.15s ease}
+body.havenly-theme .logger-app .nav-item:hover{color:var(--text);background:var(--panel-hover)}
+body.havenly-theme .logger-app .sidebar-bottom{margin-top:auto}
+
+/* Combined Settings page tabs (Permissions / Logger Settings). */
+body.havenly-theme .hv-tabs{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 18px}
+body.havenly-theme .hv-tab{display:inline-flex;align-items:center;gap:7px;padding:9px 16px;border-radius:999px;border:1px solid var(--border);background:var(--panel);color:var(--muted);text-decoration:none;font-weight:700;font-size:.9rem}
+body.havenly-theme .hv-tab:hover{color:var(--text);border-color:var(--hv-primary)}
+body.havenly-theme .hv-tab.active{background:var(--hv-gradient-btn);border-color:transparent;color:#fff}
+
+/* Logger settings tab: converted from logging.html's hardcoded dark
+   palette to theme vars (that page's "stays dark until the global
+   theme toggle is introduced" comment is now obsolete). The page
+   padding/min-height come from the .hv-page wrapper, not this class. */
+body.havenly-theme .logger-settings-page{color:var(--text)}
+body.havenly-theme .logger-settings-page .text-secondary{color:var(--muted)!important}
+body.havenly-theme .logger-settings-page .form-label{color:var(--text)}
+body.havenly-theme .logger-settings-page .form-select{background:var(--hv-surface-2);color:var(--text);border:1px solid var(--border);color-scheme:dark}
+body.havenly-theme .logger-settings-page .form-select:focus{background:var(--hv-surface-2);color:var(--text);border-color:var(--hv-primary);box-shadow:0 0 0 .2rem rgba(139,92,246,.15)}
+body.havenly-theme .logger-settings-card{background:var(--panel);border:1px solid var(--border);border-radius:16px;box-shadow:0 14px 40px rgba(0,0,0,.25)}
+body.havenly-theme .logger-settings-card .card-header{background:var(--hv-surface-2);border-bottom:1px solid var(--border);color:var(--text)}
+body.havenly-theme .logger-settings-card .card-body{background:var(--panel)}
+body.havenly-theme .logger-setting-row{background:rgba(255,255,255,.025);border:1px solid rgba(255,255,255,.07);border-radius:13px;padding:14px;margin-bottom:10px}
+body.havenly-theme .logger-setting-row:hover{background:rgba(255,255,255,.04)}
+body.havenly-theme .logger-setting-title{font-weight:700}
+body.havenly-theme .logger-setting-desc{font-size:.78rem;color:var(--muted);margin:3px 0 9px}
+body.havenly-theme .logger-badge{font-size:.68rem;border-radius:999px;padding:4px 8px;background:rgba(255,255,255,.07);color:var(--muted)}
+body.havenly-theme .logger-num-input{background:var(--hv-surface-2);color:var(--text);border:1px solid var(--border);max-width:120px}
+
+/* Live feed page (orphaned template; scoped to its wrapper so its
+   .logger-toolbar and .empty-state names cannot collide with the
+   history page's different definitions of the same classes). */
+body.havenly-theme .logger-live-page{max-width:1100px;margin:0 auto;padding:0 30px 30px;width:100%;box-sizing:border-box}
+body.havenly-theme .logger-live-page .logger-header{border-bottom:1px solid var(--border);padding-bottom:20px}
+body.havenly-theme .logger-live-page .event-card{background:var(--panel);border:1px solid var(--border);transition:border-color .2s,transform .2s}
+body.havenly-theme .logger-live-page .event-card:hover{border-color:var(--hv-text-3);transform:translateY(-1px)}
+body.havenly-theme .logger-live-page .event-time{color:var(--muted);font-size:.85rem}
+body.havenly-theme .logger-live-page .event-guild{color:var(--text)}
+body.havenly-theme .logger-live-page .event-data{background:var(--hv-navbar);color:var(--text);border:1px solid var(--border);font-size:.85rem;max-height:400px;overflow:auto}
+body.havenly-theme .logger-live-page .event-divider{border-color:var(--border)}
+body.havenly-theme .logger-live-page .empty-state{background:var(--panel);border:1px solid var(--border);color:var(--muted)}
+body.havenly-theme .logger-live-page .logger-toolbar{background:var(--panel);border:1px solid var(--border)}
+body.havenly-theme .logger-live-page .logger-count{color:var(--muted)}

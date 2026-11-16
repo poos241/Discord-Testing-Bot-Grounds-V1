@@ -2201,22 +2201,8 @@ function updateServerInfo(dashboard) {
     setText("server-members", Number(members.count ?? server.member_count ?? 0).toLocaleString());
     setText("server-owner", server.owner_name || server.owner || server.owner_id || "--");
     setText("server-created", formatTimestamp(server.created_at));
-
-    const avatar = document.getElementById("server-avatar");
-    if (avatar) {
-        avatar.innerHTML = "";
-        if (server.icon) {
-            const img = document.createElement("img");
-            img.src = server.icon;
-            img.alt = `${name} icon`;
-            img.loading = "eager";
-            img.referrerPolicy = "no-referrer";
-            img.onerror = () => { img.remove(); avatar.textContent = getServerInitials(name); };
-            avatar.appendChild(img);
-        } else {
-            avatar.textContent = getServerInitials(name);
-        }
-    }
+    // Server PFP removed from the Server info card 2026-11-15 (Emily):
+    // the icon rendered at its natural size and overflowed the card.
 }
 
 
@@ -4835,25 +4821,7 @@ function updateServerHeader(
     }
 
 
-    const avatar =
-        document.getElementById(
-            "server-avatar"
-        );
-
-
-    if (
-        avatar &&
-        server.icon
-    ) {
-
-        avatar.innerHTML = `
-            <img
-                src="${escapeHtml(server.icon)}"
-                alt="${escapeHtml(name)}"
-            >
-        `;
-
-    }
+    // Server PFP removed from the Server info card 2026-11-15 (Emily).
 
 }
 

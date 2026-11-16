@@ -2,7 +2,7 @@ from flask import Blueprint, jsonify
 
 from web.services import bridge
 from web.services.member_service import MemberService
-from web.security.decorators import require_guild_manage, require_login, require_guild_moderator
+from web.security.decorators import require_guild_manage, require_login, require_web_api_access
 
 
 member_stats_api = Blueprint(
@@ -14,7 +14,7 @@ member_stats_api = Blueprint(
 @member_stats_api.get(
     "/api/servers/<int:guild_id>/members/stats"
 )
-@require_guild_moderator
+@require_web_api_access("web:view_members")
 def member_stats(guild_id):
 
     if not bridge.bot_is_ready():

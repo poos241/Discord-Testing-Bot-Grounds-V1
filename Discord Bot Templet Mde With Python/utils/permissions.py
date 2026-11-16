@@ -30,6 +30,8 @@ picker is an autocomplete (capped at 25 results per query), so the
 list itself is not capped -- only each bulk/picker group is.
 """
 
+import re
+
 from data.DB.Storage.storage import get_command_permissions
 
 # (action name, description shown in the setup commands)
@@ -55,16 +57,15 @@ GRANTABLE_COMMANDS = [
     ("set_xp_rate", "Set XP gain range per message (/set_xp_rate)"),
     ("set_cooldown", "Set XP gain cooldown (/set_cooldown)"),
     ("set_level_channel", "Set level-up message channel (/set_level_channel)"),
+    ("set_spam_channel", "Set the channel where /level works (/set_spam_channel)"),
     ("set_level_role", "Set a role reward for reaching a level (/set_level_role)"),
     ("remove_level_role", "Remove a level role reward (/remove_level_role)"),
     ("set_levelup_message", "Set a custom level-up message (/set_levelup_message)"),
-    ("toggle_game_xp", "Toggle XP for Eat It or Yeet It votes (/toggle_game_xp)"),
     ("toggle_no_xp", "Toggle XP gains in a channel (/toggle_no_xp)"),
     ("no_xp_bulk", "Turn XP off/on in many channels at once (/no_xp_bulk)"),
     ("bot_settings", "Show every bot system's on/off state and config (/bot_settings)"),
     ("toggle_levels", "Turn the level system on/off (/toggle_levels)"),
     ("level_settings", "Show the level system's full configuration (/level_settings)"),
-    ("toggle_thread_xp", "Turn XP on/off for messages in threads (/toggle_thread_xp)"),
     ("xp_event", "Start a bonus XP event (/xp_event)"),
     ("xp_event_end", "End the bonus XP event early (/xp_event_end)"),
     # Admin panel / role commands (admin_cog.py).
@@ -75,12 +76,6 @@ GRANTABLE_COMMANDS = [
     ("rename_user", "Change a user's name in this server (/rename_user)"),
     ("reset_user_name", "Reset a user's name (/reset_user_name)"),
     ("timeout_board", "Manage the Active Timeouts board (/timeout_board)"),
-    # Voice XP admin (VoiceXP.py, group /voicexp).
-    ("voicexp_config", "Show the server's voice XP settings (/voicexp config)"),
-    ("voicexp_setrate", "Set XP earned per minute of voice time (/voicexp setrate)"),
-    ("voicexp_setcap", "Set the daily voice XP cap (/voicexp setcap)"),
-    ("voicexp_enable", "Enable voice XP for this server (/voicexp enable)"),
-    ("voicexp_disable", "Disable voice XP for this server (/voicexp disable)"),
     # Custom badges (CustomBadges.py, group /badge).
     ("badge_create", "Create a custom badge (/badge create)"),
     ("badge_award", "Award a custom badge (/badge award)"),
@@ -173,6 +168,25 @@ def is_grantable(command):
     return command in GRANTABLE_NAMES
 
 
+# Custom action names (website permissions page, 2026-11-16): a
+# command or web key typed in by hand because it is not in the
+# picker. Discord slash-command names are 1-32 lowercase letters,
+# digits, underscores, or hyphens; web keys are "web:" + lowercase
+# letters, digits, or underscores. Anything else is rejected (no
+# spaces, slashes, dots, quotes, or uppercase -- those are never a
+# real command/key name and would only be a typo or an injection
+# attempt).
+_CUSTOM_ACTION_RE = re.compile(
+    r"^(?:web:[a-z0-9_]+|[a-z0-9_-]{1,32})$"
+)
+
+
+def is_valid_custom_action_name(name):
+    """True when ``name`` is a well-formed command or web: key that
+    may be typed in by hand on the permissions page."""
+    return isinstance(name, str) and bool(_CUSTOM_ACTION_RE.match(name))
+
+
 # Categories for the /perm bulk multi-select builder. Each category
 # holds at most 25 commands (Discord's select limit), so the builder
 # can offer every grantable command without hitting the cap.
@@ -189,14 +203,10 @@ GRANTABLE_CATEGORIES = [
     ("Level & XP", [
         "add_xp", "resetxp", "cleardata", "set_xp_rate", "set_cooldown",
         "set_level_channel", "set_level_role", "remove_level_role",
-        "set_levelup_message", "toggle_game_xp", "toggle_no_xp",
+        "set_levelup_message", "toggle_no_xp",
         "toggle_levels", "no_xp_bulk",
         "xp_event", "xp_event_end",
-        "level_settings", "toggle_thread_xp",
-    ]),
-    ("Voice XP", [
-        "voicexp_config", "voicexp_setrate", "voicexp_setcap",
-        "voicexp_enable", "voicexp_disable",
+        "level_settings", "set_spam_channel",
     ]),
     ("Badges", [
         "badge_create", "badge_award", "badge_remove", "badge_delete",
@@ -343,6 +353,186 @@ def _default_manage_channels_or_admin(member):
     return bool(perms.manage_channels or perms.administrator)
 
 
+def _default_moderator_tier(member):
+    """The website's old moderator-tier dashboard gate: Kick, Ban,
+    Manage Messages, or Timeout Members (or Administrator). Used as
+    the no-custom-rules default for ``web:view_dashboard`` so the
+    dashboard keeps its old behaviour until an admin grants it
+    explicitly with a custom rule."""
+    perms = getattr(member, "guild_permissions", None)
+    if perms is None:
+        return False
+    return bool(
+        perms.kick_members
+        or perms.ban_members
+        or perms.manage_messages
+        or perms.moderate_members
+        or perms.administrator
+    )
+
+
+# Web permission system (built 2026-11-15; see bridge_api.py
+# /bridge/guilds/{gid}/members/{uid}/web_access). When a website
+# action has NO custom rules, has_command_permission falls back to
+# the default below -- the same default the Discord command itself
+# uses, taken from the check_slash_permission / check_interaction
+# call sites (and cogs/Help_Info_Doc.py _HELP_DEFAULT_CHECKS, which
+# was generated from those same call sites). Anything not listed
+# here falls back to _default_manage_or_admin.
+#
+# One documented approximation: appeal_list / appeal_review default
+# on Discord to is_appeal_staff(member, cfg) -- the configured staff
+# role, or Manage Messages when no staff role is set. That check
+# needs an async config load, so the sync fallback here is the
+# no-staff-role branch: Manage Messages or Administrator.
+_WEB_DISCORD_DEFAULTS = {
+    # Administrator only.
+    "add_user_role": _default_admin_only,
+    "add_xp": _default_admin_only,
+    "bot_settings": _default_admin_only,
+    "cleardata": _default_admin_only,
+    "clear_user": _default_admin_only,
+    "level_settings": _default_admin_only,
+    "logs_change_channel": _default_admin_only,
+    "logs_setup": _default_admin_only,
+    "log_toggle_member": _default_admin_only,
+    "log_toggle_message": _default_admin_only,
+    "log_toggle_moderation": _default_admin_only,
+    "log_toggle_server": _default_admin_only,
+    "log_toggle_voice": _default_admin_only,
+    "no_xp_bulk": _default_admin_only,
+    "remove_level_role": _default_admin_only,
+    "remove_user_role": _default_admin_only,
+    "rename_bot": _default_admin_only,
+    "rename_user": _default_admin_only,
+    "reset_user_name": _default_admin_only,
+    "resetxp": _default_admin_only,
+    "set_cooldown": _default_admin_only,
+    "set_level_channel": _default_admin_only,
+    "set_level_role": _default_admin_only,
+    "set_levelup_message": _default_admin_only,
+    "set_spam_channel": _default_admin_only,
+    "set_xp_rate": _default_admin_only,
+    "toggle_levels": _default_admin_only,
+    "toggle_no_xp": _default_admin_only,
+    "userinfo": _default_admin_only,
+    "xp_event": _default_admin_only,
+    "xp_event_end": _default_admin_only,
+    # Manage Server or Administrator.
+    "appeal_config": _default_manage_or_admin,
+    "backup_now": _default_manage_or_admin,
+    "badge_delete": _default_manage_or_admin,
+    "ban": _default_manage_or_admin,
+    "banlog_approve": _default_manage_or_admin,
+    "banlog_backfill_cases": _default_manage_or_admin,
+    "banlog_collect": _default_manage_or_admin,
+    "banlog_delete": _default_manage_or_admin,
+    "banlog_log": _default_manage_or_admin,
+    "banlog_set_channel": _default_manage_or_admin,
+    "banlog_update": _default_manage_or_admin,
+    "debug_off": _default_manage_or_admin,
+    "debug_on": _default_manage_or_admin,
+    "debug_status": _default_manage_or_admin,
+    "debug_test": _default_manage_or_admin,
+    "intro_set_channel": _default_manage_or_admin,
+    "intro_set_role": _default_manage_or_admin,
+    "intro_settings": _default_manage_or_admin,
+    "intro_toggle": _default_manage_or_admin,
+    "kick": _default_manage_or_admin,
+    "lockdown_lockall": _default_manage_or_admin,
+    "lockdown_unlockall": _default_manage_or_admin,
+    "modlogs_actions": _default_manage_or_admin,
+    "modlogs_edit": _default_manage_or_admin,
+    "modlogs_list": _default_manage_or_admin,
+    "modlogs_recap": _default_manage_or_admin,
+    "modlogs_scan": _default_manage_or_admin,
+    "modnotes_search": _default_manage_or_admin,
+    "timeout": _default_manage_or_admin,
+    "timeout_board": _default_manage_or_admin,
+    "warn": _default_manage_or_admin,
+    "watch_add": _default_manage_or_admin,
+    "watch_add_id": _default_manage_or_admin,
+    "watch_clear": _default_manage_or_admin,
+    "watch_info": _default_manage_or_admin,
+    "watch_list": _default_manage_or_admin,
+    "watch_remove": _default_manage_or_admin,
+    "watch_remove_id": _default_manage_or_admin,
+    "watch_set_channel": _default_manage_or_admin,
+    "watch_status": _default_manage_or_admin,
+    # Manage Messages or Administrator.
+    "appeal_list": _default_manage_messages_or_admin,
+    "appeal_review": _default_manage_messages_or_admin,
+    "automod_config": _default_manage_messages_or_admin,
+    "automod_status": _default_manage_messages_or_admin,
+    "automod_toggle": _default_manage_messages_or_admin,
+    "backup_status": _default_manage_messages_or_admin,
+    "badge_award": _default_manage_messages_or_admin,
+    "badge_create": _default_manage_messages_or_admin,
+    "badge_list": _default_manage_messages_or_admin,
+    "badge_remove": _default_manage_messages_or_admin,
+    "intro_check": _default_manage_messages_or_admin,
+    "intro_check_ctx": _default_manage_messages_or_admin,
+    "intro_scan": _default_manage_messages_or_admin,
+    "qotd_approve": _default_manage_messages_or_admin,
+    "qotd_config": _default_manage_messages_or_admin,
+    "qotd_pending": _default_manage_messages_or_admin,
+    "qotd_post": _default_manage_messages_or_admin,
+    "qotd_reject": _default_manage_messages_or_admin,
+    "qotd_remove": _default_manage_messages_or_admin,
+    "qotd_skip": _default_manage_messages_or_admin,
+    "ticket_config": _default_manage_messages_or_admin,
+    "ticket_list": _default_manage_messages_or_admin,
+    "ticket_panel": _default_manage_messages_or_admin,
+    "ticket_show": _default_manage_messages_or_admin,
+    # Manage Channels or Administrator.
+    "auto_thread_remove_channel": _default_manage_channels_or_admin,
+    "auto_thread_set_channel": _default_manage_channels_or_admin,
+    "auto_thread_status": _default_manage_channels_or_admin,
+    "auto_thread_toggle": _default_manage_channels_or_admin,
+    "lockdown_lock": _default_manage_channels_or_admin,
+    "lockdown_slowmode": _default_manage_channels_or_admin,
+    "lockdown_status": _default_manage_channels_or_admin,
+    "lockdown_unlock": _default_manage_channels_or_admin,
+}
+
+# Web-only actions (no Discord command). The website gate asks for
+# these by name; custom rules in command_permissions can grant them
+# to a role/user like any Discord command, and these defaults apply
+# only when no custom rule exists for the action.
+# Per-section view keys (2026-11-16). Same moderator-tier
+# default as web:view_dashboard, so mods/admins see every
+# section by default and a section can be granted to (or
+# denied from) a role/user with a custom rule.
+_WEB_ONLY_DEFAULTS = {
+    "web:view_dashboard": _default_moderator_tier,
+    "web:manage_permissions": _default_admin_only,
+    "web:manage_logs": _default_admin_only,
+    "web:view_members": _default_moderator_tier,
+    "web:view_leaderboard": _default_moderator_tier,
+    "web:view_channels": _default_moderator_tier,
+    "web:view_roles": _default_moderator_tier,
+    "web:view_logger": _default_moderator_tier,
+    "web:view_activity": _default_moderator_tier,
+    "web:view_voice": _default_moderator_tier,
+}
+
+
+def web_default_check(action, member):
+    """No-custom-rules default for one website action. Returns True
+    when ``member`` may do ``action`` under the Discord permission
+    that action's command uses (or the web-only default above).
+    Unknown ``web:*`` keys fail closed (admin only); unknown Discord
+    command keys fall back to Manage Server or Administrator."""
+    if action in _WEB_ONLY_DEFAULTS:
+        return bool(_WEB_ONLY_DEFAULTS[action](member))
+    if isinstance(action, str) and action.startswith("web:"):
+        return bool(_default_admin_only(member))
+    check = _WEB_DISCORD_DEFAULTS.get(action)
+    if check is None:
+        check = _default_manage_or_admin
+    return bool(check(member))
+
+
 def mod_target_blocked(guild, target_id, actor_id):
     """P2-32: refuse a moderation action aimed at yourself, the bot,
     or the server owner.
@@ -425,14 +615,12 @@ BULK_COMMAND_GROUPS = [
     ("Levels & XP", [
         "add_xp", "resetxp", "cleardata", "set_xp_rate", "set_cooldown",
         "set_level_channel", "set_level_role", "remove_level_role",
-        "set_levelup_message", "toggle_game_xp", "toggle_no_xp",
+        "set_levelup_message", "toggle_no_xp",
         "toggle_levels", "no_xp_bulk",
         "xp_event", "xp_event_end",
-        "level_settings", "toggle_thread_xp",
+        "level_settings", "set_spam_channel",
     ]),
-    ("Voice XP & badges", [
-        "voicexp_config", "voicexp_setrate", "voicexp_setcap",
-        "voicexp_enable", "voicexp_disable",
+    ("Badges", [
         "badge_create", "badge_award", "badge_remove", "badge_delete",
         "badge_list",
     ]),

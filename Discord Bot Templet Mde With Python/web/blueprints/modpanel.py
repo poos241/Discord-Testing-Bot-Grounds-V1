@@ -45,17 +45,7 @@ from web.blueprints.moderation import (
     _save_tempban,
     _service as _moderation_service,
 )
-from web.security.decorators import (
-    require_guild_access,
-    require_guild_moderator,
-    require_guild_permission,
-)
-from web.services.permissions import (
-    BAN_MEMBERS,
-    MANAGE_MESSAGES,
-    MANAGE_NICKNAMES,
-    MANAGE_ROLES,
-)
+from web.security.decorators import require_web_api_access
 from web.blueprints.auth import get_csrf_token
 
 
@@ -177,6 +167,14 @@ def _bot_down_response():
     return jsonify({
         "success": False,
         "error": "Discord server not found.",
+    }), 404
+
+
+def _not_in_server_response():
+    """404 when the target is no longer a member of the guild."""
+    return jsonify({
+        "success": False,
+        "error": "This member is no longer in the server.",
     }), 404
 
 
@@ -347,7 +345,7 @@ def _role_color_value(color):
 @modpanel_api.get(
     "/servers/<int:guild_id>/members/<int:user_id>/modpanel"
 )
-@require_guild_moderator
+@require_web_api_access("web:view_members")
 def get_modpanel(guild_id, user_id):
     guild, member = _get_member(guild_id, user_id)
     if guild is None:
@@ -411,6 +409,21 @@ def get_modpanel(guild_id, user_id):
             pass
 
     from web.services.permissions import get_access_level
+    from web.services.web_access import get_web_access
+
+    # Per-action map for this viewer (same decisions the gate above
+    # made; permission booleans come from the 5-minute session cache,
+    # unverified/member were re-checked fresh). The frontend hides
+    # every mod button whose action is False here.
+    try:
+        _access = get_web_access(guild_id, [
+            "warn", "timeout", "kick", "ban", "clear_user",
+            "web:manage_notes", "watch_add", "watch_remove", "add_xp",
+            "rename_user", "remove_user_role", "web:wipe_member",
+        ])
+        web_actions = dict(_access.get("permissions") or {})
+    except Exception:
+        web_actions = {}
 
     return jsonify({
         "success": True,
@@ -424,6 +437,7 @@ def get_modpanel(guild_id, user_id):
         "level": level,
         # Lets the frontend hide mod-action buttons from non-moderators.
         "access_level": get_access_level(guild_id) or "none",
+        "web_actions": web_actions,
     })
 
 
@@ -436,11 +450,20 @@ def get_modpanel(guild_id, user_id):
 @modpanel_api.post(
     "/servers/<int:guild_id>/members/<int:user_id>/warn"
 )
-@require_guild_permission(MANAGE_MESSAGES, label="Manage Messages permission required.")
+@require_web_api_access("warn")
 def modpanel_warn(guild_id, user_id):
     denied = _check_csrf()
     if denied:
         return denied
+
+    # Stop here when the target is no longer in the server: a warn
+    # for someone who already left would record a bogus warn/case
+    # against a member who is not there.
+    guild, member = _get_member(guild_id, user_id)
+    if guild is None:
+        return _bot_down_response()
+    if member is None:
+        return _not_in_server_response()
 
     data = request.get_json(silent=True) or {}
     reason = (data.get("reason") or "No reason provided.").strip()
@@ -457,15 +480,14 @@ def modpanel_warn(guild_id, user_id):
             "error": "Mod data helpers unavailable.",
         }), 500
 
-    # DM first (before any action that might remove them)
+    # DM first (before any action that might remove them). The
+    # member was already confirmed above, so no re-fetch needed.
     dm_sent = False
     if want_dm:
-        guild, member = _get_member(guild_id, user_id)
-        if member:
-            dm_sent = _try_dm(
-                guild_id, user_id,
-                f"⚠️ You've been warned in **{_guild_name(guild)}**\n**Reason:** {reason}",
-            )
+        dm_sent = _try_dm(
+            guild_id, user_id,
+            f"⚠️ You've been warned in **{_guild_name(guild)}**\n**Reason:** {reason}",
+        )
 
     warn = {
         "reason": reason,
@@ -507,7 +529,7 @@ def modpanel_warn(guild_id, user_id):
 @modpanel_api.post(
     "/servers/<int:guild_id>/members/<int:user_id>/notes"
 )
-@require_guild_permission(MANAGE_MESSAGES, label="Manage Messages permission required.")
+@require_web_api_access("web:manage_notes")
 def modpanel_add_note(guild_id, user_id):
     denied = _check_csrf()
     if denied:
@@ -549,7 +571,7 @@ def modpanel_add_note(guild_id, user_id):
 @modpanel_api.delete(
     "/servers/<int:guild_id>/members/<int:user_id>/notes/<int:index>"
 )
-@require_guild_permission(MANAGE_MESSAGES, label="Manage Messages permission required.")
+@require_web_api_access("web:manage_notes")
 def modpanel_delete_note(guild_id, user_id, index):
     denied = _check_csrf()
     if denied:
@@ -597,7 +619,7 @@ def modpanel_delete_note(guild_id, user_id, index):
 @modpanel_api.post(
     "/servers/<int:guild_id>/members/<int:user_id>/watch"
 )
-@require_guild_permission(MANAGE_MESSAGES, label="Manage Messages permission required.")
+@require_web_api_access("watch_add")
 def modpanel_watch(guild_id, user_id):
     denied = _check_csrf()
     if denied:
@@ -639,7 +661,7 @@ def modpanel_watch(guild_id, user_id):
 @modpanel_api.delete(
     "/servers/<int:guild_id>/members/<int:user_id>/watch"
 )
-@require_guild_permission(MANAGE_MESSAGES, label="Manage Messages permission required.")
+@require_web_api_access("watch_remove")
 def modpanel_unwatch(guild_id, user_id):
     denied = _check_csrf()
     if denied:
@@ -662,7 +684,7 @@ def modpanel_unwatch(guild_id, user_id):
 @modpanel_api.post(
     "/servers/<int:guild_id>/members/<int:user_id>/xp"
 )
-@require_guild_moderator
+@require_web_api_access("add_xp")
 def modpanel_xp(guild_id, user_id):
     denied = _check_csrf()
     if denied:
@@ -705,7 +727,7 @@ def modpanel_xp(guild_id, user_id):
 @modpanel_api.post(
     "/servers/<int:guild_id>/members/<user_id>/rename"
 )
-@require_guild_permission(MANAGE_NICKNAMES, label="Manage Nicknames permission required.")
+@require_web_api_access("rename_user")
 def modpanel_rename(guild_id, user_id):
     denied = _check_csrf()
     if denied:
@@ -715,7 +737,7 @@ def modpanel_rename(guild_id, user_id):
     if guild is None or member is None:
         if guild is None:
             return _bot_down_response()
-        return jsonify({"success": False, "error": "Member not found."}), 404
+        return _not_in_server_response()
 
     data = request.get_json(silent=True) or {}
     nickname = (data.get("nickname") or "").strip() or None  # None resets
@@ -747,7 +769,7 @@ def modpanel_rename(guild_id, user_id):
 @modpanel_api.post(
     "/servers/<int:guild_id>/members/<int:user_id>/strip-roles"
 )
-@require_guild_permission(MANAGE_ROLES, label="Manage Roles permission required.")
+@require_web_api_access("remove_user_role")
 def modpanel_strip_roles(guild_id, user_id):
     denied = _check_csrf()
     if denied:
@@ -757,7 +779,7 @@ def modpanel_strip_roles(guild_id, user_id):
     if guild is None or member is None:
         if guild is None:
             return _bot_down_response()
-        return jsonify({"success": False, "error": "Member not found."}), 404
+        return _not_in_server_response()
 
     try:
         service = ModerationService()
@@ -806,7 +828,7 @@ def modpanel_strip_roles(guild_id, user_id):
 @modpanel_api.post(
     "/servers/<int:guild_id>/members/<int:user_id>/clear"
 )
-@require_guild_permission(MANAGE_MESSAGES, label="Manage Messages permission required.")
+@require_web_api_access("clear_user")
 def modpanel_clear(guild_id, user_id):
     denied = _check_csrf()
     if denied:
@@ -868,7 +890,7 @@ def modpanel_clear(guild_id, user_id):
 @modpanel_api.post(
     "/servers/<int:guild_id>/members/<int:user_id>/tempban"
 )
-@require_guild_permission(BAN_MEMBERS, label="Ban Members permission required.")
+@require_web_api_access("ban")
 def modpanel_tempban(guild_id, user_id):
     denied = _check_csrf()
     if denied:
@@ -941,7 +963,7 @@ def modpanel_tempban(guild_id, user_id):
 @modpanel_api.post(
     "/servers/<int:guild_id>/members/<int:user_id>/wipe"
 )
-@require_guild_access
+@require_web_api_access("web:wipe_member")
 def modpanel_wipe(guild_id, user_id):
     denied = _check_csrf()
     if denied:

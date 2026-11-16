@@ -97,7 +97,7 @@
 .auth-glow-two {
 
     background:
-        #5865f2;
+        #8b5cf6;
 
     right:
         -180px;
@@ -593,7 +593,7 @@
         13px;
 
     background:
-        #5865f2;
+        #8b5cf6;
 
     color:
         #ffffff !important;
@@ -609,7 +609,7 @@
 
     box-shadow:
         0 12px 30px
-        rgba(88,101,242,.22);
+        rgba(139,92,246,.22);
 
     transition:
         transform .18s ease,
@@ -629,7 +629,7 @@
 
     box-shadow:
         0 18px 40px
-        rgba(88,101,242,.3);
+        rgba(139,92,246,.3);
 
 }
 

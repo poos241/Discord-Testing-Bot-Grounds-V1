@@ -6,6 +6,8 @@ from .permissions import (
 from .decorators import (
     require_login,
     require_permission,
+    require_web_access,
+    require_web_api_access,
 )
 
 
@@ -14,4 +16,6 @@ __all__ = [
     "WebPermissionError",
     "require_login",
     "require_permission",
+    "require_web_access",
+    "require_web_api_access",
 ]

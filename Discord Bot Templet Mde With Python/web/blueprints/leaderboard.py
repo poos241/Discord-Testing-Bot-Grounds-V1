@@ -7,7 +7,7 @@ from flask import Blueprint, jsonify
 from web.services import bridge
 from web.services.discord_state import run_coro_threadsafe
 from web.services.member_service import MemberService
-from web.security.decorators import require_guild_moderator
+from web.security.decorators import require_web_api_access
 
 
 leaderboard_api = Blueprint(
@@ -18,7 +18,7 @@ leaderboard_api = Blueprint(
 
 
 @leaderboard_api.get("/servers/<int:guild_id>/leaderboard")
-@require_guild_moderator
+@require_web_api_access("web:view_leaderboard")
 def get_leaderboard(guild_id):
     if not bridge.bot_is_ready():
         return jsonify({

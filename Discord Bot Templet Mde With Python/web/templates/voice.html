@@ -38,10 +38,11 @@
         ) }}"
     >
 
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/havenly-theme.css') }}">
 </head>
 
 
-<body>
+<body class="havenly-theme">
 
 <div class="channels-app">
 
@@ -65,7 +66,7 @@
                 <span
                     id="bot-avatar-fallback"
                 >
-                    KB
+                    <img src="{{ url_for('static', filename='img/little-haven-web-pfp.webp') }}" alt="Little Haven" style="width:100%;height:100%;object-fit:cover;border-radius:inherit;display:block;">
                 </span>
 
             </div>
@@ -93,13 +94,15 @@
             </div>
 
 
-            <a
+            {% if web_can('web:view_dashboard', guild_id) %}
+<a
                 href="/servers/{{ guild_id }}/dashboard"
                 class="channels-nav-item"
             >
                 <span>⌂</span>
                 Overview
             </a>
+{% endif %}
 
         </div>
 
@@ -111,49 +114,59 @@
             </div>
 
 
-            <a
+            {% if web_can('web:view_dashboard', guild_id) %}
+<a
                 href="/servers/{{ guild_id }}"
                 class="channels-nav-item"
             >
                 <span>◉</span>
                 Server
             </a>
+{% endif %}
 
 
-            <a
+            {% if web_can('web:view_members', guild_id) %}
+<a
                 href="/servers/{{ guild_id }}/members"
                 class="channels-nav-item"
             >
                 <span>♙</span>
                 Members
             </a>
+{% endif %}
 
 
-            <a
+            {% if web_can('web:view_channels', guild_id) %}
+<a
                 href="/servers/{{ guild_id }}/channels"
                 class="channels-nav-item"
             >
                 <span>▤</span>
                 Channels
             </a>
+{% endif %}
 
 
-            <a
+            {% if web_can('web:view_voice', guild_id) %}
+<a
                 href="/servers/{{ guild_id }}/voice"
                 class="channels-nav-item active"
             >
                 <span>🔊</span>
                 Live Voice
             </a>
+{% endif %}
 
 
-            <a
+            {% if web_can('web:view_roles', guild_id) %}
+<a
                 href="/servers/{{ guild_id }}/roles"
                 class="channels-nav-item"
             >
                 <span>◆</span>
                 Roles
             </a>
+{% endif %}
 
         </div>
 
@@ -165,22 +178,26 @@
             </div>
 
 
-            <a
+            {% if web_can('web:view_activity', guild_id) %}
+<a
                 href="/servers/{{ guild_id }}/activity"
                 class="channels-nav-item"
             >
                 <span>◷</span>
                 Activity
             </a>
+{% endif %}
 
 
-            <a
+            {% if web_can('web:view_activity', guild_id) %}
+<a
                 href="/servers/{{ guild_id }}/activity"
                 class="channels-nav-item"
             >
                 <span>⚡</span>
                 Events
             </a>
+{% endif %}
 
         </div>
 

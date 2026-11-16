@@ -7,21 +7,24 @@ files. It runs as **two bots sharing one codebase and one database**:
 
 | Bot | Role | Commands |
 | --- | --- | --- |
-| **Havenly Bot 2.0** (main bot) | The face of the system. Real-time moderation, levels, games, QOTD, help — everything a mod or member does in the moment. | 54 top-level / 83 runnable |
-| **Havenly Helper** (worker bot) | The back office. Setup and config, batch jobs (scans, backfills, backups), and the timeout board. | 11 top-level / 30 runnable |
+| **Havenly Bot 2.0** (main bot) | The face of the system. Real-time moderation, levels, games, QOTD, help — everything a mod or member does in the moment. | 52 top-level / 81 runnable |
+| **Havenly Helper** (worker bot) | The back office. Setup and config, batch jobs (scans, backfills, backups), and the timeout board. | 16 top-level / 35 runnable |
 
 Both bots register the **same guilds** (the test server and Little
-Haven) and share **zero commands** — every command lives on exactly
-one bot, so there is never any doubt which bot to use. They share
-one **PostgreSQL 17** database (in Docker) and talk to each other
-through a small local **bridge hub** (see
-[The bridge hub](#the-bridge-hub) below).
+Haven) and share **five commands** — the help commands (`/help`,
+`/show_tags`, `/show_categories`, `/diagnose_docs`,
+`/generate_tags`), which each bot answers from its own command
+list, so each bot's `/help` still shows only its own commands.
+Every other command lives on exactly one bot, so there is never
+any doubt which bot to use. They share one **PostgreSQL 17**
+database (in Docker) and talk to each other through a small local
+**bridge hub** (see [The bridge hub](#the-bridge-hub) below).
 
 **The split, in one sentence:** if a command does something *right
 now* for a member or a mod (time someone out, look up a level, run a
 game round), it lives on the main bot; if it *sets something up* or
 *runs a batch job* (configure a channel, scan a channel for missing
-cases, take a backup), it lives on the Helper. All 24 level commands
+cases, take a backup), it lives on the Helper. All 22 level commands
 stay on the main bot. See [Systems](#systems) below for the
 per-system command lists — each list says which bot runs each
 command.
@@ -92,15 +95,12 @@ source .venv/bin/activate
 
 ```bash
 pip install -r requirements.txt
-pip install asyncpg "psycopg[binary]"
 ```
 
 `requirements.txt` pins the exact versions running on the live
 server (py-cord 2.8.1, `databases` 0.9.0, SQLAlchemy 2.1.6,
-Flask 3.1.3, and the rest). `asyncpg` and `psycopg` are the
-PostgreSQL drivers — they are installed on the live server but
-not yet listed in `requirements.txt`, so install them explicitly
-for now.
+Flask 3.1.3, `asyncpg` 0.32.0, `psycopg[binary]` 3.3.9, and the
+rest). `asyncpg` and `psycopg` are the PostgreSQL drivers.
 
 ### 4. PostgreSQL
 
@@ -202,6 +202,10 @@ WEB_SECRET_KEY=<a random secret for web sessions>
 DISCORD_CLIENT_ID=<your Discord application id>
 DISCORD_CLIENT_SECRET=<your Discord application client secret>
 DISCORD_REDIRECT_URI=http://127.0.0.1:5000/callback
+# PUBLIC_BASE_URL=<the site's public URL, e.g. https://havenly.tailf374c5.ts.net>
+# When set, the OAuth redirect is PUBLIC_BASE_URL/callback (the live
+# site uses it with a Tailscale Funnel URL — see "Web dashboard" below).
+# Leave it unset for a local-only install.
 
 # ---- GitHub ban log (optional — only if you use /banlog) ----
 # GITHUB_PROJECT_TOKEN=<a classic personal access token with the `project` scope>
@@ -286,6 +290,9 @@ sudo systemctl status kushbot.service havenly-helper.service kushweb.service
 
 Or open the website at `http://127.0.0.1:5000/` (or the server's
 address, e.g. `http://<server-tailscale-ip>:5000/` on the live server).
+The live site is also public at
+`https://havenly.tailf374c5.ts.net` (Tailscale Funnel — see
+[Web dashboard](#web-dashboard)).
 The dashboard's bot-status page shows **both** bots (see
 [Web dashboard](#web-dashboard)).
 
@@ -489,7 +496,7 @@ Discord-Testing-Bot-Grounds-V1/
         ├── Permissions.py      # Custom per-command permissions (worker only)
         ├── ServerSettings.py   # /bot_settings (worker only)
         ├── Help_Info_Doc.py    # /help and the docs commands
-        └── Logger/             # Server event logging (worker only)
+        └── Logger/             # Server event logging (listeners on the main bot, config on the Helper)
             ├── __init__.py     # Registers all Logger cogs
             ├── config.py       # Log categories, colors, channel names
             ├── database.py     # Postgres tables for log config, toggles, event history
@@ -500,12 +507,14 @@ Discord-Testing-Bot-Grounds-V1/
             └── ...              # One file per event area (members, voice, server, moderation, roles, ...)
 ```
 
-> **Cogs that are deliberately disabled.** Seven cogs are commented
+> **Cogs that are deliberately disabled.** Six cogs are commented
 > out in `bot.py` and their commands are **not registered** on either
-> bot: VoiceXP, Tickets, Appeals, Automod, AutoThreads, TimeCmd,
-> and CustomBadges. That is intentional (disabled 2026-11-12) —
+> bot: Tickets, Appeals, Automod, AutoThreads, TimeCmd, and
+> CustomBadges. That is intentional (disabled 2026-11-12) —
 > do not uncomment them, and do not expect their commands to exist.
-> Their files are still in `cogs/` for reference.
+> Their files are still in `cogs/` for reference. (VoiceXP was in
+> this list too, but it was re-enabled on 2026-11-14 — voice XP is
+> back, merged into the level system; see [Levels](#levels).)
 
 ---
 
@@ -516,10 +525,12 @@ below lists its commands with the bot that runs each one.
 **Main** = Havenly Bot 2.0. **Helper** = Havenly Helper.
 
 Command counts are the live Discord registrations (verified
-2026-11-13 against the Discord API on both guilds): **main 54
-top-level / 83 runnable, Helper 11 top-level / 30 runnable, 0
-shared**. If a command is not listed here, it is not registered
-on either bot.
+2026-11-16 against the Discord API on both guilds): **main 52
+top-level / 81 runnable, Helper 16 top-level / 35 runnable, 5
+shared** (the help commands — `/help`, `/show_tags`,
+`/show_categories`, `/diagnose_docs`, `/generate_tags` — which
+each bot answers from its own command list). If a command is not
+listed here, it is not registered on either bot.
 
 ### Moderation
 
@@ -574,7 +585,7 @@ already exists, `/timeout` offers Replace or Cancel.
 
 The level system awards XP for messages, voice time, games, and
 daily claims, and shows it on rank cards and a leaderboard. **All
-24 level commands live on the main bot** — the main bot owns
+22 level commands live on the main bot** — the main bot owns
 level writes, so nothing can double-award XP.
 
 - **Level N needs N × 100 XP.** Levels are per-server.
@@ -582,12 +593,34 @@ level writes, so nothing can double-award XP.
   turns it on with `/toggle_levels`. While it is off, no XP is
   earned from messages, games, voice, or manual grants, and
   `/daily`, `/add_xp`, and the `/userinfo` add-XP button refuse.
+- **Voice XP is merged into levels** (no separate voice bar):
+  automatic for everyone, no opt-in. With at least one other
+  real human in the voice channel you earn 1–10 random XP per
+  minute; alone, 1–10 random XP every 5th solo minute. No daily
+  cap; muted or deafened members still earn. AFK and stage
+  channels are excluded, and `/no_xp_bulk` has a voice-only
+  picker for the no-voice-XP ("sleep") channel list.
+- **`/level` sends the rank card** (the same Little Haven
+  pink/purple night-sky card `/rank` used to send — `/rank` was
+  removed 2026-11-16 because the two were identical). `/cardcolor`
+  changes the XP bar colour on the card. The next role reward and
+  daily streak still show, as message text under the card.
+- **Thread XP is off by default** (flipped 2026-11-14); game XP
+  and thread XP are toggles inside `/no_xp_bulk` now — the
+  standalone `/toggle_thread_xp` and `/toggle_game_xp` commands
+  are gone.
+- **Spam channel:** `/set_spam_channel` picks one channel where
+  `/level` works; outside it, `/level` answers with an ephemeral
+  redirect to that channel. `/toggle_level_messages` works
+  anywhere. When no spam channel is set, `/level` works anywhere.
 - **Level-up messages:** if a level channel is set, level-ups
   post there. If no channel is set, a level-up from a slash
   command (`/daily`, `/add_xp`) is an ephemeral reply only the
   invoker sees, and a level-up from message or voice XP stays
   silent. There are no level-up DMs. Each user can silence
-  their own level messages with `/toggle_level_messages`.
+  their own level messages with `/toggle_level_messages`. The
+  level-up card has the Little Haven nebula background
+  (`cogs/levelup_bg.png`).
 - XP events multiply XP for a window (`/xp_event` /
   `/xp_event_end`). Note: `/xp_event` is global while
   `/xp_event_end` is guild-scoped — that asymmetry is a known
@@ -596,7 +629,6 @@ level writes, so nothing can double-award XP.
 | Command | Bot | What it does | Who can run it |
 | --- | --- | --- | --- |
 | `/level` | Main | Show your (or a member's) level, XP, and rank card. | Everyone |
-| `/rank` | Main | Show a member's rank card. | Everyone |
 | `/leaderboard` | Main | Show the server XP leaderboard. | Everyone |
 | `/daily` | Main | Claim your daily XP (with a streak). | Everyone |
 | `/cardcolor` | Main | Pick your rank-card colour. | Everyone |
@@ -608,15 +640,14 @@ level writes, so nothing can double-award XP.
 | `/set_xp_rate` | Main | Set the XP multiplier. | Admin |
 | `/set_cooldown` | Main | Set the XP cooldown between messages. | Admin |
 | `/set_level_channel` | Main | Set (or remove) the channel level-ups post to. | Admin |
+| `/set_spam_channel` | Main | Set (or remove) the channel `/level` works in. | Admin |
 | `/set_level_role` | Main | Set a role awarded at a level. | Admin |
 | `/remove_level_role` | Main | Remove a level role. | Admin |
 | `/set_levelup_message` | Main | Set the level-up message template. | Admin |
 | `/toggle_levels` | Main | Turn the level system on/off for this server. | Admin |
 | `/toggle_level_messages` | Main | Opt in/out of your own level-up messages. | Everyone |
-| `/toggle_thread_xp` | Main | Turn XP in threads on/off (default on). | Admin |
-| `/toggle_game_xp` | Main | Turn game XP on/off. | Admin |
 | `/toggle_no_xp` | Main | Turn XP on/off for one channel. | Admin |
-| `/no_xp_bulk` | Main | Turn XP on/off for up to 25 channels at once. | Admin |
+| `/no_xp_bulk` | Main | Turn XP on/off for up to 25 channels at once; also flips Thread XP / Game XP and manages the no-voice-XP channel list. | Admin |
 | `/xp_event` | Main | Start an XP event (multiplier for a window). | Admin |
 | `/xp_event_end` | Main | End the current XP event. | Admin |
 
@@ -828,6 +859,20 @@ snapshots; older ones are pruned automatically.
 Restore from a snapshot with `psql` (see the
 [handbook](https://poos241.github.io/Discord-Testing-Bot-Grounds-V1/)).
 
+**Off-site backup.** Every night at 02:30 (after the 02:00 local
+backup), the latest snapshot's `bot.dump` is uploaded to a private
+Google Drive folder, encrypted with rclone (`gdrive-crypt` wraps
+`gdrive:Havenly-Backups`, filename + directory encryption on).
+The upload script (`~/bin/drive-backup.sh`, cron
+`30 2 * * *`) uploads **only** the dump — never `.env` or tokens —
+and verifies it with `rclone check` before logging. Each night
+uploads a dated file (`bot-YYYY-MM-DD.dump`); files older than
+14 days are pruned, but only after a successful upload + verify.
+The crypt password is the recovery key: lose it and the Drive
+backups are unreadable. It lives in Emily's password manager
+(and in the Nitro's rclone config) — it is not recorded anywhere
+in this repo.
+
 ### Lockdown
 
 Lock and unlock channels in a hurry (raid / spam response), with
@@ -847,17 +892,18 @@ an auto-unlock timer. Real-time moderation, so it lives on the
 
 The in-Discord help system. `/help` lists the commands **you**
 can use (it filters by the permission system, fail-closed — if
-you can't run a command, it doesn't show up). Because `/help`
-reads the bot's own registered command list, each bot's `/help`
-naturally shows only its own commands.
+you can't run a command, it doesn't show up). The help commands
+are the one shared set: they live on **both** bots, and because
+`/help` reads the bot's own registered command list, each bot's
+`/help` naturally shows only its own commands.
 
 | Command | Bot | What it does | Who can run it |
 | --- | --- | --- | --- |
-| `/help` | Main | Show the commands you can use. | Everyone |
-| `/show_tags` | Main | Show the help tags. | Everyone |
-| `/show_categories` | Main | Show the help categories. | Everyone |
-| `/diagnose_docs` | Main | Diagnose the docs data. | Admin |
-| `/generate_tags` | Main | Regenerate the help tags. | Admin |
+| `/help` | Both | Show the commands you can use. | Everyone |
+| `/show_tags` | Both | Show the help tags. | Everyone |
+| `/show_categories` | Both | Show the help categories. | Everyone |
+| `/diagnose_docs` | Both | Diagnose the docs data. | Admin |
+| `/generate_tags` | Both | Regenerate the help tags. | Admin |
 
 ### Debug
 
@@ -882,6 +928,14 @@ leaderboard, an activity feed, a friends system, voice status,
 backups, and a mod panel. It uses Discord OAuth for login
 (`identify` + `guilds` scopes).
 
+**Public access.** The live site is public at
+`https://havenly.tailf374c5.ts.net` via **Tailscale Funnel**
+(no open router ports, home IP hidden, HTTPS only — only the
+website on port 5000 is exposed). `PUBLIC_BASE_URL` in `.env`
+is set to that URL, which is also the Discord OAuth redirect
+base (`PUBLIC_BASE_URL/callback`). When a domain is bought
+later, the plan is a Cloudflare Tunnel pointed at it.
+
 The website talks to the bots through the **bridge hub**:
 
 | | Main bot bridge | Helper bridge |
@@ -901,12 +955,72 @@ There is a per-user toggle to silence level messages while still
 earning XP, and the level system itself is off until an admin
 turns it on (see [Levels](#levels)).
 
-**Web dashboard permissions.** The dashboard has its own
-permission layer (in `web/security/`): pages are gated by Discord
-role / guild membership, and the mod panel is moderator+. The
-website's OAuth is `identify` + `guilds` only — it does not get
-role IDs from Discord, so role-based gating is done against the
-bot's own data.
+**Web permissions.** The dashboard has its own permission layer
+that reuses the Discord custom-permission system, so Discord
+and web grants stay in sync (same `command_permissions` table
+in Postgres). Every guild page is gated in this order:
+
+1. **Owner bypass** — Emily and the guild owner always get in,
+   plus anyone on the editable **bypass list** (a
+   `web_bypass_users` table, managed from the Permissions page;
+   the two seeded users — Emily and the Little Haven owner —
+   are permanent and cannot be removed). Bypassed users skip
+   every other check, including the unverified gate, and bypass
+   changes take effect on the next page load.
+2. **Unverified role** — members holding the guild's configured
+   unverified role (Little Haven: `1411162751304470578`, set on
+   the Permissions page) cannot open any guild page until
+   RaidProtect removes the role (captcha solved). Re-checked
+   fresh on every page load. There is no "verified" role — the
+   unverified role is the whole gate.
+3. **Permission for the action** — website actions map to Discord
+   command permissions (`timeout`, `kick`, `ban`, `warn`,
+   `clear_user`, …) or to `web:` keys for web-only actions
+   (`web:view_dashboard`, `web:manage_permissions`,
+   `web:manage_logs`, `web:manage_notes`, `web:wipe_member`).
+   With no custom rules, `web:view_dashboard` defaults to the
+   moderator tier and the other `web:*` keys default to admin.
+
+Each major site section also has its own view key, so a role can
+be let into one section and kept out of another:
+`web:view_members`, `web:view_leaderboard`, `web:view_channels`,
+`web:view_roles`, `web:view_logger`, `web:view_activity`,
+`web:view_voice` (all moderator-tier by default). Overview and
+Server home stay on the baseline `web:view_dashboard`. Viewing
+the Logger is `web:view_logger`; changing Logger settings is
+still `web:manage_logs` (admin-only by default). The sidebar
+hides every link the viewer cannot open.
+
+The **Permissions page** (`/servers/<gid>/permissions`, also
+home to the Logger Settings tab) is where grants are managed:
+bulk-add any number of roles and/or pasted user IDs against any
+number of grouped actions (Allow or Deny, one submit per
+target × action), a **custom-action field** for a command or
+`web:` key that is not in the picker, and the current-rules list
+(grouped by action, filterable, bulk-remove, collapsible
+groups, and the name — not just the ID — of who added each
+rule). The website's OAuth is `identify` + `guilds` only — it
+does not get role IDs from Discord, so role-based gating is done
+against the bot's own data (the bot is the source of truth via
+the bridge `web_access` route).
+
+**Web theme + layout.** The site uses the handbook theme
+(pink/purple/indigo, dark default; one shared
+`web/static/css/havenly-theme.css`). The dashboard, members,
+and logger pages have been laid out in that theme (sticky
+headers, sticky sidebars, mobile off-canvas navigation). The
+three logger pages are merged into one Logger page with tabs
+(Event History, Live auto-refreshing every 10s, Analytics), and
+Logger Settings lives as a tab on the Permissions page. Clicking
+an event opens an Event Details card with clean labeled fields,
+a "Go to message" jump link, and Before/After side by side for
+message edits.
+
+**Mod actions on the web.** Warn, timeout, kick, rename, and
+strip-roles stop with "This member is no longer in the server"
+when the target has left the server (nothing is recorded). Ban
+is deliberately unchanged — banning someone who is not in the
+server is legitimate (ban them so they cannot rejoin).
 
 > **Never hard-refresh the dashboard to fix a stale page.**
 > The dashboard handles cache-busting itself (versioned JS/CSS
@@ -930,7 +1044,7 @@ bot's own data.
    only registers on that bot.
 4. **Count before you add a top-level command.** Discord caps
    guild application commands at 100 per guild. The main bot is
-   at 54, the Helper at 11 — plenty of headroom, but count first
+   at 52, the Helper at 16 — plenty of headroom, but count first
    and verify the sync actually registered the command (see the
    Discord API check in [Troubleshooting](#troubleshooting)).
 5. Restart the bot that owns the new command and check it shows
@@ -960,6 +1074,47 @@ Windows, `journalctl -u kushbot.service` on Linux).
 A short changelog of the big moves. The full detail lives in the
 handbook and in the work records under `~/workspace/pubwork/`.
 
+- **2026-11-16 — Logger card + perms additions + rules list.**
+  The Logger Event Details card was rebuilt (clean labeled
+  fields, "Go to message" jump link, Before/After side by side,
+  no duplicated Details block). The Permissions page gained a
+  custom-action field (type in a command or `web:` key that is
+  not in the picker) and an editable bypass list (new
+  `web_bypass_users` table; seeded users are permanent). The
+  current-rules list now shows the *name* of who added each rule
+  and is collapsible, with a sticky filter toolbar. `/rank`
+  was removed (`/level` already sends the same rank card) —
+  live counts: main 52/81, Helper 16/35.
+- **2026-11-16 — Per-section web permissions.** Each site
+  section has its own view key (`web:view_members`,
+  `web:view_leaderboard`, `web:view_channels`, `web:view_roles`,
+  `web:view_logger`, `web:view_activity`, `web:view_voice`),
+  moderator-tier by default, so a role can see the Logger but
+  not the Members list. Logger viewing moved from
+  `web:manage_logs` (admin-only) to `web:view_logger`;
+  Logger settings stay admin-only.
+- **2026-11-15/16 — Public site + web permission system.**
+  The site is public at `https://havenly.tailf374c5.ts.net`
+  (Tailscale Funnel; Discord OAuth moved to the Havenly Bot 2.0
+  app, redirect `…/callback`). The web permission system went
+  live: gate order bypass → unverified role → permission, with
+  `web:` keys and a Permissions page (bulk add/remove, unverified
+  role setting). The handbook theme rolled out site-wide, the
+  dashboard/members/logger pages were laid out in it, the
+  logger pages merged into one tabbed page, and the Logger
+  Settings merged into the Permissions page. Warn/timeout/kick/
+  rename/strip-roles now stop for members who have left the
+  server (ban unchanged). A stale-session CSRF bug and the
+  website's missing database connection were fixed.
+- **2026-11-14/15 — Level system round.** Voice XP merged into
+  levels (automatic, single bar, 1–10/min with someone, 1–10
+  every 5th solo minute, no cap, muted/deafened still earn).
+  `/level` sends the rank card and `/cardcolor` colours its XP
+  bar (next role reward + daily streak kept as text).
+  `/set_spam_channel` added; thread XP defaults off; the
+  standalone thread/game XP toggles moved into `/no_xp_bulk`.
+  Level-up and rank cards share the Little Haven nebula
+  background.
 - **2026-11-13 — Command split (Option C).** The two bots now
   have zero shared commands: setup/config and batch jobs moved
   to the Helper (`/perm`, `/logs`, `/bot_settings`, `/backup`,
@@ -1078,9 +1233,10 @@ handbook and in the work records under `~/workspace/pubwork/`.
   the probe script (`scripts/dump_cmds.py` in the work records)
   or the Discord API directly:
   `GET /applications/<app id>/guilds/<guild id>/commands`
-  with the bot's token. The live counts (2026-11-13) are main
-  54 top-level / 83 runnable on both guilds, Helper 11
-  top-level / 30 runnable on both guilds, 0 shared.
+  with the bot's token. The live counts (2026-11-16) are main
+  52 top-level / 81 runnable on both guilds, Helper 16
+  top-level / 35 runnable on both guilds, 5 shared (the help
+  commands).
 - **Something worked on the test server but not Little Haven
   (or vice versa)** — check `GUILD_IDS` in `config.py` (the
   live bot registers in both guilds) and check the command

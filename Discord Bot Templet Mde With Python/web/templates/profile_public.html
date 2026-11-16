@@ -42,7 +42,7 @@
 
     <div id="public-card" class="reveal" style="display:none;background:rgba(255,255,255,.03);
         border:1px solid rgba(255,255,255,.08);border-radius:16px;overflow:hidden;">
-        <div id="public-banner" style="height:140px;background:#5865F2;
+        <div id="public-banner" style="height:140px;background:#8b5cf6;
             background-size:cover;background-position:center;"></div>
         <div style="padding:0 32px 32px;margin-top:-48px;display:flex;gap:24px;align-items:flex-start;flex-wrap:wrap;">
             <div style="flex:1;min-width:280px;">
@@ -50,7 +50,7 @@
                 style="width:96px;height:96px;border-radius:50%;
                 border:4px solid #1e1f24;background:#1e1f24;display:none;">
             <div id="public-avatar-fallback" style="width:96px;height:96px;border-radius:50%;
-                background:#5865F2;border:4px solid #1e1f24;display:none;
+                background:#8b5cf6;border:4px solid #1e1f24;display:none;
                 align-items:center;justify-content:center;
                 font-size:2.5rem;font-weight:800;color:#fff;">?</div>
             <h2 style="margin:12px 0 4px;">
@@ -85,7 +85,7 @@
                 <div style="position:relative;width:96px;height:96px;margin:0 auto;">
                     <svg width="96" height="96" viewBox="0 0 96 96">
                         <circle cx="48" cy="48" r="42" fill="none" stroke="rgba(255,255,255,.12)" stroke-width="5"/>
-                        <circle id="public-level-ring" cx="48" cy="48" r="42" fill="none" stroke="#5865F2" stroke-width="5" stroke-linecap="round" transform="rotate(-90 48 48)" stroke-dasharray="263.9" stroke-dashoffset="263.9"/>
+                        <circle id="public-level-ring" cx="48" cy="48" r="42" fill="none" stroke="#8b5cf6" stroke-width="5" stroke-linecap="round" transform="rotate(-90 48 48)" stroke-dasharray="263.9" stroke-dashoffset="263.9"/>
                     </svg>
                     <span id="public-level-number" style="position:absolute;inset:0;display:grid;place-items:center;font-size:2rem;font-weight:800;">?</span>
                 </div>
@@ -117,7 +117,7 @@
             </div>
             <div style="height:12px;border-radius:6px;background:#1e1f24;
                 border:1px solid rgba(255,255,255,.08);overflow:hidden;">
-                <div id="public-progress-bar" style="height:100%;background:#5865F2;
+                <div id="public-progress-bar" style="height:100%;background:#8b5cf6;
                     width:0%;transition:width .5s;"></div>
             </div>
         </div>
@@ -159,7 +159,7 @@
         <p style="opacity:.7;">The user hasn't shared their profile, or it doesn't exist.</p>
         <a href="{{ url_for('home') }}"
             style="display:inline-block;margin-top:12px;padding:10px 20px;
-            border-radius:8px;background:#5865F2;color:#fff;text-decoration:none;
+            border-radius:8px;background:#8b5cf6;color:#fff;text-decoration:none;
             font-weight:600;">Back home</a>
     </div>
 
@@ -551,7 +551,7 @@ function fmtAgo(ts) {
             + (disabled ? " disabled" : "")
             + ' title="' + esc(title || "") + '"'
             + ' style="border:1px solid rgba(255,255,255,.25);border-radius:99px;padding:6px 16px;'
-            + 'background:' + (disabled ? "transparent" : "#5865F2") + ';color:#fff;font-weight:700;'
+            + 'background:' + (disabled ? "transparent" : "#8b5cf6") + ';color:#fff;font-weight:700;'
             + 'font-size:.85rem;cursor:' + (disabled ? "default" : "pointer") + ';opacity:' + (disabled ? ".6" : "1") + ';">'
             + label + "</button>";
     }

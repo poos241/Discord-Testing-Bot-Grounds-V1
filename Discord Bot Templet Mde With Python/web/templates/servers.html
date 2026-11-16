@@ -4,6 +4,8 @@
     Select Server - Little Haven
 {% endblock %}
 
+
+
 {% block head %}
 
 <link
@@ -24,20 +26,28 @@
 
     <div class="server-selection-header">
 
-        <div>
+        <div class="hv-hero-row">
 
-            <div class="server-selection-eyebrow">
-                LITTLE HAVEN DASHBOARD
+            <img class="hv-hero-logo"
+                 src="{{ url_for('static', filename='img/little-haven-web-pfp.webp') }}"
+                 alt="Little Haven">
+
+            <div>
+
+                <div class="server-selection-eyebrow">
+                    LITTLE HAVEN DASHBOARD
+                </div>
+
+                <h1>
+                    Select a Server
+                </h1>
+
+                <p>
+                    Choose a Discord server to manage,
+                    monitor, and view activity for.
+                </p>
+
             </div>
-
-            <h1>
-                Select a Server
-            </h1>
-
-            <p>
-                Choose a Discord server to manage,
-                monitor, and view activity for.
-            </p>
 
         </div>
 
@@ -428,6 +438,52 @@ function createServerCard(server) {
         server.can_manage === true;
 
 
+    /* Web permission gate: guilds the user cannot enter are shown
+       as locked cards (no link) with the reason, instead of a dead
+       link to a dashboard the gate would bounce. */
+    const canEnter =
+        server.can_enter !== false;
+
+
+    const blockedReason =
+        String(
+            server.blocked_reason || ""
+        );
+
+
+    const lockedMessage =
+        blockedReason === "unverified"
+            ? "Complete the captcha in Discord first"
+            : blockedReason === "permission"
+            ? "No dashboard access — ask a server admin to grant it"
+            : blockedReason === "not_member"
+            ? "You're not a member of this server"
+            : blockedReason === "unavailable"
+            ? "Bot unreachable — try again later"
+            : "Locked";
+
+
+    const cardTagOpen =
+        canEnter
+            ? `
+        <a
+            class="server-card"
+            href="/servers/${encodeURIComponent(id)}/dashboard"
+            data-guild-id="${escapeHtml(id)}"
+            aria-label="Open ${escapeHtml(name)} dashboard"
+        >`
+            : `
+        <div
+            class="server-card server-card-locked"
+            data-guild-id="${escapeHtml(id)}"
+            aria-label="${escapeHtml(name)} (locked: ${escapeHtml(lockedMessage)})"
+        >`;
+
+
+    const cardTagClose =
+        canEnter ? "</a>" : "</div>";
+
+
     /*
      * We still remember the last server,
      * but we do NOT visually mark the entire
@@ -542,12 +598,7 @@ function createServerCard(server) {
 
     return `
 
-        <a
-            class="server-card"
-            href="/servers/${encodeURIComponent(id)}/dashboard"
-            data-guild-id="${escapeHtml(id)}"
-            aria-label="Open ${escapeHtml(name)} dashboard"
-        >
+        ${cardTagOpen}
 
             <div class="server-card-top">
 
@@ -566,7 +617,7 @@ function createServerCard(server) {
                         class="server-card-arrow"
                         aria-hidden="true"
                     >
-                        →
+                        ${canEnter ? "→" : "🔒"}
                     </span>
 
                 </div>
@@ -652,7 +703,7 @@ function createServerCard(server) {
                 </span>
 
                 <span>
-                    Open dashboard
+                    ${canEnter ? "Open dashboard" : escapeHtml(lockedMessage)}
                 </span>
 
             </div>
@@ -661,16 +712,16 @@ function createServerCard(server) {
             <div class="server-card-footer">
 
                 <span>
-                    Manage ${escapeHtml(name)}
+                    ${canEnter ? `Manage ${escapeHtml(name)}` : escapeHtml(lockedMessage)}
                 </span>
 
                 <span>
-                    →
+                    ${canEnter ? "→" : "🔒"}
                 </span>
 
             </div>
 
-        </a>
+        ${cardTagClose}
 
     `;
 

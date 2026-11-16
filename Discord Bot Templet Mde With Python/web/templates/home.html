@@ -5,6 +5,66 @@
 {% block body %}
 <div style="max-width:900px;margin:0 auto;padding:48px 24px 64px;">
 
+    {% if blocked_reason %}
+    <div style="background:#3a2a12;border:1px solid #a07a2a;border-radius:12px;
+                padding:20px 24px;margin-bottom:24px;text-align:left;">
+        <div style="font-size:1.15rem;font-weight:800;margin-bottom:6px;">
+            {% if blocked_guild_name %}
+                Can't open {{ blocked_guild_name }}
+            {% else %}
+                Can't open that server
+            {% endif %}
+        </div>
+        <p style="margin:0 0 12px;opacity:.85;line-height:1.5;">
+            {% if blocked_reason == "unverified" %}
+                Complete the captcha in Discord first — once RaidProtect
+                removes your unverified role you can open the dashboard.
+            {% elif blocked_reason == "not_member" %}
+                You're not a member of this server.
+            {% elif blocked_reason == "unavailable" %}
+                The bot is unreachable right now — try again in a bit.
+            {% elif blocked_reason == "no_access" %}
+                You don't have access to any server dashboard yet.
+                {% if blocked_guilds %}
+                    Here's why, server by server:
+                    <ul style="margin:12px 0 0;padding-left:20px;">
+                    {% for guild in blocked_guilds %}
+                        <li style="margin-bottom:6px;">
+                            <strong>{{ guild.name }}</strong> —
+                            {% if guild.reason == "unverified" %}
+                                complete the captcha in Discord first —
+                                once RaidProtect removes your unverified
+                                role you can open the dashboard.
+                            {% elif guild.reason == "not_member" %}
+                                you're not a member of this server.
+                            {% elif guild.reason == "unavailable" %}
+                                the bot is unreachable right now — try
+                                again in a bit.
+                            {% else %}
+                                you don't have dashboard access — ask a
+                                server admin to grant it.
+                            {% endif %}
+                        </li>
+                    {% endfor %}
+                    </ul>
+                {% else %}
+                    Ask a server admin to grant you access (or solve
+                    the captcha in Discord first, if you just joined).
+                {% endif %}
+            {% else %}
+                You don't have permission to access this server's dashboard.
+            {% endif %}
+        </p>
+        {% if blocked_reason != "no_access" %}
+        <a href="{{ url_for('servers') }}"
+           style="display:inline-block;padding:10px 18px;border-radius:8px;
+                  background:linear-gradient(135deg,#ec4899,#8b5cf6);color:#fff;text-decoration:none;font-weight:700;">
+            Back to your servers
+        </a>
+        {% endif %}
+    </div>
+    {% endif %}
+
     <!-- HERO -->
     <div style="text-align:center;padding:48px 0 32px;">
         <div style="font-size:4rem;margin-bottom:8px;">🌿</div>
@@ -15,7 +75,7 @@
         </p>
         <a href="{{ url_for('auth.login') }}"
            style="display:inline-block;padding:14px 28px;border-radius:10px;
-                  background:#5865F2;color:#fff;text-decoration:none;
+                  background:linear-gradient(135deg,#ec4899,#8b5cf6);color:#fff;text-decoration:none;
                   font-weight:700;font-size:1.05rem;">
             Login with Discord
         </a>

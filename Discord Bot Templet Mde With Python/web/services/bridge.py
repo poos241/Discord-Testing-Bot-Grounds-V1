@@ -155,6 +155,10 @@ def _post(path, body, timeout=ACTION_TIMEOUT):
     return _request("POST", path, timeout, json_body=body or {})
 
 
+def _delete(path, body, timeout=ACTION_TIMEOUT):
+    return _request("DELETE", path, timeout, json_body=body or {})
+
+
 def _member_payload(payload):
     """Actions return the updated member dict where one exists."""
     member = payload.get("member")
@@ -362,6 +366,145 @@ def award_xp(gid, uid, amount, display_name=None):
 def restart_bot():
     """POST /bridge/restart -- the bot replies, then exits 42."""
     return _post("/bridge/restart", {"confirm": "restart"})
+
+
+# ============================================================
+# Web permission system (2026-11-15)
+#
+# The website asks the bot (source of truth) whether the logged-in
+# user may enter a guild and whether they hold a given action, using
+# the SAME command_permissions rows Discord /perm manages. The bot
+# answers with member/bypass/unverified fresh on every call; the
+# website caches only the permission booleans (see
+# web/services/web_access.py).
+# ============================================================
+
+def get_web_access(gid, uid, actions):
+    """GET /bridge/guilds/{gid}/members/{uid}/web_access?actions=...
+
+    Returns {"member": {"id", "roles"} | None, "is_bypass": bool,
+    "is_unverified": bool, "unverified_role_id": str,
+    "permissions": {action: bool}}.
+    """
+    params = {"actions": ",".join(str(a) for a in (actions or []))}
+    return _get(
+        "/bridge/guilds/%s/members/%s/web_access" % (gid, uid),
+        params=params,
+    )
+
+
+def list_permission_rules(gid):
+    """GET /bridge/guilds/{gid}/permissions -> [{command,
+    target_type, target_id, allowed, created_by, created_at}]."""
+    return _get("/bridge/guilds/%s/permissions" % gid).get("rules") or []
+
+
+def add_permission_rule(gid, command, target_type, target_id, allowed, created_by):
+    """POST /bridge/guilds/{gid}/permissions -- save one rule."""
+    return _post(
+        "/bridge/guilds/%s/permissions" % gid,
+        {
+            "command": command,
+            "target_type": target_type,
+            "target_id": str(target_id),
+            "allowed": bool(allowed),
+            "created_by": str(created_by or ""),
+        },
+    )
+
+
+def delete_permission_rule(gid, command, target_type, target_id):
+    """DELETE /bridge/guilds/{gid}/permissions -- remove one rule."""
+    return _delete(
+        "/bridge/guilds/%s/permissions" % gid,
+        {
+            "command": command,
+            "target_type": target_type,
+            "target_id": str(target_id),
+        },
+    )
+
+
+"""Bulk permission-rule client functions for web/services/bridge.py.
+
+Insert before "def get_web_settings(gid):" (anchor must occur once).
+"""
+
+
+def add_permission_rules_bulk(gid, rules, created_by):
+    """POST /bridge/guilds/{gid}/permissions/bulk -- save many rules
+    in one call. rules: [{command, target_type, target_id, allowed}].
+    Returns {created, updated, skipped, results}."""
+    return _post(
+        "/bridge/guilds/%s/permissions/bulk" % gid,
+        {
+            "rules": [
+                {
+                    "command": r["command"],
+                    "target_type": r["target_type"],
+                    "target_id": str(r["target_id"]),
+                    "allowed": bool(r["allowed"]),
+                }
+                for r in (rules or [])
+            ],
+            "created_by": str(created_by or ""),
+        },
+    )
+
+
+def delete_permission_rules_bulk(gid, rules):
+    """DELETE /bridge/guilds/{gid}/permissions/bulk -- remove many
+    rules in one call. rules: [{command, target_type, target_id}].
+    Returns {deleted, results}."""
+    return _delete(
+        "/bridge/guilds/%s/permissions/bulk" % gid,
+        {
+            "rules": [
+                {
+                    "command": r["command"],
+                    "target_type": r["target_type"],
+                    "target_id": str(r["target_id"]),
+                }
+                for r in (rules or [])
+            ],
+        },
+    )
+
+
+def get_web_settings(gid):
+    """GET /bridge/guilds/{gid}/web_settings -> {"unverified_role_id"}."""
+    return _get("/bridge/guilds/%s/web_settings" % gid)
+
+
+def set_web_settings(gid, unverified_role_id):
+    """POST /bridge/guilds/{gid}/web_settings -- set the unverified
+    role id (empty string clears it)."""
+    return _post(
+        "/bridge/guilds/%s/web_settings" % gid,
+        {"unverified_role_id": str(unverified_role_id or "")},
+    )
+
+
+# ============================================================
+# Website bypass users (2026-11-16) -- global list, not per-guild.
+# ============================================================
+
+def list_bypass_users():
+    """GET /bridge/bypass -> [{user_id, added_by, created_at}]."""
+    return _get("/bridge/bypass").get("users") or []
+
+
+def add_bypass_user(user_id, added_by):
+    """POST /bridge/bypass -- add a user to the bypass list."""
+    return _post(
+        "/bridge/bypass",
+        {"user_id": str(user_id), "added_by": str(added_by or "")},
+    )
+
+
+def remove_bypass_user(user_id):
+    """DELETE /bridge/bypass -- remove a user from the bypass list."""
+    return _delete("/bridge/bypass", {"user_id": str(user_id)})
 
 
 # ============================================================

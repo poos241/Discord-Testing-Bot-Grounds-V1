@@ -15,16 +15,7 @@ from web.services import bridge
 from web.services.bridge import BridgeUnavailable
 from web.services.discord_state import run_coro_threadsafe
 from web.services.moderation_service import ModerationService, ModerationError
-from web.security.decorators import (
-    require_guild_manage,
-    require_guild_moderator,
-    require_guild_permission,
-)
-from web.services.permissions import (
-    BAN_MEMBERS,
-    KICK_MEMBERS,
-    MODERATE_MEMBERS,
-)
+from web.security.decorators import require_web_api_access
 
 
 moderation_api = Blueprint(
@@ -217,6 +208,47 @@ def _dm_member(guild_id, user_id, text):
         return False
 
 
+def _get_member(guild_id, user_id):
+    """Return (guild_dict, member_dict) or (None, None).
+
+    (guild, None) means the server is known but the user is not a
+    member of it; (None, None) means the server is unknown or the
+    bot is down. Mirrors web/blueprints/modpanel.py.
+    """
+    try:
+        guild = bridge.get_guild(int(guild_id))
+    except Exception:
+        return None, None
+    if guild is None:
+        return None, None
+    try:
+        member = bridge.get_member(int(guild_id), int(user_id))
+    except Exception:
+        return guild, None
+    return guild, member
+
+
+def _bot_down_response():
+    """503 when the bridge is down, else 404 (server unknown)."""
+    if not bridge.bot_is_ready():
+        return jsonify({
+            "success": False,
+            "error": "Discord bot is not connected.",
+        }), 503
+    return jsonify({
+        "success": False,
+        "error": "Discord server not found.",
+    }), 404
+
+
+def _not_in_server_response():
+    """404 when the target is no longer a member of the guild."""
+    return jsonify({
+        "success": False,
+        "error": "This member is no longer in the server.",
+    }), 404
+
+
 def _check_csrf():
     """Validate the CSRF token on state-changing requests."""
     supplied = (
@@ -233,11 +265,19 @@ def _check_csrf():
 @moderation_api.post(
     "/<int:guild_id>/members/<int:user_id>/timeout"
 )
-@require_guild_permission(MODERATE_MEMBERS, label="Timeout Members permission required.")
+@require_web_api_access("timeout")
 def timeout_member(guild_id, user_id):
     denied = _check_csrf()
     if denied:
         return denied
+
+    # Stop here when the target is no longer in the server.
+    guild, member = _get_member(guild_id, user_id)
+    if guild is None:
+        return _bot_down_response()
+    if member is None:
+        return _not_in_server_response()
+
     data = request.get_json(silent=True) or {}
     try:
         duration = int(data.get("duration", 600))
@@ -273,11 +313,19 @@ def timeout_member(guild_id, user_id):
 @moderation_api.post(
     "/<int:guild_id>/members/<int:user_id>/remove-timeout"
 )
-@require_guild_permission(MODERATE_MEMBERS, label="Timeout Members permission required.")
+@require_web_api_access("timeout")
 def remove_timeout_member(guild_id, user_id):
     denied = _check_csrf()
     if denied:
         return denied
+
+    # Stop here when the target is no longer in the server.
+    guild, member = _get_member(guild_id, user_id)
+    if guild is None:
+        return _bot_down_response()
+    if member is None:
+        return _not_in_server_response()
+
     data = request.get_json(silent=True) or {}
     reason = data.get("reason")
     service = _service()
@@ -293,11 +341,19 @@ def remove_timeout_member(guild_id, user_id):
 @moderation_api.post(
     "/<int:guild_id>/members/<int:user_id>/kick"
 )
-@require_guild_permission(KICK_MEMBERS, label="Kick Members permission required.")
+@require_web_api_access("kick")
 def kick_member(guild_id, user_id):
     denied = _check_csrf()
     if denied:
         return denied
+
+    # Stop here when the target is no longer in the server.
+    guild, member = _get_member(guild_id, user_id)
+    if guild is None:
+        return _bot_down_response()
+    if member is None:
+        return _not_in_server_response()
+
     data = request.get_json(silent=True) or {}
     reason = data.get("reason") or "No reason provided."
     want_dm = bool(data.get("dm"))
@@ -328,7 +384,7 @@ def kick_member(guild_id, user_id):
 @moderation_api.post(
     "/<int:guild_id>/members/<int:user_id>/ban"
 )
-@require_guild_permission(BAN_MEMBERS, label="Ban Members permission required.")
+@require_web_api_access("ban")
 def ban_member(guild_id, user_id):
     denied = _check_csrf()
     if denied:
@@ -368,7 +424,7 @@ def ban_member(guild_id, user_id):
 @moderation_api.post(
     "/<int:guild_id>/members/<int:user_id>/unban"
 )
-@require_guild_permission(BAN_MEMBERS, label="Ban Members permission required.")
+@require_web_api_access("ban")
 def unban_member(guild_id, user_id):
     denied = _check_csrf()
     if denied:

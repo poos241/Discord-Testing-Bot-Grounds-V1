@@ -2,7 +2,7 @@ from flask import Blueprint, jsonify
 
 from web.services import bridge
 from web.services.bridge import BridgeUnavailable
-from web.security.decorators import require_guild_manage, require_login, require_guild_moderator
+from web.security.decorators import require_guild_manage, require_login, require_web_api_access
 
 
 channels_api = Blueprint(
@@ -49,7 +49,7 @@ def _bot_error():
 @channels_api.get(
     "/api/servers/<int:guild_id>/channels"
 )
-@require_guild_moderator
+@require_web_api_access("web:view_channels")
 def get_server_channels(guild_id):
 
     denied = _bot_error()
@@ -117,7 +117,7 @@ def get_server_channels(guild_id):
 @channels_api.get(
     "/api/servers/<int:guild_id>/channels/summary"
 )
-@require_guild_moderator
+@require_web_api_access("web:view_channels")
 def channel_summary(guild_id):
 
     if not bridge.bot_is_ready():

@@ -3,7 +3,7 @@ from flask import Blueprint, jsonify
 from web.services import bridge
 from web.services.bridge import BridgeUnavailable
 from web.services.member_service import MemberService
-from web.security.decorators import require_guild_access, require_guild_manage, require_login
+from web.security.decorators import require_web_api_access
 
 
 health_api = Blueprint(
@@ -38,7 +38,7 @@ def get_guild(guild_id):
 @health_api.get(
     "/api/servers/<int:guild_id>/health"
 )
-@require_guild_access
+@require_web_api_access("web:view_dashboard")
 def server_health(guild_id):
 
     guild, error = get_guild(

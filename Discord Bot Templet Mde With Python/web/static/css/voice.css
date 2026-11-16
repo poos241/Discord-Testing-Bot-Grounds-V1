@@ -74,7 +74,7 @@
     display: inline-block;
     padding: 6px 14px;
     border-radius: 999px;
-    background: #5865f2;
+    background: #8b5cf6;
     color: #ffffff;
     text-decoration: none;
     font-size: 13px;
@@ -83,7 +83,7 @@
 }
 
 .voice-join-button:hover {
-    background: #4752c4;
+    background: #7c3aed;
     color: #ffffff;
 }
 
@@ -136,8 +136,8 @@
 }
 
 .voice-badge-bot {
-    background: #5865f2;
-    border-color: #5865f2;
+    background: #8b5cf6;
+    border-color: #8b5cf6;
     color: #ffffff;
 }
 

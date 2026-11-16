@@ -1,0 +1,659 @@
+{% extends "base.html" %}
+
+{% block title %}
+    {% if active_tab == 'logger' %}Logger Settings - {{ guild_name }} - Little Haven{% else %}Permissions - {{ guild_name }} - Little Haven{% endif %}
+{% endblock %}
+
+
+
+{% block head %}
+{% endblock %}
+
+{% block body %}
+
+<div class="hv-page">
+
+    <div class="hv-hero">
+        <div class="hv-hero-row">
+            <img class="hv-hero-logo"
+                 src="{{ url_for('static', filename='img/little-haven-web-pfp.webp') }}"
+                 alt="Little Haven">
+            <div>
+                <div class="hv-eyebrow">Little Haven · Server Settings</div>
+                <h1>Settings — {{ guild_name }}</h1>
+                <p>
+                    Two tabs, one page. The <strong>Permissions</strong> tab holds the
+                    <strong>same rules Discord <code>/perm</code> manages</strong>:
+                    one row grants (or denies) one action to one role or one user.
+                    The <strong>Logger Settings</strong> tab holds the log channels,
+                    event toggles, and automod. Only the server owner and Emily
+                    can always get in; everyone else needs the matching action
+                    (<code>web:manage_permissions</code> for Permissions,
+                    <code>web:manage_logs</code> for Logger Settings) to see a tab.
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <nav class="hv-tabs" aria-label="Settings sections">
+        {% if can_perms %}
+        <a href="{{ url_for('permissions.page', gid=guild_id, tab='permissions') }}" class="hv-tab{% if active_tab == 'permissions' %} active{% endif %}"{% if active_tab == 'permissions' %} aria-current="page"{% endif %}>Permissions</a>
+        {% endif %}
+        {% if can_logs %}
+        <a href="{{ url_for('permissions.page', gid=guild_id, tab='logger') }}" class="hv-tab{% if active_tab == 'logger' %} active{% endif %}"{% if active_tab == 'logger' %} aria-current="page"{% endif %}>Logger Settings</a>
+        {% endif %}
+    </nav>
+
+    <a class="hv-back-link" href="/servers/{{ guild_id }}/dashboard">← Back to dashboard</a>
+
+    {% if can_perms and active_tab == 'permissions' %}
+    <p class="hv-muted" style="margin: 0 0 20px;">
+        When a command has no custom rules at all, the bot falls back to
+        its normal Discord permission check for that command. When rules
+        exist but none match a user, that user is denied.
+    </p>
+
+    {% if notice %}
+    <div class="hv-notice">
+        {{ notice }}
+    </div>
+    {% endif %}
+
+    {% if error %}
+    <div class="hv-error">
+        {{ error }}
+    </div>
+    {% endif %}
+
+    <!-- ================= ADD RULES IN BULK ================= -->
+
+    <section class="hv-card">
+        <h2>Add rules in bulk</h2>
+        <p class="hv-lede">
+            Pick roles and/or users, tick the actions, choose allow or deny,
+            and add them all at once — one rule is created for every
+            target &times; action. Adding a batch that already exists just
+            skips the duplicates.
+        </p>
+
+        <form method="post" action="{{ url_for('permissions.add_rules_bulk', gid=guild_id) }}" id="bulk-add-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+            <div class="hv-grid-2">
+
+                <fieldset class="hv-fieldset">
+                    <legend>Roles</legend>
+                    <input type="text" id="role-search" class="hv-input" placeholder="Filter roles…" autocomplete="off" style="margin-bottom: 8px;">
+                    <div class="hv-scrollbox">
+                        {% for role in roles %}
+                        <label class="role-row" data-name="{{ (role.name or '')|lower }}">
+                            <input type="checkbox" name="role_ids" value="{{ role.id }}" class="role-check"> {{ role.name }}
+                            <span class="hv-muted">{{ role.id }}</span>
+                        </label>
+                        {% endfor %}
+                    </div>
+                    <p style="margin: 8px 0 0;">
+                        <a href="#" id="roles-all">Select all</a> ·
+                        <a href="#" id="roles-none">Clear</a> ·
+                        <span id="roles-count">0 selected</span>
+                    </p>
+                </fieldset>
+
+                <fieldset class="hv-fieldset">
+                    <legend>Users</legend>
+                    <textarea name="user_ids" id="user-ids" class="hv-textarea" rows="7" placeholder="Discord user IDs, one per line&#10;123456789012345678&#10;987654321098765432"></textarea>
+                    <p class="hv-hint">
+                        Paste user IDs, one per line. Names are looked up and
+                        shown after saving.
+                    </p>
+                    <p style="margin: 8px 0 0;"><span id="users-count">0 user IDs</span></p>
+                </fieldset>
+
+            </div>
+
+            <fieldset class="hv-fieldset hv-stack">
+                <legend>Actions</legend>
+                {% for family, actions in action_groups %}
+                {% set fi = loop.index %}
+                <div class="hv-family">
+                    <div class="hv-family-head">
+                        <strong>{{ family }}</strong>
+                        &nbsp;<a href="#" class="group-all" data-group="{{ fi }}">Select all</a>
+                        · <a href="#" class="group-none" data-group="{{ fi }}">Clear</a>
+                    </div>
+                    <div>
+                        {% for name, desc in actions %}
+                        <label class="hv-action-chip" title="{{ desc }}">
+                            <input type="checkbox" name="commands" value="{{ name }}" class="action-check" data-group="{{ fi }}"> <code>{{ name }}</code>
+                        </label>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endfor %}
+
+                <div style="margin-top: 12px; border-top: 1px solid var(--hv-border, #2e2e44); padding-top: 12px;">
+                    <label>
+                        Or type an action that is not listed above
+                        <input type="text" name="custom_action" id="custom-action" class="hv-input" placeholder="e.g. my_command or web:view_something" autocomplete="off" style="margin-top: 4px;">
+                    </label>
+                    <p class="hv-hint">
+                        For a Discord command or web key missing from the
+                        list. Use lowercase letters, digits, and
+                        underscores (a web key starts with
+                        <code>web:</code>). It is added as one more
+                        action for the same targets.
+                    </p>
+                </div>
+            </fieldset>
+
+            <div class="hv-radio-row">
+                <label>
+                    <input type="radio" name="allowed" value="allow" checked> Allow
+                </label>
+                <label>
+                    <input type="radio" name="allowed" value="deny"> Deny
+                </label>
+            </div>
+
+            <div class="hv-btn-row">
+                <button type="submit" id="bulk-add-submit" class="hv-btn hv-btn-primary">Add rules</button>
+                <span id="bulk-add-hint" class="hv-muted"></span>
+            </div>
+        </form>
+    </section>
+
+    <!-- ================= CURRENT RULES ================= -->
+
+    <section class="hv-card hv-rules-list">
+        <div class="hv-section-head">
+            <h2>Current rules</h2>
+            <span>
+                <span class="hv-count-badge">{{ rules|length }} rule{{ "s" if rules|length != 1 else "" }}</span>
+                &nbsp;<a href="#" id="rules-expand-all">Expand all</a>
+                · <a href="#" id="rules-collapse-all">Collapse all</a>
+            </span>
+        </div>
+
+        <div class="hv-toolbar">
+            <input type="text" id="rule-search" class="hv-input" placeholder="Search rules…" autocomplete="off">
+            <select id="filter-action" class="hv-select">
+                <option value="">All actions</option>
+                {% for cmd in filter_commands %}
+                <option value="{{ cmd }}">{{ cmd }}</option>
+                {% endfor %}
+            </select>
+            <select id="filter-target" class="hv-select">
+                <option value="">Roles + users</option>
+                <option value="role">Roles only</option>
+                <option value="user">Users only</option>
+            </select>
+            <select id="filter-allowed" class="hv-select">
+                <option value="">Allow + deny</option>
+                <option value="allow">Allow only</option>
+                <option value="deny">Deny only</option>
+            </select>
+        </div>
+
+        <form method="post" action="{{ url_for('permissions.remove_rules_bulk', gid=guild_id) }}" id="bulk-remove-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" id="bulk-remove-submit" class="hv-btn hv-btn-danger" onclick="return confirmRemoveSelected();" disabled>Remove selected</button>
+            <span id="selected-count" class="hv-muted" style="margin-left: 8px;">0 selected</span>
+        </form>
+
+        <p id="rules-shown" class="hv-muted"></p>
+
+        {% if rule_groups %}
+            {% for command, group_rules in rule_groups %}
+            <details class="rule-group hv-rule-group" data-command="{{ command }}">
+                <summary class="hv-rule-summary">
+                    <span class="rules-chevron" aria-hidden="true"></span>
+                    <code>{{ command }}</code>
+                    <span class="hv-muted">({{ group_rules|length }})</span>
+                    &nbsp;<a href="#" class="group-check-all" data-command="{{ command }}" style="font-size: .85rem;">Select all</a>
+                    · <a href="#" class="group-check-none" data-command="{{ command }}" style="font-size: .85rem;">Clear</a>
+                </summary>
+                <table class="hv-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 32px;"></th>
+                            <th>Target</th>
+                            <th>Allow / deny</th>
+                            <th>Added by</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for rule in group_rules %}
+                        {% if rule.target_type == "role" %}
+                            {% set target_name = role_names.get(rule.target_id) %}
+                        {% else %}
+                            {% set target_name = user_names.get(rule.target_id) %}
+                        {% endif %}
+                        {% set creator_name = created_by_names.get(rule.created_by) %}
+                        <tr class="rule-row"
+                            data-command="{{ rule.command }}"
+                            data-target-type="{{ rule.target_type }}"
+                            data-allowed="{{ 'allow' if rule.allowed else 'deny' }}"
+                            data-text="{{ (rule.command ~ ' ' ~ (target_name or '') ~ ' ' ~ rule.target_id ~ ' ' ~ (creator_name or '') ~ ' ' ~ (rule.created_by or ''))|lower }}">
+                            <td>
+                                <input type="checkbox" form="bulk-remove-form" name="rule_keys" class="rule-check"
+                                       value="{{ rule.command }}|{{ rule.target_type }}|{{ rule.target_id }}">
+                            </td>
+                            <td>
+                                {{ rule.target_type }}:
+                                {% if target_name %}{{ target_name }}<br>{% endif %}
+                                <span class="hv-muted">{{ rule.target_id }}</span>
+                            </td>
+                            <td>
+                                {% if rule.allowed %}
+                                    <span class="hv-pill hv-pill-allow">Allow</span>
+                                {% else %}
+                                    <span class="hv-pill hv-pill-deny">Deny</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if creator_name %}{{ creator_name }}<br>{% endif %}
+                                <span class="hv-muted">{{ rule.created_by or "—" }}</span>
+                            </td>
+                            <td>
+                                <form method="post" action="{{ url_for('permissions.remove_rule', gid=guild_id) }}" style="display: inline;">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <input type="hidden" name="command" value="{{ rule.command }}">
+                                    <input type="hidden" name="target_type" value="{{ rule.target_type }}">
+                                    <input type="hidden" name="target_id" value="{{ rule.target_id }}">
+                                    <button type="submit" class="hv-btn hv-btn-small" onclick="return confirm('Remove this rule?');">Remove</button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </details>
+            {% endfor %}
+        {% else %}
+        <p class="hv-muted">No custom rules yet — every command uses its normal Discord permission check.</p>
+        {% endif %}
+    </section>
+
+    <!-- ================= UNVERIFIED ROLE ================= -->
+
+    <section class="hv-card">
+        <h2>Unverified role</h2>
+        <p class="hv-lede">
+            Members holding this role are treated as <strong>unverified</strong>:
+            they cannot open any server dashboard page until RaidProtect
+            removes the role (when they solve the captcha). Leave it empty
+            when the server has no unverified role.
+        </p>
+
+        <form method="post" action="{{ url_for('permissions.save_settings', gid=guild_id) }}" style="display: grid; gap: 12px; max-width: 560px;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+            <label>
+                Unverified role ID
+                {% if unverified_role_id %}
+                    (currently
+                    {% if unverified_role_name %}{{ unverified_role_name }} — {% endif %}
+                    <code>{{ unverified_role_id }}</code>)
+                {% else %}
+                    (currently not set)
+                {% endif %}
+                <br>
+                <input type="text" name="unverified_role_id" class="hv-input" inputmode="numeric" pattern="[0-9]*" placeholder="Role ID (digits), empty to clear" value="{{ unverified_role_id }}" style="margin-top: 4px;">
+            </label>
+
+            <div>
+                <button type="submit" class="hv-btn hv-btn-primary">Save unverified role</button>
+            </div>
+        </form>
+    </section>
+
+    <!-- ================= BYPASS USERS ================= -->
+
+    <section class="hv-card">
+        <h2>Bypass users</h2>
+        <p class="hv-lede">
+            These users can open <strong>any server's site</strong>
+            without needing any permission at all — no dashboard
+            grant, no section grant, and the unverified role never
+            blocks them. Add someone here when they should always
+            get in. The two permanent bypass users (Emily and the
+            Little Haven owner) cannot be removed.
+        </p>
+
+        {% if bypass_users %}
+        <table class="hv-table">
+            <thead>
+                <tr>
+                    <th>User</th>
+                    <th>Added by</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for bu in bypass_users %}
+                <tr>
+                    <td>
+                        {% if bu.name %}{{ bu.name }}<br>{% endif %}
+                        <span class="hv-muted">{{ bu.user_id }}</span>
+                        {% if bu.seeded %}
+                        <span class="hv-pill hv-pill-allow">Permanent</span>
+                        {% endif %}
+                    </td>
+                    <td class="hv-muted">{{ bu.added_by or "—" }}</td>
+                    <td>
+                        {% if bu.seeded %}
+                        <span class="hv-muted">Cannot remove</span>
+                        {% else %}
+                        <form method="post" action="{{ url_for('permissions.remove_bypass_user_route', gid=guild_id) }}" style="display: inline;">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <input type="hidden" name="user_id" value="{{ bu.user_id }}">
+                            <button type="submit" class="hv-btn hv-btn-small" onclick="return confirm('Remove bypass for {{ bu.user_id }}? They will need permissions to get in again.');">Remove</button>
+                        </form>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p class="hv-muted">No bypass users yet.</p>
+        {% endif %}
+
+        <form method="post" action="{{ url_for('permissions.add_bypass_user_route', gid=guild_id) }}" style="display: grid; gap: 12px; max-width: 560px; margin-top: 16px;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <label>
+                Add a bypass user
+                <br>
+                <input type="text" name="user_id" class="hv-input" inputmode="numeric" pattern="[0-9]*" placeholder="Discord user ID (digits)" style="margin-top: 4px;">
+            </label>
+            <div>
+                <button type="submit" class="hv-btn hv-btn-primary">Add bypass user</button>
+            </div>
+        </form>
+    </section>
+
+    <p style="margin-top: 8px;">
+        <a href="{{ url_for('server_dashboard', guild_id=guild_id) }}">← Back to the {{ guild_name }} dashboard</a>
+    </p>
+    {% endif %}
+
+    {% if can_logs and active_tab == 'logger' %}
+    <div class="logger-settings-page">
+        <p style="margin: 0 0 16px;">
+            <a href="/servers/{{ guild_id }}/logger">← Logger History</a>
+        </p>
+<div id="settings-alert" class="alert d-none"></div>
+  <div class="card logger-settings-card"><div class="card-header"><h5 class="mb-0">Log Channels</h5></div><div class="card-body"><p class="text-secondary">Each category is independent. Select <strong>Disabled</strong> if you do not want that category sent to a Discord log channel.</p><div id="channel-fields"></div><button id="save-settings" class="btn btn-primary mt-3" type="button">Save Logger Settings</button></div></div>
+  <div class="card logger-settings-card mt-4"><div class="card-header"><h5 class="mb-0">Event Toggles</h5></div><div class="card-body"><p class="text-secondary">Choose which events get logged. Disabled events are not recorded.</p><div id="toggle-fields"><div class="text-secondary">Loading toggles...</div></div></div></div>
+  <div class="card logger-settings-card mt-4"><div class="card-header"><h5 class="mb-0">Automod</h5></div><div class="card-body"><p class="text-secondary">Small message filter. Everything is off until you turn it on. Offending messages are deleted and logged to the moderation log channel (and Logger history). Members with Manage Messages are exempt. The same settings are available in Discord via /automod.</p><div id="automod-fields"><div class="text-secondary">Loading automod settings...</div></div><div class="d-flex gap-2 align-items-end flex-wrap mt-3"><div><label class="form-label" for="automod-threshold">Spam threshold (messages)</label><input id="automod-threshold" type="number" min="1" max="50" class="form-control logger-num-input"></div><div><label class="form-label" for="automod-window">Spam window (seconds)</label><input id="automod-window" type="number" min="5" max="300" class="form-control logger-num-input"></div><button id="save-automod" class="btn btn-primary" type="button">Save Spam Settings</button></div></div></div>
+    </div>
+    {% endif %}
+
+</div>
+
+    {% if can_perms and active_tab == 'permissions' %}
+<script>
+    (function () {
+        function $(id) { return document.getElementById(id); }
+        function on(el, ev, fn) { if (el) el.addEventListener(ev, fn); }
+
+        // ---- Bulk add: live count of rules this submit would create.
+        var bulkAddSubmit = $("bulk-add-submit");
+        var bulkAddHint = $("bulk-add-hint");
+        function countUserIds() {
+            var box = $("user-ids");
+            if (!box) return 0;
+            var n = 0;
+            box.value.split(/\n/).forEach(function (line) {
+                if (line.trim()) n += 1;
+            });
+            return n;
+        }
+        function customActionCount() {
+            var box = $("custom-action");
+            if (!box || !box.value.trim()) return 0;
+            // Same rule as the server: a web: key or a Discord
+            // command name. Anything else counts as 0 here; the
+            // server rejects it with an error on submit.
+            return /^(?:web:[a-z0-9_]+|[a-z0-9_-]{1,32})$/.test(box.value.trim()) ? 1 : 0;
+        }
+        function updateBulkAddCount() {
+            var roles = document.querySelectorAll(".role-check:checked").length;
+            var users = countUserIds();
+            var actions = document.querySelectorAll(".action-check:checked").length + customActionCount();
+            var total = (roles + users) * actions;
+            var rolesCount = $("roles-count");
+            if (rolesCount) rolesCount.textContent = roles + " selected";
+            var usersCount = $("users-count");
+            if (usersCount) usersCount.textContent = users + " user ID" + (users === 1 ? "" : "s");
+            if (bulkAddSubmit) {
+                bulkAddSubmit.textContent = total > 0 ? ("Add " + total + " rule" + (total === 1 ? "" : "s")) : "Add rules";
+            }
+            if (bulkAddHint) {
+                bulkAddHint.textContent = total > 0
+                    ? (roles + " role" + (roles === 1 ? "" : "s") + " + " + users + " user" + (users === 1 ? "" : "s") + " × " + actions + " action" + (actions === 1 ? "" : "s"))
+                    : "Pick at least one role or user ID, and at least one action.";
+            }
+        }
+
+        // ---- Role list: search filter + select all / clear.
+        var roleSearch = $("role-search");
+        on(roleSearch, "input", function () {
+            var q = roleSearch.value.toLowerCase();
+            document.querySelectorAll(".role-row").forEach(function (row) {
+                row.style.display = (!q || (row.getAttribute("data-name") || "").indexOf(q) !== -1) ? "" : "none";
+            });
+        });
+        on($("roles-all"), "click", function (e) {
+            e.preventDefault();
+            document.querySelectorAll(".role-check").forEach(function (c) { c.checked = true; });
+            updateBulkAddCount();
+        });
+        on($("roles-none"), "click", function (e) {
+            e.preventDefault();
+            document.querySelectorAll(".role-check").forEach(function (c) { c.checked = false; });
+            updateBulkAddCount();
+        });
+
+        // ---- Action groups: select all / clear per family.
+        document.querySelectorAll(".group-all").forEach(function (link) {
+            link.addEventListener("click", function (e) {
+                e.preventDefault();
+                var g = link.getAttribute("data-group");
+                document.querySelectorAll('.action-check[data-group="' + g + '"]').forEach(function (c) { c.checked = true; });
+                updateBulkAddCount();
+            });
+        });
+        document.querySelectorAll(".group-none").forEach(function (link) {
+            link.addEventListener("click", function (e) {
+                e.preventDefault();
+                var g = link.getAttribute("data-group");
+                document.querySelectorAll('.action-check[data-group="' + g + '"]').forEach(function (c) { c.checked = false; });
+                updateBulkAddCount();
+            });
+        });
+
+        document.querySelectorAll(".role-check, .action-check").forEach(function (c) {
+            c.addEventListener("change", updateBulkAddCount);
+        });
+        on($("user-ids"), "input", updateBulkAddCount);
+        on($("custom-action"), "input", updateBulkAddCount);
+        updateBulkAddCount();
+
+        // ---- Rules list: search + filters.
+        var totalRules = document.querySelectorAll(".rule-row").length;
+        function applyRuleFilters() {
+            var q = ($("rule-search").value || "").toLowerCase();
+            var action = $("filter-action").value;
+            var target = $("filter-target").value;
+            var allowed = $("filter-allowed").value;
+            var anyFilter = !!(q || action || target || allowed);
+            var shown = 0;
+            document.querySelectorAll(".rule-row").forEach(function (row) {
+                var ok = true;
+                if (q && (row.getAttribute("data-text") || "").indexOf(q) === -1) ok = false;
+                if (action && row.getAttribute("data-command") !== action) ok = false;
+                if (target && row.getAttribute("data-target-type") !== target) ok = false;
+                if (allowed && row.getAttribute("data-allowed") !== allowed) ok = false;
+                row.style.display = ok ? "" : "none";
+                if (ok) shown += 1;
+            });
+            document.querySelectorAll(".rule-group").forEach(function (group) {
+                var anyVisible = false;
+                group.querySelectorAll(".rule-row").forEach(function (row) {
+                    if (row.style.display !== "none") anyVisible = true;
+                });
+                group.style.display = anyVisible ? "" : "none";
+                // Groups are <details>: with a filter active, open
+                // the groups that have a match so the results are
+                // visible; with no filter, return to the compact
+                // collapsed view.
+                if (group.tagName === "DETAILS") {
+                    group.open = anyFilter && anyVisible;
+                }
+            });
+            var shownEl = $("rules-shown");
+            if (shownEl) shownEl.textContent = "Showing " + shown + " of " + totalRules + " rules.";
+        }
+        ["rule-search", "filter-action", "filter-target", "filter-allowed"].forEach(function (id) {
+            var el = $(id);
+            if (el) el.addEventListener("input", applyRuleFilters);
+            if (el) el.addEventListener("change", applyRuleFilters);
+        });
+        applyRuleFilters();
+
+        // ---- Rules list: selection count + per-group select all.
+        function updateSelectedCount() {
+            var n = document.querySelectorAll(".rule-check:checked").length;
+            var label = $("selected-count");
+            if (label) label.textContent = n + " selected";
+            var btn = $("bulk-remove-submit");
+            if (btn) {
+                btn.disabled = n === 0;
+                btn.textContent = n > 0 ? ("Remove selected (" + n + ")") : "Remove selected";
+            }
+        }
+        document.querySelectorAll(".rule-check").forEach(function (c) {
+            c.addEventListener("change", updateSelectedCount);
+        });
+        document.querySelectorAll(".group-check-all").forEach(function (link) {
+            link.addEventListener("click", function (e) {
+                e.preventDefault();
+                var cmd = link.getAttribute("data-command");
+                var group = link.closest(".rule-group");
+                if (group && group.tagName === "DETAILS") group.open = true;
+                document.querySelectorAll('.rule-row[data-command="' + cmd + '"] .rule-check').forEach(function (c) { c.checked = true; });
+                updateSelectedCount();
+            });
+        });
+        document.querySelectorAll(".group-check-none").forEach(function (link) {
+            link.addEventListener("click", function (e) {
+                e.preventDefault();
+                var cmd = link.getAttribute("data-command");
+                var group = link.closest(".rule-group");
+                if (group && group.tagName === "DETAILS") group.open = true;
+                document.querySelectorAll('.rule-row[data-command="' + cmd + '"] .rule-check').forEach(function (c) { c.checked = false; });
+                updateSelectedCount();
+            });
+        });
+        // ---- Rules list: expand all / collapse all groups.
+        on($("rules-expand-all"), "click", function (e) {
+            e.preventDefault();
+            document.querySelectorAll(".rule-group").forEach(function (g) {
+                if (g.tagName === "DETAILS") g.open = true;
+            });
+        });
+        on($("rules-collapse-all"), "click", function (e) {
+            e.preventDefault();
+            document.querySelectorAll(".rule-group").forEach(function (g) {
+                if (g.tagName === "DETAILS") g.open = false;
+            });
+        });
+        updateSelectedCount();
+
+        window.confirmRemoveSelected = function () {
+            var n = document.querySelectorAll(".rule-check:checked").length;
+            if (n === 0) {
+                alert("Select at least one rule to remove.");
+                return false;
+            }
+            return confirm("Remove " + n + " rule" + (n === 1 ? "" : "s") + "?");
+        };
+    })();
+</script>
+    {% endif %}
+
+    {% if can_logs and active_tab == 'logger' %}
+<script>
+(()=>{const guildId='{{ guild_id }}';let csrfToken='';const types=[['message','Message Logs','Deleted and edited message activity'],['voice','Voice Logs','Join, leave, move, mute, deaf, stream and camera changes'],['member','Member Logs','Member joins, leaves, nicknames and profile changes'],['role','Role Logs','Role assignments plus role create/delete/update events'],['channel','Channel Logs','Channel creation, deletion, rename and configuration changes'],['thread','Thread Logs','Thread creation, deletion, archive and lock activity'],['moderation','Moderation Logs','Bans, unbans, kicks, timeouts and moderation actions'],['invite','Invite Logs','Invite creation and deletion'],['emoji','Emoji Logs','Emoji creation, deletion and rename events'],['sticker','Sticker Logs','Sticker creation, deletion and updates'],['server','Server Logs','Guild settings, server profile, boosts and other server-level events']];const alertBox=document.getElementById('settings-alert');const esc=v=>String(v??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#039;','"':'&quot;'}[c]));function show(msg,ok){alertBox.className=`alert ${ok?'alert-success':'alert-danger'}`;alertBox.textContent=msg;alertBox.classList.remove('d-none')}async function getJson(url,options={}){const r=await fetch(url,{cache:'no-store',...options});const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||`HTTP ${r.status}`);return j}async function load(){const csrf=await getJson('/api/csrf');csrfToken=csrf.csrf_token;if(!csrfToken)throw new Error('Unable to initialize security token. Please reload the page.');const [channels,settings]=await Promise.all([getJson(`/api/servers/${guildId}/logging/channels`),getJson(`/api/servers/${guildId}/logging`)]);const selected=settings.logging||{};const opts='<option value="">Disabled</option>'+(channels.channels||[]).map(c=>`<option value="${esc(c.id)}">${esc(c.category?c.category+' / ':'')}#${esc(c.name)} (${esc(c.id)})</option>`).join('');document.getElementById('channel-fields').innerHTML=types.map(([key,title,desc])=>`<div class="logger-setting-row"><div class="d-flex justify-content-between align-items-center gap-2"><div class="logger-setting-title">${esc(title)}</div><span class="logger-badge">${esc(key)}</span></div><div class="logger-setting-desc">${esc(desc)}</div><select class="form-select logger-channel-select" data-log-type="${esc(key)}">${opts}</select></div>`).join('');types.forEach(([key])=>{const el=document.querySelector(`[data-log-type="${key}"]`);if(el)el.value=selected[key]||''})}async function save(){const data={};document.querySelectorAll('.logger-channel-select').forEach(el=>data[el.dataset.logType]=el.value||null);const button=document.getElementById('save-settings');button.disabled=true;try{await getJson(`/api/servers/${guildId}/logging`,{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':csrfToken},body:JSON.stringify(data)});show('Logger settings saved successfully.',true)}catch(e){show(e.message,false)}finally{button.disabled=false}}document.getElementById('save-settings').addEventListener('click',save);
+async function loadToggles(){
+  const data=await getJson(`/api/servers/${guildId}/logger/toggles`);
+  const groups=data.groups||{};
+  document.getElementById('toggle-fields').innerHTML=Object.entries(groups).map(([gname,events])=>`
+    <div class="mb-3"><div class="logger-setting-title mb-2">${esc(gname)}</div>
+    ${events.map(ev=>`
+      <div class="d-flex justify-content-between align-items-center py-2" style="border-bottom:1px solid rgba(255,255,255,.05);">
+        <span>${esc(ev.label)}</span>
+        <div class="form-check form-switch">
+          <input class="form-check-input toggle-switch" type="checkbox" data-event-key="${esc(ev.key)}" ${ev.enabled?'checked':''} style="cursor:pointer;">
+        </div>
+      </div>`).join('')}
+    </div>`).join('');
+  document.querySelectorAll('.toggle-switch').forEach(sw=>{
+    sw.addEventListener('change',async()=>{
+      const key=sw.dataset.eventKey;
+      const enabled=sw.checked;
+      sw.disabled=true;
+      try{
+        await getJson(`/api/servers/${guildId}/logger/toggles`,{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':csrfToken},body:JSON.stringify({event_key:key,enabled:enabled})});
+      }catch(e){show(e.message,false);sw.checked=!enabled;}
+      finally{sw.disabled=false;}
+    });
+  });
+}
+loadToggles().catch(e=>show('Toggles: '+e.message,false));
+async function loadAutomod(){
+  const data=await getJson(`/api/servers/${guildId}/logger/automod`);
+  const cfg=data.automod||{};
+  const rules=[['spam_enabled','Spam bursts',`Delete when one member sends ${cfg.spam_threshold||5} messages within ${cfg.spam_window_seconds||10} seconds`],['invites_enabled','Invite links','Delete discord.gg / discord.com/invite links (your own vanity invite is allowed)'],['external_links_enabled','External links','Delete http(s) links outside Discord (discord.com / discord.gg links still pass)'],['caps_enabled','All-caps messages','Delete messages with 10+ letters that are 80% or more uppercase']];
+  document.getElementById('automod-fields').innerHTML=rules.map(([key,title,desc])=>`
+      <div class="d-flex justify-content-between align-items-center py-2" style="border-bottom:1px solid rgba(255,255,255,.05);">
+        <span><span class="logger-setting-title">${esc(title)}</span><div class="logger-setting-desc" style="margin:0">${esc(desc)}</div></span>
+        <div class="form-check form-switch">
+          <input class="form-check-input automod-switch" type="checkbox" data-automod-key="${esc(key)}" ${cfg[key]?'checked':''} style="cursor:pointer;">
+        </div>
+      </div>`).join('');
+  document.getElementById('automod-threshold').value=cfg.spam_threshold||5;
+  document.getElementById('automod-window').value=cfg.spam_window_seconds||10;
+  document.querySelectorAll('.automod-switch').forEach(sw=>{
+    sw.addEventListener('change',async()=>{
+      const key=sw.dataset.automodKey;
+      const enabled=sw.checked;
+      sw.disabled=true;
+      try{
+        const saved=await getJson(`/api/servers/${guildId}/logger/automod`,{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':csrfToken},body:JSON.stringify({[key]:enabled})});
+        const c=saved.automod||{};
+        document.getElementById('automod-threshold').value=c.spam_threshold||5;
+        document.getElementById('automod-window').value=c.spam_window_seconds||10;
+      }catch(e){show(e.message,false);sw.checked=!enabled;}
+      finally{sw.disabled=false;}
+    });
+  });
+  document.getElementById('save-automod').addEventListener('click',async()=>{
+    const button=document.getElementById('save-automod');
+    button.disabled=true;
+    try{
+      await getJson(`/api/servers/${guildId}/logger/automod`,{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':csrfToken},body:JSON.stringify({spam_threshold:parseInt(document.getElementById('automod-threshold').value,10),spam_window_seconds:parseInt(document.getElementById('automod-window').value,10)})});
+      show('Spam settings saved successfully.',true);
+    }catch(e){show(e.message,false);}
+    finally{button.disabled=false;}
+  });
+}
+loadAutomod().catch(e=>show('Automod: '+e.message,false));
+
+load().catch(e=>show(e.message,false))})();
+</script>
+    {% endif %}
+
+{% endblock %}

@@ -4,11 +4,11 @@ from discord.ext import commands
 
 from .base import BaseLogger
 from .config import (
-    SERVER, COLORS,
+    SERVER,
     EV_ROLE_CREATE, EV_ROLE_DELETE, EV_ROLE_UPDATE,
 )
 from .database import db
-from .embeds import LoggerEmbed
+from .embeds import LoggerEmbed, role_line
 
 
 class RoleLogger(BaseLogger):
@@ -19,11 +19,18 @@ class RoleLogger(BaseLogger):
         entry = await self.audit_entry(
             role.guild, discord.AuditLogAction.role_create, target_id=role.id
         )
-        embed = LoggerEmbed.base("✨ Role Created", COLORS[SERVER])
-        LoggerEmbed.field(embed, "Role", role.mention, inline=True)
-        LoggerEmbed.field(embed, "Color", str(role.color), inline=True)
+        created_by = ""
         if entry:
-            LoggerEmbed.field(embed, "Created By", str(entry.user), inline=True)
+            created_by = f"\n**Created By:** {entry.user}"
+        embed = LoggerEmbed.base(
+            "✨ Role Created",
+            LoggerEmbed.GREEN,
+            description=(
+                f"**Role:** {role_line(role)}\n"
+                f"**Color:** {role.color}"
+                f"{created_by}"
+            ),
+        )
         LoggerEmbed.finalize(embed)
         await self.send(role.guild, SERVER, embed)
 
@@ -34,12 +41,19 @@ class RoleLogger(BaseLogger):
         entry = await self.audit_entry(
             role.guild, discord.AuditLogAction.role_delete, target_id=role.id
         )
-        embed = LoggerEmbed.base("🗑 Role Deleted", COLORS[SERVER])
-        LoggerEmbed.field(embed, "Name", f"@{role.name}", inline=True)
+        deleted_by = ""
         if entry:
-            LoggerEmbed.field(embed, "Deleted By", str(entry.user), inline=True)
+            deleted_by = f"\n**Deleted By:** {entry.user}"
             if entry.reason:
-                LoggerEmbed.field(embed, "Reason", entry.reason)
+                deleted_by += f"\n**Reason:** {entry.reason}"
+        embed = LoggerEmbed.base(
+            "🗑 Role Deleted",
+            LoggerEmbed.RED,
+            description=(
+                f"**Role:** @{role.name}"
+                f"{deleted_by}"
+            ),
+        )
         LoggerEmbed.finalize(embed)
         await self.send(role.guild, SERVER, embed)
 
@@ -65,8 +79,11 @@ class RoleLogger(BaseLogger):
             changes.append(("Permissions Removed", ", ".join(removed)))
         if not changes:
             return
-        embed = LoggerEmbed.base("✏ Role Updated", COLORS[SERVER])
-        LoggerEmbed.field(embed, "Role", after.mention, inline=True)
+        embed = LoggerEmbed.base(
+            "✏ Role Updated",
+            LoggerEmbed.BLUE,
+            description=f"**Role:** {role_line(after)}",
+        )
         for name, value in changes:
             LoggerEmbed.field(embed, name, value)
         LoggerEmbed.finalize(embed)

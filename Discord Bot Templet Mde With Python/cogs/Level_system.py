@@ -1,6 +1,7 @@
 # cogs/level_system.py
 import asyncio
 import io
+import os
 import re
 import time
 from contextlib import asynccontextmanager
@@ -20,12 +21,18 @@ from config import admin_required, extra_help, GUILD_IDS
 from data.DB.db import database
 from data.DB.Storage.storage import (
     get_levels, save_levels, get_xp, save_xp, log_activity,
-    get_voice_xp_config,
 )
 
 COOLDOWN_LEVEL = 30
 COOLDOWN_LEADERBOARD = 30
 GAME_XP_DEFAULT = True  # Eat It or Yeet It votes earn level XP unless toggled off
+# Thread XP is OFF unless an admin turns it on (flipped 2026-11-14: it
+# used to default on, so servers that never set it had thread XP on).
+XP_IN_THREADS_DEFAULT = False
+
+# Cached level-up card background image (loaded lazily by
+# _load_levelup_bg; None = not loaded yet, False = load failed).
+_LEVELUP_BG = None
 DAILY_COOLDOWN = 20 * 3600  # 20h between daily claims
 DAILY_STREAK_WINDOW = 40 * 3600  # claim within 40h to keep the streak
 DAILY_BASE = 50
@@ -284,6 +291,9 @@ async def announce_level_up(guild, user_id, display_name, level, settings,
     text = render_levelup_message(settings, user_id, display_name, level)
     text += ("\n\nDon't want level-up messages? Run /toggle_level_messages "
              "to turn them off -- you'll still earn XP.")
+    text += ("\nWant a different look? Run /cardcolor and type in a color "
+             "name (like pink or purple) -- it'll change the color of your "
+             "XP bars on your rank and level card.")
     if channel is None and interaction is not None:
         # Ephemeral followup: only the invoker sees it. A followup can
         # only be sent to an interaction that was deferred or answered
@@ -537,7 +547,15 @@ def build_rank_card(avatar_bytes, username, level, xp, xp_needed, rank,
     img = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     bg_mask = Image.new("L", (W, H), 0)
     ImageDraw.Draw(bg_mask).rounded_rectangle([0, 0, W, H], radius=24, fill=255)
-    img.paste(Image.new("RGBA", (W, H), (35, 36, 40, 255)), (0, 0), bg_mask)
+    bg = _load_levelup_bg()
+    if bg is not None:
+        bg_img = _cover(bg, W, H)
+        # Darken the art a little so the white text and avatar read.
+        bg_img = Image.alpha_composite(
+            bg_img, Image.new("RGBA", (W, H), (0, 0, 0, 80)))
+        img.paste(bg_img, (0, 0), bg_mask)
+    else:
+        img.paste(Image.new("RGBA", (W, H), (35, 36, 40, 255)), (0, 0), bg_mask)
     d = ImageDraw.Draw(img)
 
     # avatar (circle)
@@ -585,13 +603,50 @@ def build_rank_card(avatar_bytes, username, level, xp, xp_needed, rank,
     return out
 
 
+def _load_levelup_bg():
+    """Load the Little Haven level-up card background (cached).
+
+    Returns an RGBA image, or None when the asset is missing or
+    unreadable -- callers fall back to the flat dark fill, so a
+    missing asset can never break the card."""
+    global _LEVELUP_BG
+    if _LEVELUP_BG is not None:
+        return _LEVELUP_BG or None
+    try:
+        here = os.path.dirname(os.path.abspath(__file__))
+        _LEVELUP_BG = Image.open(
+            os.path.join(here, "levelup_bg.png")).convert("RGBA")
+    except Exception:
+        _LEVELUP_BG = False
+    return _LEVELUP_BG or None
+
+
+def _cover(image, w, h):
+    """Resize + center-crop `image` to exactly (w, h) (cover fit)."""
+    iw, ih = image.size
+    scale = max(w / iw, h / ih)
+    nw, nh = int(iw * scale + 0.5), int(ih * scale + 0.5)
+    resized = image.resize((nw, nh), Image.LANCZOS)
+    left = (nw - w) // 2
+    top = (nh - h) // 2
+    return resized.crop((left, top, left + w, top + h))
+
+
 def build_levelup_card(avatar_bytes, username, level, accent=(88, 101, 242)):
     """Render a 900x320 LEVEL UP celebration card PNG."""
     W, H = 900, 320
     img = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     bg_mask = Image.new("L", (W, H), 0)
     ImageDraw.Draw(bg_mask).rounded_rectangle([0, 0, W, H], radius=24, fill=255)
-    img.paste(Image.new("RGBA", (W, H), (35, 36, 40, 255)), (0, 0), bg_mask)
+    bg = _load_levelup_bg()
+    if bg is not None:
+        bg_img = _cover(bg, W, H)
+        # Darken the art a little so the white text and avatar read.
+        bg_img = Image.alpha_composite(
+            bg_img, Image.new("RGBA", (W, H), (0, 0, 0, 80)))
+        img.paste(bg_img, (0, 0), bg_mask)
+    else:
+        img.paste(Image.new("RGBA", (W, H), (35, 36, 40, 255)), (0, 0), bg_mask)
     d = ImageDraw.Draw(img)
 
     # confetti
@@ -639,41 +694,89 @@ def build_levelup_card(avatar_bytes, username, level, accent=(88, 101, 242)):
 class NoXpBulkView(discord.ui.View):
     """Pick many channels at once and turn XP off (or back on) in all of them.
 
-    Only the admin who opened it can use it. The channel picker holds
-    the selection; Disable XP adds every picked channel to the server's
-    no_xp_channels list, Enable XP removes them. One batch per opening.
+    Only the admin who opened it can use it. The text channel picker
+    holds the message-XP selection (Disable/Enable XP); the voice
+    channel picker holds the voice-XP "sleep" selection (Disable/Enable
+    Voice XP). The Thread XP and Game XP buttons flip those settings
+    directly -- no channel pick is needed for them, so the view can be
+    opened just to adjust the toggles. One batch per opening.
     """
 
-    def __init__(self, author_id, guild_id):
+    def __init__(self, author_id, guild_id, thread_xp=False, game_xp=True):
         super().__init__(timeout=300)
         self.author_id = author_id
         self.guild_id = guild_id
         self.picked_ids = []
+        self.voice_picked_ids = []
+        self.thread_xp = bool(thread_xp)
+        self.game_xp = bool(game_xp)
 
         channel_select = discord.ui.ChannelSelect(
-            placeholder="Pick channels (up to 25)",
-            min_values=1,
+            placeholder="Pick text channels (up to 25)",
+            min_values=0,
             max_values=25,
             channel_types=[discord.ChannelType.text],
+            row=0,
         )
         channel_select.callback = self._on_channels
         self.channel_select = channel_select
         self.add_item(channel_select)
 
+        voice_select = discord.ui.ChannelSelect(
+            placeholder="Pick voice channels with no voice XP (sleep, up to 25)",
+            min_values=0,
+            max_values=25,
+            channel_types=[discord.ChannelType.voice],
+            row=1,
+        )
+        voice_select.callback = self._on_voice_channels
+        self.voice_select = voice_select
+        self.add_item(voice_select)
+
         disable_button = discord.ui.Button(
-            label="Disable XP", style=discord.ButtonStyle.danger)
+            label="Disable XP", style=discord.ButtonStyle.danger, row=2)
         disable_button.callback = self._on_disable
         self.add_item(disable_button)
 
         enable_button = discord.ui.Button(
-            label="Enable XP", style=discord.ButtonStyle.success)
+            label="Enable XP", style=discord.ButtonStyle.success, row=2)
         enable_button.callback = self._on_enable
         self.add_item(enable_button)
 
         cancel_button = discord.ui.Button(
-            label="Cancel", style=discord.ButtonStyle.grey)
+            label="Cancel", style=discord.ButtonStyle.grey, row=2)
         cancel_button.callback = self._on_cancel
         self.add_item(cancel_button)
+
+        self.thread_button = discord.ui.Button(
+            label=self._thread_label(), style=discord.ButtonStyle.primary,
+            row=3)
+        self.thread_button.callback = self._on_thread_toggle
+        self.add_item(self.thread_button)
+
+        self.game_button = discord.ui.Button(
+            label=self._game_label(), style=discord.ButtonStyle.primary,
+            row=3)
+        self.game_button.callback = self._on_game_toggle
+        self.add_item(self.game_button)
+
+        voice_disable = discord.ui.Button(
+            label="Disable Voice XP", style=discord.ButtonStyle.danger,
+            row=4)
+        voice_disable.callback = self._on_voice_disable
+        self.add_item(voice_disable)
+
+        voice_enable = discord.ui.Button(
+            label="Enable Voice XP", style=discord.ButtonStyle.success,
+            row=4)
+        voice_enable.callback = self._on_voice_enable
+        self.add_item(voice_enable)
+
+    def _thread_label(self):
+        return "Thread XP: ON" if self.thread_xp else "Thread XP: OFF"
+
+    def _game_label(self):
+        return "Game XP: ON" if self.game_xp else "Game XP: OFF"
 
     async def _check_author(self, interaction):
         if interaction.user.id != self.author_id:
@@ -688,11 +791,23 @@ class NoXpBulkView(discord.ui.View):
         self.picked_ids = [str(c.id) for c in self.channel_select.values]
         await interaction.response.defer(ephemeral=True)
 
+    async def _on_voice_channels(self, interaction):
+        if not await self._check_author(interaction):
+            return
+        self.voice_picked_ids = [str(c.id) for c in self.voice_select.values]
+        await interaction.response.defer(ephemeral=True)
+
     async def _on_disable(self, interaction):
         await self._apply(interaction, enable=False)
 
     async def _on_enable(self, interaction):
         await self._apply(interaction, enable=True)
+
+    async def _on_voice_disable(self, interaction):
+        await self._apply_voice(interaction, enable=False)
+
+    async def _on_voice_enable(self, interaction):
+        await self._apply_voice(interaction, enable=True)
 
     async def _on_cancel(self, interaction):
         if not await self._check_author(interaction):
@@ -701,6 +816,42 @@ class NoXpBulkView(discord.ui.View):
             item.disabled = True
         await interaction.response.edit_message(
             content="Cancelled -- no channels changed.", view=self)
+
+    async def _on_thread_toggle(self, interaction):
+        if not await self._check_author(interaction):
+            return
+        await interaction.response.defer(ephemeral=True)
+        db = await get_levels(str(self.guild_id))
+        settings = db.setdefault("settings", {})
+        new_val = not settings.get("xp_in_threads", XP_IN_THREADS_DEFAULT)
+        settings["xp_in_threads"] = new_val
+        await save_levels(str(self.guild_id), db)
+        self.thread_xp = new_val
+        self.thread_button.label = self._thread_label()
+        state = "ON" if new_val else "OFF"
+        detail = ("messages in threads now earn XP" if new_val
+                  else "messages in threads no longer earn XP")
+        await interaction.edit_original_response(
+            content=f"🧵 XP in threads is now **{state}** — {detail}.",
+            view=self)
+
+    async def _on_game_toggle(self, interaction):
+        if not await self._check_author(interaction):
+            return
+        await interaction.response.defer(ephemeral=True)
+        db = await get_levels(str(self.guild_id))
+        settings = db.setdefault("settings", {})
+        new_val = not settings.get("game_xp", GAME_XP_DEFAULT)
+        settings["game_xp"] = new_val
+        await save_levels(str(self.guild_id), db)
+        self.game_xp = new_val
+        self.game_button.label = self._game_label()
+        state = "ON" if new_val else "OFF"
+        detail = ("voting now earns level XP" if new_val
+                  else "voting no longer earns level XP")
+        await interaction.edit_original_response(
+            content=f"🎮 Game XP is now **{state}** — {detail}.",
+            view=self)
 
     async def _apply(self, interaction, enable):
         if not await self._check_author(interaction):
@@ -730,6 +881,43 @@ class NoXpBulkView(discord.ui.View):
             lst.extend(added)
             already = len(self.picked_ids) - len(added)
             summary = ("Disabled XP in %s (%d added to no-XP%s)."
+                       % (", ".join(mentions), len(added),
+                          "; %d were already disabled" % already if already else ""))
+        await save_levels(str(self.guild_id), db)
+        for item in self.children:
+            item.disabled = True
+        await interaction.edit_original_response(content=summary, view=self)
+
+    async def _apply_voice(self, interaction, enable):
+        """Same as _apply, but for the voice no-XP ("sleep") list."""
+        if not await self._check_author(interaction):
+            return
+        if not self.voice_picked_ids:
+            await interaction.response.send_message(
+                "Pick at least one voice channel first.", ephemeral=True)
+            return
+        await interaction.response.defer(ephemeral=True)
+        db = await get_levels(str(self.guild_id))
+        lst = db.setdefault("settings", {}).setdefault(
+            "no_voice_xp_channels", [])
+        mentions = []
+        for cid in self.voice_picked_ids:
+            channel = (interaction.guild.get_channel(int(cid))
+                       if interaction.guild else None)
+            mentions.append(channel.mention if channel else "<#%s>" % cid)
+        if enable:
+            removed = [cid for cid in self.voice_picked_ids if cid in lst]
+            for cid in removed:
+                lst.remove(cid)
+            kept = len(self.voice_picked_ids) - len(removed)
+            summary = ("Enabled voice XP in %s (%d removed from no-voice-XP%s)."
+                       % (", ".join(mentions), len(removed),
+                          "; %d weren't disabled" % kept if kept else ""))
+        else:
+            added = [cid for cid in self.voice_picked_ids if cid not in lst]
+            lst.extend(added)
+            already = len(self.voice_picked_ids) - len(added)
+            summary = ("Disabled voice XP in %s (%d added to no-voice-XP%s)."
                        % (", ".join(mentions), len(added),
                           "; %d were already disabled" % already if already else ""))
         await save_levels(str(self.guild_id), db)
@@ -809,10 +997,18 @@ class LevelSettingsView(discord.ui.View):
                 "Only the admin who ran /level_settings can use this.",
                 ephemeral=True)
             return
-        view = NoXpBulkView(self.author_id, self.guild_id)
+        db = await get_levels(str(self.guild_id))
+        settings = db.get("settings", {})
+        view = NoXpBulkView(
+            self.author_id, self.guild_id,
+            thread_xp=settings.get("xp_in_threads", XP_IN_THREADS_DEFAULT),
+            game_xp=settings.get("game_xp", GAME_XP_DEFAULT))
         await interaction.response.send_message(
             content=("Pick channels below, then hit **Disable XP** to stop XP in all of them, "
-                     "or **Enable XP** to turn XP back on in them."),
+                     "or **Enable XP** to turn XP back on in them. "
+                     "The second picker sets voice channels with no voice XP. "
+                     "Thread XP and Game XP can be flipped with their buttons — "
+                     "no channel pick needed for those."),
             view=view,
             ephemeral=True)
 
@@ -991,6 +1187,35 @@ class ResetxpConfirmView(discord.ui.View):
         self.stop()
 
 
+async def _spam_channel_gate(interaction):
+    """Return True when /level may run in this channel.
+
+    When a spam channel is set (settings["level_commands_channel_id"]),
+    the level commands only work there; anywhere else the invoker gets
+    an ephemeral redirect. /toggle_level_messages is exempt (it never
+    calls this). Call BEFORE deferring, so the redirect can be
+    ephemeral -- a public defer would lock the followup public.
+    Returns False after answering the redirect, True when the command
+    may proceed. When no spam channel is set, the commands work
+    anywhere (nothing breaks before setup)."""
+    guild = interaction.guild
+    if guild is None:
+        return True
+    db = await get_levels(str(guild.id))
+    spam_id = db.get("settings", {}).get("level_commands_channel_id")
+    if not spam_id:
+        return True
+    if str(getattr(interaction, "channel_id", None)) == str(spam_id):
+        return True
+    channel = (guild.get_channel(int(spam_id))
+               if str(spam_id).isdigit() else None)
+    where = channel.mention if channel else "the spam channel"
+    await interaction.respond(
+        f"Level commands live in {where} -- run /level there.",
+        ephemeral=True)
+    return False
+
+
 class LevelSystem(commands.Cog):
     HelpCategory = "Level System"
 
@@ -1029,13 +1254,13 @@ class LevelSystem(commands.Cog):
         # ticket threads from external ticket bots, discussion threads,
         # and forum posts -- thread ids are created on the fly, so they
         # can never be pre-listed in no_xp_channels). Default on, so
-        # nothing changes until an admin flips it with /toggle_thread_xp.
+        # nothing changes until an admin flips it in /no_xp_bulk.
         if isinstance(message.channel, discord.Thread):
             parent_id = getattr(message.channel, "parent_id", None)
             if (parent_id is not None
                     and str(parent_id) in settings.get("no_xp_channels", [])):
                 return
-            if not settings.get("xp_in_threads", True):
+            if not settings.get("xp_in_threads", XP_IN_THREADS_DEFAULT):
                 return
         cooldown = settings.get("cooldown", 0)
         # P2-6: clamp stored values saved before the /set_cooldown cap.
@@ -1145,9 +1370,44 @@ class LevelSystem(commands.Cog):
         await save_levels(gid, db)
         await interaction.respond(f"✅ Level-up messages will post in {channel.mention}")
 
+    @commands.slash_command(name="set_spam_channel", description="Set the channel where /level works", guild_ids=GUILD_IDS)
+    @extra_help("Pick the spam channel for level commands: /level only works there. /toggle_level_messages works in any channel. Run with no channel to see the current one, or turn remove on to clear it (then /level works anywhere).")
+    async def set_spam_channel(
+        self,
+        interaction,
+        channel: discord.Option(discord.TextChannel, "Channel for /level", required=False, default=None),
+        remove: discord.Option(bool, "Remove the spam channel", required=False, default=False),
+    ):
+        from utils.permissions import check_slash_permission, _default_admin_only
+        if not await check_slash_permission(interaction, "set_spam_channel", _default_admin_only):
+            return
+        gid = str(interaction.guild.id)
+        db = await get_levels(gid)
+        settings = db.setdefault("settings", {})
+        if remove and channel is not None:
+            return await interaction.respond(
+                "Pick one: give a channel to set it, or turn remove on to clear it — not both.",
+                ephemeral=True)
+        if remove:
+            settings.pop("level_commands_channel_id", None)
+            await save_levels(gid, db)
+            return await interaction.respond(
+                "✅ Spam channel removed — /level works in any channel now.")
+        if channel is None:
+            current = settings.get("level_commands_channel_id")
+            return await interaction.respond(
+                "Give a channel to set it, or turn remove on to clear it." +
+                (f" Current spam channel: <#{current}>." if current else " No spam channel is set right now — /level works anywhere."),
+                ephemeral=True)
+        settings["level_commands_channel_id"] = str(channel.id)
+        await save_levels(gid, db)
+        await interaction.respond(f"✅ /level now only works in {channel.mention}")
+
     @commands.slash_command(name="level", description="Check your or another user's level", guild_ids=GUILD_IDS)
     @extra_help("Check your level or another user's level and XP progress.")
     async def level(self, interaction, member: discord.Member = None):
+        if not await _spam_channel_gate(interaction):
+            return
         await interaction.response.defer()
         target = member or interaction.user
         gid, uid = str(interaction.guild.id), str(target.id)
@@ -1166,9 +1426,6 @@ class LevelSystem(commands.Cog):
         xp = user.get("xp", 0)
         level = user.get("level", 1)
         xp_needed = level * 100
-        progress = self.calculate_level_progress(xp, level)
-        progress_bar = self.create_progress_bar(progress, length=12)
-
         users = {k: v for k, v in db.items()
                  if k != "settings" and isinstance(v, dict) and "level" in v}
         ordered = sorted(users.items(),
@@ -1176,33 +1433,33 @@ class LevelSystem(commands.Cog):
                          reverse=True)
         rank = next((i for i, (k, _) in enumerate(ordered, 1) if k == uid), 0)
 
-        role_color = getattr(target, "color", None)
-        color = (role_color if role_color and role_color != discord.Color.default()
-                 else discord.Color.blurple())
+        if not _PIL_OK:
+            embed = discord.Embed(title="📊 Level", color=discord.Color.blue())
+            embed.set_author(name=target.display_name)
+            embed.add_field(name="Rank", value=f"#{rank}" if rank else "Unranked", inline=True)
+            embed.add_field(name="Level", value=level, inline=True)
+            embed.add_field(name="XP", value=f"{xp}/{xp_needed}", inline=True)
+            return await interaction.followup.send(embed=embed)
 
-        embed = discord.Embed(color=color)
-        embed.set_author(name=target.display_name, icon_url=target.display_avatar.url)
-        embed.set_thumbnail(url=target.display_avatar.url)
-        rank_txt = f"Rank **#{rank}** of {len(ordered)}" if rank else "Unranked"
-        embed.description = (
-            f"# Level {level}\n"
-            f"{rank_txt}\n\n"
-            f"{progress_bar} {progress:.0f}%\n"
-            f"**{xp:,}** / {xp_needed:,} XP  •  {xp_needed - xp:,} XP to level {level + 1}"
-        )
+        avatar_bytes = await _fetch_avatar_bytes(target.display_avatar.url)
+        accent = _hex_to_rgb(user.get("card_color", "#5865F2"))
+        card = await asyncio.to_thread(
+            build_rank_card, avatar_bytes, target.display_name, level, xp, xp_needed,
+            rank, accent)
+
         settings = db.get("settings", {})
         upcoming = sorted((int(lvl), rid)
                           for lvl, rid in settings.get("level_roles", {}).items()
                           if int(lvl) > level)
+        lines = []
         if upcoming:
-            embed.add_field(name="🎁 Next reward",
-                            value=f"<@&{upcoming[0][1]}> at level {upcoming[0][0]}",
-                            inline=False)
+            lines.append(f"🎁 Next reward: <@&{upcoming[0][1]}> at level {upcoming[0][0]}")
         streak = user.get("daily_streak", 0)
         if streak >= 2:
-            embed.set_footer(text=f"🔥 {streak}-day daily streak — use /daily to keep it going")
-
-        await interaction.followup.send(embed=embed)
+            lines.append(f"🔥 {streak}-day daily streak — use /daily to keep it going")
+        content = "\n".join(lines) if lines else None
+        await interaction.followup.send(file=discord.File(card, filename="level.png"),
+                                        content=content)
 
     @commands.slash_command(name="leaderboard", description="Show XP leaderboard", guild_ids=GUILD_IDS)
     @extra_help("View the top 10 users by level and XP in this server.")
@@ -1401,17 +1658,13 @@ class LevelSystem(commands.Cog):
         gid = str(guild.id)
         db = await get_levels(gid)
         settings = db.get("settings", {}) if isinstance(db, dict) else {}
-        try:
-            voice_cfg = await get_voice_xp_config(gid)
-        except Exception:
-            voice_cfg = {}
 
         enabled = bool(settings.get("levels_enabled", False))
         xp_min = settings.get("xp_min", 1)
         xp_max = settings.get("xp_max", 5)
         cooldown = settings.get("cooldown", 0)
         game_xp = settings.get("game_xp", GAME_XP_DEFAULT)
-        xp_threads = settings.get("xp_in_threads", True)
+        xp_threads = settings.get("xp_in_threads", XP_IN_THREADS_DEFAULT)
         no_xp = list(settings.get("no_xp_channels", []) or [])
         no_xp_set = set(str(c) for c in no_xp)
         level_roles = settings.get("level_roles", {}) or {}
@@ -1425,16 +1678,33 @@ class LevelSystem(commands.Cog):
                                else "OFF — messages in threads earn no XP")),
             ("Game XP", "ON" if game_xp else "OFF"),
         ]
-        voice_on = voice_cfg.get("enabled", True)
+        voice_on = bool(settings.get("levels_enabled", False))
         fields.append(("Voice XP",
-                       ("ON — %s XP/min, cap %s/day"
-                        % (voice_cfg.get("xp_per_minute", 1),
-                           voice_cfg.get("daily_cap_xp", 100)))
-                       if voice_on else "OFF"))
+                       ("ON — 1–10 XP/min with someone else in the call, "
+                        "1–10 XP every 5 min alone; no cap; AFK and "
+                        "no-voice-XP channels excluded")
+                       if voice_on else "OFF — level system is off"))
         channel_id = settings.get("levelup_channel_id")
         fields.append(("Level-up channel",
                        (f"<#{channel_id}>" if channel_id
                         else "Not set (level-ups go out as ephemeral replies, or are skipped)")))
+        spam_id = settings.get("level_commands_channel_id")
+        fields.append(("Spam channel",
+                       (f"<#{spam_id}>" if spam_id
+                        else "Not set — /level works anywhere")))
+        no_voice = list(settings.get("no_voice_xp_channels", []) or [])
+        if no_voice:
+            voice_mentions = []
+            for cid in no_voice:
+                ch = (guild.get_channel(int(cid))
+                      if str(cid).isdigit() else None)
+                voice_mentions.append(
+                    ch.mention if ch is not None
+                    else "(deleted channel, id %s)" % cid)
+            fields.append(("No-voice-XP channels", ", ".join(voice_mentions)))
+        else:
+            fields.append(("No-voice-XP channels",
+                           "None — every voice channel earns voice XP."))
         msg = settings.get("levelup_message")
         fields.append(("Level-up message",
                        ((msg[:100] + "…") if len(msg) > 100 else msg)
@@ -1608,22 +1878,6 @@ class LevelSystem(commands.Cog):
         else:
             await interaction.respond(f"No role reward is set for level {level}.", ephemeral=True)
 
-    @commands.slash_command(name="toggle_game_xp", description="Toggle XP for Eat It or Yeet It votes", guild_ids=GUILD_IDS)
-    @extra_help("Turns on/off level XP earned by voting in Eat It or Yeet It. On by default.")
-    async def toggle_game_xp(self, interaction):
-        from utils.permissions import check_slash_permission, _default_admin_only
-        if not await check_slash_permission(interaction, "toggle_game_xp", _default_admin_only):
-            return
-        gid = str(interaction.guild.id)
-        db = await get_levels(gid)
-        settings = db.setdefault("settings", {})
-        new_val = not settings.get("game_xp", GAME_XP_DEFAULT)
-        settings["game_xp"] = new_val
-        await save_levels(gid, db)
-        state = "ON" if new_val else "OFF"
-        detail = "voting now earns level XP" if new_val else "voting no longer earns level XP"
-        await interaction.respond(f"🎮 Game XP is now **{state}** — {detail}.")
-
     @commands.slash_command(name="toggle_levels", description="Turn the level system on/off for this server", guild_ids=GUILD_IDS)
     @extra_help("Turns the whole level system on or off for this server. Off by default -- turn it on to start earning XP from messages, games, and voice.")
     async def toggle_levels(self, interaction):
@@ -1641,24 +1895,6 @@ class LevelSystem(commands.Cog):
                   if new_val else
                   "members will no longer earn XP, and level-ups stop")
         await interaction.respond(f"📊 Level system is now **{state}** — {detail}.")
-
-    @commands.slash_command(name="toggle_thread_xp", description="Turn XP on/off for messages in threads", guild_ids=GUILD_IDS)
-    @extra_help("Turns message XP on or off inside threads (ticket threads, discussion threads, forum posts). On by default -- turn it off so ticket threads don't earn XP.")
-    async def toggle_thread_xp(self, interaction):
-        from utils.permissions import check_slash_permission, _default_admin_only
-        if not await check_slash_permission(interaction, "toggle_thread_xp", _default_admin_only):
-            return
-        gid = str(interaction.guild.id)
-        db = await get_levels(gid)
-        settings = db.setdefault("settings", {})
-        new_val = not settings.get("xp_in_threads", True)
-        settings["xp_in_threads"] = new_val
-        await save_levels(gid, db)
-        state = "ON" if new_val else "OFF"
-        detail = ("messages in threads now earn XP" if new_val
-                  else "messages in threads no longer earn XP")
-        await interaction.respond(f"🧵 XP in threads is now **{state}** — {detail}.",
-                                  ephemeral=True)
 
     @commands.slash_command(name="toggle_level_messages", description="Turn your level-up messages on/off", guild_ids=GUILD_IDS)
     @extra_help("Turns your own level-up messages on or off. You still earn XP when they're off -- you just won't get the announcements.")
@@ -1711,10 +1947,17 @@ class LevelSystem(commands.Cog):
             current_text = "\n\nCurrently no-XP: %s" % current
         else:
             current_text = "\n\nNo channels are currently set to no-XP."
-        view = NoXpBulkView(interaction.user.id, interaction.guild.id)
+        settings = db.get("settings", {})
+        view = NoXpBulkView(
+            interaction.user.id, interaction.guild.id,
+            thread_xp=settings.get("xp_in_threads", XP_IN_THREADS_DEFAULT),
+            game_xp=settings.get("game_xp", GAME_XP_DEFAULT))
         await interaction.respond(
             content=("Pick channels below, then hit **Disable XP** to stop XP in all of them, "
-                     "or **Enable XP** to turn XP back on in them." + current_text),
+                     "or **Enable XP** to turn XP back on in them." + current_text +
+                     "\nThe second picker sets voice channels with no voice XP. "
+                     "Thread XP and Game XP can be flipped with their buttons — "
+                     "no channel pick needed for those."),
             view=view,
             ephemeral=True,
         )
@@ -1811,7 +2054,7 @@ class LevelSystem(commands.Cog):
         await interaction.followup.send(msg)
 
     @commands.slash_command(name="cardcolor", description="Set your rank card accent color", guild_ids=GUILD_IDS)
-    @extra_help("Personalize your /rank card and level-up card with a hex color (e.g. #EB459E), a preset name, or 'reset'.")
+    @extra_help("Personalize your rank card and level-up card with a hex color (e.g. #EB459E), a preset name, or 'reset'.")
     async def cardcolor(self, interaction, color: str):
         gid, uid = str(interaction.guild.id), str(interaction.user.id)
         db = await get_levels(gid)
@@ -1834,7 +2077,7 @@ class LevelSystem(commands.Cog):
             hexcode = m.group(1).upper()
         user["card_color"] = "#" + hexcode
         await save_levels(gid, db)
-        await interaction.respond(f"🎨 Card color set to `#{hexcode}`! Check it with /rank.")
+        await interaction.respond(f"🎨 Card color set to `#{hexcode}`! Check it with /level.")
 
     @commands.slash_command(name="set_levelup_message", description="Set a custom level-up message", guild_ids=GUILD_IDS)
     @extra_help("Set the level-up announcement text. Use {user} for a ping, {name} for the display name, {level} for the new level. Run with no text to reset to the default.")
@@ -1856,40 +2099,6 @@ class LevelSystem(commands.Cog):
         preview = render_levelup_message(settings, interaction.user.id,
                                          interaction.user.display_name, 5)
         await interaction.respond(f"✅ Level-up message set! Preview:\n{preview}")
-
-    @commands.slash_command(name="rank", description="Show your rank card", guild_ids=GUILD_IDS)
-    @extra_help("Generates a rank card image with your level, XP progress, and server rank.")
-    async def rank(self, interaction, member: discord.Member = None):
-        await interaction.response.defer()
-        target = member or interaction.user
-        gid, uid = str(interaction.guild.id), str(target.id)
-        db = await get_levels(gid)
-        user = db.get(uid)
-        if not user:
-            return await interaction.followup.send("No level data found for that user.")
-        users = {k: v for k, v in db.items()
-                 if k != "settings" and isinstance(v, dict) and "level" in v}
-        ordered = sorted(users.items(), key=lambda kv: (kv[1]["level"], kv[1].get("xp", 0)),
-                         reverse=True)
-        rank = next((i for i, (k, _) in enumerate(ordered, 1) if k == uid), 0)
-        level = user.get("level", 1)
-        xp = user.get("xp", 0)
-        xp_needed = level * 100
-
-        if not _PIL_OK:
-            embed = discord.Embed(title="📊 Rank", color=discord.Color.blue())
-            embed.set_author(name=target.display_name)
-            embed.add_field(name="Rank", value=f"#{rank}" if rank else "Unranked", inline=True)
-            embed.add_field(name="Level", value=level, inline=True)
-            embed.add_field(name="XP", value=f"{xp}/{xp_needed}", inline=True)
-            return await interaction.followup.send(embed=embed)
-
-        avatar_bytes = await _fetch_avatar_bytes(target.display_avatar.url)
-        accent = _hex_to_rgb(user.get("card_color", "#5865F2"))
-        card = await asyncio.to_thread(
-            build_rank_card, avatar_bytes, target.display_name, level, xp, xp_needed,
-            rank, accent)
-        await interaction.followup.send(file=discord.File(card, filename="rank.png"))
 
 def setup(client):
     client.add_cog(LevelSystem(client))

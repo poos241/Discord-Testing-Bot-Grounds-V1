@@ -4,11 +4,11 @@ from discord.ext import commands
 
 from .base import BaseLogger
 from .config import (
-    MEMBER, COLORS,
+    MEMBER,
     EV_VOICE_JOIN, EV_VOICE_LEAVE, EV_VOICE_MOVE, EV_VOICE_MUTE,
 )
 from .database import db
-from .embeds import LoggerEmbed
+from .embeds import LoggerEmbed, user_line
 
 
 class VoiceLogger(BaseLogger):
@@ -46,32 +46,54 @@ class VoiceLogger(BaseLogger):
                 await self._voice_flag(member, after.channel, name, state)
 
     async def _join(self, member, channel):
-        embed = LoggerEmbed.base("🔊 Joined Voice", COLORS[MEMBER])
+        embed = LoggerEmbed.base(
+            "🔊 Joined Voice",
+            LoggerEmbed.GREEN,
+            description=(
+                f"**User:** {user_line(member)}\n"
+                f"**Channel:** {channel.mention}"
+            ),
+        )
         LoggerEmbed.author(embed, member)
-        LoggerEmbed.field(embed, "Channel", channel.mention, inline=True)
         LoggerEmbed.finalize(embed)
         await self.send(member.guild, MEMBER, embed)
 
     async def _leave(self, member, channel):
-        embed = LoggerEmbed.base("🔇 Left Voice", COLORS[MEMBER])
+        embed = LoggerEmbed.base(
+            "🔇 Left Voice",
+            LoggerEmbed.RED,
+            description=(
+                f"**User:** {user_line(member)}\n"
+                f"**Channel:** {channel.mention}"
+            ),
+        )
         LoggerEmbed.author(embed, member)
-        LoggerEmbed.field(embed, "Channel", channel.mention, inline=True)
         LoggerEmbed.finalize(embed)
         await self.send(member.guild, MEMBER, embed)
 
     async def _move(self, member, before, after):
-        embed = LoggerEmbed.base("🔀 Moved Voice Channel", COLORS[MEMBER])
+        embed = LoggerEmbed.base(
+            "🔀 Moved Voice Channel",
+            LoggerEmbed.BLUE,
+            description=(
+                f"**User:** {user_line(member)}\n"
+                f"**From:** {before.mention}\n"
+                f"**To:** {after.mention}"
+            ),
+        )
         LoggerEmbed.author(embed, member)
-        LoggerEmbed.field(embed, "From", before.mention, inline=True)
-        LoggerEmbed.field(embed, "To", after.mention, inline=True)
         LoggerEmbed.finalize(embed)
         await self.send(member.guild, MEMBER, embed)
 
     async def _voice_flag(self, member, channel, name, state):
         embed = LoggerEmbed.base(
-            f"🎙 {name}: {'On' if state else 'Off'}", COLORS[MEMBER]
+            f"🎙 {name}: {'On' if state else 'Off'}",
+            LoggerEmbed.BLUE,
+            description=(
+                f"**User:** {user_line(member)}\n"
+                f"**Channel:** {channel.mention}"
+            ),
         )
         LoggerEmbed.author(embed, member)
-        LoggerEmbed.field(embed, "Channel", channel.mention, inline=True)
         LoggerEmbed.finalize(embed)
         await self.send(member.guild, MEMBER, embed)

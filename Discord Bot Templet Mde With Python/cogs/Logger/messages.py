@@ -7,9 +7,9 @@ import discord
 from discord.ext import commands
 
 from .base import BaseLogger
-from .config import MESSAGE, COLORS, EV_MESSAGE_EDIT, EV_MESSAGE_DELETE, EV_BULK_DELETE
+from .config import MESSAGE, EV_MESSAGE_EDIT, EV_MESSAGE_DELETE, EV_BULK_DELETE
 from .database import db
-from .embeds import LoggerEmbed
+from .embeds import LoggerEmbed, user_line
 
 # Attachment rescue: Discord's copy of a deleted message's attachment
 # URLs dies ~30-60 minutes after the delete, so the delete-log links go
@@ -95,18 +95,34 @@ class MessageLogger(BaseLogger):
             cached["author_id"] if cached else None
         )
 
-        embed = LoggerEmbed.base("🗑 Message Deleted", COLORS[MESSAGE])
+        # The user line keeps the cached name when the author object
+        # is gone (uncached delete): "Name (<@id> (id))".
+        if message.author is not None:
+            who = user_line(message.author)
+        elif author_id is not None:
+            who = f"{author_name} (<@{author_id}> ({author_id}))"
+        else:
+            who = author_name
+        sent_line = ""
+        if message.created_at:
+            sent_line = (
+                "\n**Sent:** "
+                f"{discord.utils.format_dt(message.created_at, style='F')}"
+            )
+        embed = LoggerEmbed.base(
+            "🗑 Message Deleted",
+            LoggerEmbed.RED,
+            description=(
+                f"**User:** {who}\n"
+                f"**Channel:** {message.channel.mention}"
+                f"{sent_line}"
+            ),
+        )
         if message.author:
             LoggerEmbed.author(embed, message.author)
         else:
             embed.set_author(name=author_name)
-        LoggerEmbed.field(embed, "Channel", message.channel.mention, inline=True)
         LoggerEmbed.field(embed, "Content", content or "*No message content.*")
-        if message.created_at:
-            LoggerEmbed.field(
-                embed, "Sent",
-                discord.utils.format_dt(message.created_at, style="F"),
-            )
         attachments = message.attachments or []
         if attachments:
             lines = [f"📎 [{a.filename}]({a.url})" for a in attachments]
@@ -307,12 +323,18 @@ class MessageLogger(BaseLogger):
         if before.content == after.content:
             return
 
-        embed = LoggerEmbed.base("✏ Message Edited", COLORS[MESSAGE])
+        embed = LoggerEmbed.base(
+            "✏ Message Edited",
+            LoggerEmbed.BLUE,
+            description=(
+                f"**User:** {user_line(before.author)}\n"
+                f"**Channel:** {before.channel.mention}\n"
+                f"**Jump:** [Go to message]({after.jump_url})"
+            ),
+        )
         LoggerEmbed.author(embed, before.author)
-        LoggerEmbed.field(embed, "Channel", before.channel.mention, inline=True)
         LoggerEmbed.field(embed, "Before", before.content or "*Empty*")
         LoggerEmbed.field(embed, "After", after.content or "*Empty*")
-        LoggerEmbed.field(embed, "Jump", f"[Go to message]({after.jump_url})")
         LoggerEmbed.finalize(embed)
 
         await self.send(before.guild, MESSAGE, embed)
@@ -327,12 +349,14 @@ class MessageLogger(BaseLogger):
         if not db.is_enabled(guild.id, EV_BULK_DELETE):
             return
         channel = guild.get_channel(payload.channel_id)
-        embed = LoggerEmbed.base("🧹 Bulk Messages Deleted", COLORS[MESSAGE])
-        LoggerEmbed.field(
-            embed, "Channel",
-            channel.mention if channel else f"<#{payload.channel_id}>",
-            inline=True,
+        embed = LoggerEmbed.base(
+            "🧹 Bulk Messages Deleted",
+            LoggerEmbed.RED,
+            description=(
+                f"**Channel:** "
+                f"{channel.mention if channel else f'<#{payload.channel_id}>'}\n"
+                f"**Count:** {len(payload.message_ids)}"
+            ),
         )
-        LoggerEmbed.field(embed, "Count", len(payload.message_ids), inline=True)
         LoggerEmbed.finalize(embed)
         await self.send(guild, MESSAGE, embed)

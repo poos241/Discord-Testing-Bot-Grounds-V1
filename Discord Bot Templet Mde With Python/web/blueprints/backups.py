@@ -7,9 +7,9 @@ the moderator gate below.
 
 Gating: backups are bot-wide, not per-server, so there is no guild id
 in the URL to gate on. Instead every route requires a login AND the
-moderator tier on at least one guild the user shares with the bot
-(the same "moderator" tier the nav uses for the Staff Handbook link).
-A plain member or a logged-out visitor gets the 403 page.
+matching web permission (backup_status to view/download, backup_now
+to create/restore/delete) on at least one guild the user shares with
+the bot. A plain member or a logged-out visitor gets the 403 page.
 
 Restore flow (see utils/backup.py for the details): the restore first
 takes a ``pre-restore`` safety snapshot of the CURRENT data and
@@ -42,45 +42,33 @@ from utils.backup import (
     restore_snapshot,
     scheduled_hour,
 )
-from web.blueprints.auth import get_csrf_token, get_user_guilds
+from web.blueprints.auth import get_csrf_token
 from web.security.decorators import require_login
-from web.services.permissions import has_access
 
 backups_api = Blueprint("backups", __name__)
 
 
-def _is_moderator():
-    """Logged-in user holds the moderator tier on a guild the bot is in.
+def _require_backup_action(action):
+    """Logged-in user holds ``action`` (backup_now / backup_status)
+    in at least one guild the bot is in.
 
-    The user's guild list comes from Discord OAuth and includes servers
-    the bot has never joined, so intersect it with the bot's own guilds
-    first -- a moderator of an unrelated server must not pass. Fails
-    closed when the bot is unreachable or not ready.
+    Backups are bot-wide, so there is no guild id in the URL to gate
+    on; instead the web permission check runs per bot guild and
+    passes when any one of them allows the action (owner bypass
+    included). Fails closed when the bot is unreachable.
     """
-    if not session.get("user"):
-        return False
-    try:
-        guilds = get_user_guilds() or []
-    except Exception:
-        return False
-    try:
-        from web.services import bridge
+    from flask import abort as _abort
 
-        bot_guild_ids = {str(gid) for gid in bridge.get_bot_guild_ids()}
-    except Exception:
-        return False
-    for guild in guilds:
-        gid = guild.get("id") if isinstance(guild, dict) else None
-        if gid and str(gid) in bot_guild_ids and has_access(gid, "moderator"):
-            return True
-    return False
+    if not session.get("user"):
+        _abort(401)
+    from web.services.web_access import has_web_action_anywhere
+
+    if not has_web_action_anywhere(action):
+        _abort(403)
 
 
 def _require_mod():
-    if not session.get("user"):
-        abort(401)
-    if not _is_moderator():
-        abort(403)
+    _require_backup_action("backup_status")
 
 
 def _check_csrf():
@@ -124,7 +112,7 @@ def page():
 @backups_api.post("/backups/create")
 @require_login
 def create():
-    _require_mod()
+    _require_backup_action("backup_now")
     csrf_error = _check_csrf()
     if csrf_error:
         return _go(error=csrf_error)
@@ -142,7 +130,7 @@ def create():
 @backups_api.post("/backups/restore")
 @require_login
 def restore():
-    _require_mod()
+    _require_backup_action("backup_now")
     csrf_error = _check_csrf()
     if csrf_error:
         return _go(error=csrf_error)
@@ -173,7 +161,7 @@ def restore():
 @backups_api.post("/backups/delete")
 @require_login
 def delete():
-    _require_mod()
+    _require_backup_action("backup_now")
     csrf_error = _check_csrf()
     if csrf_error:
         return _go(error=csrf_error)

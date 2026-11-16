@@ -2,7 +2,7 @@ from flask import Blueprint, jsonify
 
 from web.services import bridge
 from web.services.bridge import BridgeUnavailable
-from web.security.decorators import require_guild_moderator
+from web.security.decorators import require_web_api_access
 
 
 voice_api = Blueprint(
@@ -63,7 +63,7 @@ def _member_voice_info(member):
 @voice_api.get(
     "/api/servers/<int:guild_id>/voice"
 )
-@require_guild_moderator
+@require_web_api_access("web:view_voice")
 def get_live_voice(guild_id):
 
     if not bridge.bot_is_ready():

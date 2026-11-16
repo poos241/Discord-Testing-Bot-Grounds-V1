@@ -28,13 +28,13 @@
 <div style="max-width:1000px;margin:40px auto;padding:0 16px;">
 
     <div style="margin-bottom:16px;">
-        <a href="/profile" style="color:#8ea2ff;text-decoration:none;font-size:.9rem;">&#8592; Back to profile</a>
+        <a href="/profile" style="color:#c4b5fd;text-decoration:none;font-size:.9rem;">&#8592; Back to profile</a>
     </div>
 
     <!-- LIVE PREVIEW -->
     <div id="edit-preview-card" style="background:rgba(13,17,28,.85);backdrop-filter:blur(8px);
         border:1px solid rgba(255,255,255,.12);border-radius:16px;overflow:hidden;">
-        <div id="edit-preview-banner" style="height:120px;background:#5865F2;
+        <div id="edit-preview-banner" style="height:120px;background:#8b5cf6;
             background-size:cover;background-position:center;"></div>
         <div style="padding:0 24px 20px;margin-top:-40px;display:flex;gap:20px;flex-wrap:wrap;">
             <div>
@@ -42,7 +42,7 @@
                     style="width:96px;height:96px;border-radius:50%;object-fit:cover;
                     border:4px solid #1e1f24;display:none;">
                 <div id="edit-preview-avatar-fallback" style="width:96px;height:96px;border-radius:50%;
-                    background:#5865F2;display:grid;place-items:center;
+                    background:#8b5cf6;display:grid;place-items:center;
                     font-size:2rem;font-weight:800;border:4px solid #1e1f24;">?</div>
             </div>
             <div style="flex:1;min-width:240px;padding-top:48px;">
@@ -157,7 +157,7 @@
         <label style="display:flex;align-items:center;gap:6px;font-size:.85rem;color:rgba(255,255,255,.75);margin:16px 0 6px;">Accent color
             <span class="help-tip"><button type="button" class="help-btn" aria-label="Help for accent color">?</button><span class="help-text">Your own color. It tints your level ring, your progress bars, and the bars above each section on your profile.</span></span></label>
         <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
-            <input id="accent-input" type="color" value="#5865F2"
+            <input id="accent-input" type="color" value="#8b5cf6"
                 style="width:48px;height:40px;padding:2px;border:1px solid
                 rgba(255,255,255,.12);border-radius:8px;background:#1e1f24;cursor:pointer;">
             <div id="accent-swatches" style="display:flex;gap:8px;flex-wrap:wrap;"></div>
@@ -522,7 +522,7 @@
         <div style="display:flex;gap:12px;align-items:center;margin-top:20px;">
             <button id="save-btn"
                 style="padding:10px 24px;border:none;border-radius:10px;
-                background:#5865F2;color:#fff;font-weight:700;cursor:pointer;">
+                background:#8b5cf6;color:#fff;font-weight:700;cursor:pointer;">
                 Save profile
             </button>
             <span id="save-status" style="font-size:.9rem;opacity:.7;"></span>
@@ -948,7 +948,7 @@
         bannerInput.value = p.banner || "";
         backgroundInput.value = p.background_url || "";
         $("tags-input").value = (p.tags || []).join(", ");
-        setAccent(p.accent || "#5865F2");
+        setAccent(p.accent || "#8b5cf6");
         refreshBanner(p);
 
         nameEl.textContent = p.display_name || DISCORD_NAME;

@@ -19,10 +19,11 @@
         href="{{ url_for('static', filename='css/dashboard.css') }}"
     >
 
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/havenly-theme.css') }}">
 </head>
 
 
-<body>
+<body class="havenly-theme">
 
 <div class="app">
 
@@ -36,7 +37,7 @@
         <div class="brand">
 
             <div class="brand-icon">
-                KB
+                <img src="{{ url_for('static', filename='img/little-haven-web-pfp.webp') }}" alt="Little Haven" style="width:100%;height:100%;object-fit:cover;border-radius:inherit;display:block;">
             </div>
 
             <div>
@@ -61,13 +62,15 @@
             </div>
 
 
-            <a
+            {% if web_can('web:view_dashboard', guild_id) %}
+<a
                 href="/servers/{{ guild_id }}/dashboard"
                 class="nav-item"
             >
                 <span>▦</span>
                 Overview
             </a>
+{% endif %}
 
 
             <a
@@ -87,67 +90,70 @@
             </a>
 
 
-            <a
+            {% if web_can('web:view_members', guild_id) %}
+<a
                 href="/servers/{{ guild_id }}/members"
                 class="nav-item"
             >
                 <span>♙</span>
                 Members
             </a>
+{% endif %}
 
 
-            <a
+            {% if web_can('web:view_channels', guild_id) %}
+<a
                 href="/servers/{{ guild_id }}/channels"
                 class="nav-item"
             >
                 <span>▤</span>
                 Channels
             </a>
+{% endif %}
 
 
-            <a
+            {% if web_can('web:view_roles', guild_id) %}
+<a
                 href="/servers/{{ guild_id }}/roles"
                 class="nav-item"
             >
                 <span>◆</span>
                 Roles
             </a>
+{% endif %}
 
         </div>
 
 
-        <div class="sidebar-section">
+        {% if web_can('web:view_logger', guild_id) or web_can('web:view_activity', guild_id) %}
+<div class="sidebar-section">
 
             <div class="sidebar-label">
                 LOGGING
             </div>
 
-            <a
+            {% if web_can('web:view_logger', guild_id) %}
+<a
                 href="/servers/{{ guild_id }}/logger"
                 class="nav-item"
             >
                 <span>▤</span>
                 Logger
             </a>
+{% endif %}
 
-            <a
+            {% if web_can('web:view_activity', guild_id) %}
+<a
                 href="/servers/{{ guild_id }}/activity"
                 class="nav-item"
             >
                 <span>◷</span>
                 Activity
             </a>
-
-
-            <a
-                href="/servers/{{ guild_id }}/logger"
-                class="nav-item"
-            >
-                <span>⚡</span>
-                Events
-            </a>
+{% endif %}
 
         </div>
+{% endif %}
 
 
         <div class="sidebar-section">
@@ -166,13 +172,15 @@
             </a>
 
 
+            {% if web_can('web:manage_permissions', guild_id) or web_can('web:manage_logs', guild_id) %}
             <a
-                href="/servers/{{ guild_id }}/logging"
+                href="/servers/{{ guild_id }}/permissions"
                 class="nav-item"
             >
-                <span>⚙</span>
-                Settings
+                <span>🔑</span>
+                Permissions
             </a>
+            {% endif %}
 
         </div>
 

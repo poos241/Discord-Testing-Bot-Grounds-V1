@@ -2,62 +2,10 @@
 
 {% block body %}
 
-<style>
 
-    .logger-header {
-        border-bottom: 1px solid #343a40;
-        padding-bottom: 20px;
-    }
 
-    .event-card {
-        background: #1e2329;
-        border: 1px solid #3a4149;
-        transition: border-color 0.2s, transform 0.2s;
-    }
 
-    .event-card:hover {
-        border-color: #6c757d;
-        transform: translateY(-1px);
-    }
-
-    .event-time {
-        color: #adb5bd;
-        font-size: 0.85rem;
-    }
-
-    .event-guild {
-        color: #ced4da;
-    }
-
-    .event-data {
-        background: #111418;
-        color: #e9ecef;
-        border: 1px solid #343a40;
-        font-size: 0.85rem;
-        max-height: 400px;
-        overflow: auto;
-    }
-
-    .event-divider {
-        border-color: #343a40;
-    }
-
-    .empty-state {
-        background: #1e2329;
-        border: 1px solid #343a40;
-        color: #adb5bd;
-    }
-
-    .logger-toolbar {
-        background: #1e2329;
-        border: 1px solid #343a40;
-    }
-
-    .logger-count {
-        color: #adb5bd;
-    }
-
-</style>
+<div class="logger-live-page">
 
 
 <!-- HEADER -->
@@ -142,6 +90,8 @@
     <div class="alert empty-state">
         Loading events...
     </div>
+
+</div>
 
 </div>
 

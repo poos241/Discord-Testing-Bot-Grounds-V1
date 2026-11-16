@@ -3,7 +3,7 @@ import discord
 from discord.ext import commands
 
 from .base import BaseLogger
-from .config import (SERVER, COLORS, EV_CHANNEL_CREATE, EV_CHANNEL_DELETE,
+from .config import (SERVER, EV_CHANNEL_CREATE, EV_CHANNEL_DELETE,
     EV_CHANNEL_UPDATE, EV_THREAD_CREATE, EV_THREAD_DELETE)
 from .embeds import LoggerEmbed
 from .database import db
@@ -16,16 +16,23 @@ class ChannelLogger(BaseLogger):
     async def on_guild_channel_create(self, channel):
         if not db.is_enabled(channel.guild.id, EV_CHANNEL_CREATE):
             return
-        embed = LoggerEmbed.base("📁 Channel Created", COLORS[SERVER])
-        LoggerEmbed.field(embed, "Name", f"#{channel.name}" if hasattr(channel, "name") else str(channel))
-        LoggerEmbed.field(embed, "Type", str(channel.type), inline=True)
-        category = getattr(channel, "category", None)
-        LoggerEmbed.field(embed, "Category", category.name if category else "None", inline=True)
         entry = await self.audit_entry(
             channel.guild, discord.AuditLogAction.channel_create, target_id=channel.id
         )
+        category = getattr(channel, "category", None)
+        created_by = ""
         if entry:
-            LoggerEmbed.field(embed, "Created By", str(entry.user), inline=True)
+            created_by = f"\n**Created By:** {entry.user}"
+        embed = LoggerEmbed.base(
+            "📁 Channel Created",
+            LoggerEmbed.GREEN,
+            description=(
+                f"**Channel:** {channel.mention}\n"
+                f"**Type:** {channel.type}\n"
+                f"**Category:** {category.name if category else 'None'}"
+                f"{created_by}"
+            ),
+        )
         LoggerEmbed.finalize(embed)
         await self.send(channel.guild, SERVER, embed)
 
@@ -33,17 +40,24 @@ class ChannelLogger(BaseLogger):
     async def on_guild_channel_delete(self, channel):
         if not db.is_enabled(channel.guild.id, EV_CHANNEL_DELETE):
             return
-        embed = LoggerEmbed.base("🗑 Channel Deleted", COLORS[SERVER])
-        LoggerEmbed.field(embed, "Name", getattr(channel, "name", str(channel)))
-        category = getattr(channel, "category", None)
-        LoggerEmbed.field(embed, "Category", category.name if category else "None", inline=True)
         entry = await self.audit_entry(
             channel.guild, discord.AuditLogAction.channel_delete, target_id=channel.id
         )
+        category = getattr(channel, "category", None)
+        deleted_by = ""
         if entry:
-            LoggerEmbed.field(embed, "Deleted By", str(entry.user), inline=True)
+            deleted_by = f"\n**Deleted By:** {entry.user}"
             if entry.reason:
-                LoggerEmbed.field(embed, "Reason", entry.reason)
+                deleted_by += f"\n**Reason:** {entry.reason}"
+        embed = LoggerEmbed.base(
+            "🗑 Channel Deleted",
+            LoggerEmbed.RED,
+            description=(
+                f"**Channel:** #{getattr(channel, 'name', str(channel))}\n"
+                f"**Category:** {category.name if category else 'None'}"
+                f"{deleted_by}"
+            ),
+        )
         LoggerEmbed.finalize(embed)
         await self.send(channel.guild, SERVER, embed)
 
@@ -59,17 +73,26 @@ class ChannelLogger(BaseLogger):
     async def _renamed(self, before, after):
         if not db.is_enabled(after.guild.id, EV_CHANNEL_UPDATE):
             return
-        embed = LoggerEmbed.base("✏ Channel Renamed", COLORS[SERVER])
-        LoggerEmbed.field(embed, "Before", f"#{before.name}")
-        LoggerEmbed.field(embed, "After", f"#{after.name}")
+        embed = LoggerEmbed.base(
+            "✏ Channel Renamed",
+            LoggerEmbed.BLUE,
+            description=(
+                f"**Channel:** {after.mention}\n"
+                f"**Before:** #{before.name}\n"
+                f"**After:** #{after.name}"
+            ),
+        )
         LoggerEmbed.finalize(embed)
         await self.send(after.guild, SERVER, embed)
 
     async def _topic(self, before, after):
         if not db.is_enabled(after.guild.id, EV_CHANNEL_UPDATE):
             return
-        embed = LoggerEmbed.base("📝 Channel Topic Updated", COLORS[SERVER])
-        LoggerEmbed.field(embed, "Channel", after.mention, inline=True)
+        embed = LoggerEmbed.base(
+            "📝 Channel Topic Updated",
+            LoggerEmbed.BLUE,
+            description=f"**Channel:** {after.mention}",
+        )
         LoggerEmbed.field(embed, "Before", before.topic or "*None*")
         LoggerEmbed.field(embed, "After", after.topic or "*None*")
         LoggerEmbed.finalize(embed)
@@ -78,10 +101,15 @@ class ChannelLogger(BaseLogger):
     async def _slowmode(self, before, after):
         if not db.is_enabled(after.guild.id, EV_CHANNEL_UPDATE):
             return
-        embed = LoggerEmbed.base("🐢 Slowmode Updated", COLORS[SERVER])
-        LoggerEmbed.field(embed, "Channel", after.mention, inline=True)
-        LoggerEmbed.field(embed, "Before", f"{before.slowmode_delay}s", inline=True)
-        LoggerEmbed.field(embed, "After", f"{after.slowmode_delay}s", inline=True)
+        embed = LoggerEmbed.base(
+            "🐢 Slowmode Updated",
+            LoggerEmbed.BLUE,
+            description=(
+                f"**Channel:** {after.mention}\n"
+                f"**Before:** {before.slowmode_delay}s\n"
+                f"**After:** {after.slowmode_delay}s"
+            ),
+        )
         LoggerEmbed.finalize(embed)
         await self.send(after.guild, SERVER, embed)
 
@@ -91,9 +119,15 @@ class ChannelLogger(BaseLogger):
     async def on_thread_create(self, thread):
         if not db.is_enabled(thread.guild.id, EV_THREAD_CREATE):
             return
-        embed = LoggerEmbed.base("🧵 Thread Created", COLORS[SERVER])
-        LoggerEmbed.field(embed, "Name", thread.name)
-        LoggerEmbed.field(embed, "Channel", thread.parent.mention if thread.parent else "Unknown", inline=True)
+        embed = LoggerEmbed.base(
+            "🧵 Thread Created",
+            LoggerEmbed.GREEN,
+            description=(
+                f"**Thread:** {thread.name}\n"
+                f"**Channel:** "
+                f"{thread.parent.mention if thread.parent else 'Unknown'}"
+            ),
+        )
         LoggerEmbed.finalize(embed)
         await self.send(thread.guild, SERVER, embed)
 
@@ -101,7 +135,10 @@ class ChannelLogger(BaseLogger):
     async def on_thread_delete(self, thread):
         if not db.is_enabled(thread.guild.id, EV_THREAD_DELETE):
             return
-        embed = LoggerEmbed.base("🗑 Thread Deleted", COLORS[SERVER])
-        LoggerEmbed.field(embed, "Name", thread.name)
+        embed = LoggerEmbed.base(
+            "🗑 Thread Deleted",
+            LoggerEmbed.RED,
+            description=f"**Thread:** {thread.name}",
+        )
         LoggerEmbed.finalize(embed)
         await self.send(thread.guild, SERVER, embed)
